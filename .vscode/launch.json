@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:backdrop}",
+            "name": "Debug backdrop",
+            "target": "backdrop",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug backdrop"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:backdrop}",
+            "name": "Release backdrop",
+            "target": "backdrop",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release backdrop"
+        }
+    ]
+}
