@@ -6,37 +6,19 @@ import TOMLKit
 
 // MARK: - Codable Config Models
 
-public struct TextConfig: Codable, Sendable {
+public struct TextConfig: Sendable {
     public let `default`: TextStyleConfig
     public let title: TextStyleConfig?
     public let artist: TextStyleConfig?
     public let lyric: TextStyleConfig?
-    public let highlight: [String]
-
-    private static let titleDefaults: TextStyleConfig = .init(size: 18, weight: "bold")
-    private static let artistDefaults: TextStyleConfig = .init(weight: "medium")
-
-    @MainActor
-    public var resolvedTitle: ResolvedTextStyle {
-        resolveStyle((title ?? .init()).merging(over: Self.titleDefaults.merging(over: `default`)))
-    }
-
-    @MainActor
-    public var resolvedArtist: ResolvedTextStyle {
-        resolveStyle((artist ?? .init()).merging(over: Self.artistDefaults.merging(over: `default`)))
-    }
-
-    @MainActor
-    public var resolvedLyric: ResolvedTextStyle {
-        resolveStyle((lyric ?? .init()).merging(over: `default`))
-    }
+    public let highlight: HighlightConfig
 
     public init(
         `default`: TextStyleConfig = .init(),
         title: TextStyleConfig? = nil,
         artist: TextStyleConfig? = nil,
         lyric: TextStyleConfig? = nil,
-        highlight: [String] = ["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]
+        highlight: HighlightConfig = .init()
     ) {
         self.default = `default`
         self.title = title
@@ -44,19 +26,52 @@ public struct TextConfig: Codable, Sendable {
         self.lyric = lyric
         self.highlight = highlight
     }
+}
 
+extension TextConfig: Codable {
     enum CodingKeys: String, CodingKey {
         case `default`, title, artist, lyric, highlight
     }
 }
 
-public struct ArtworkConfig: Codable, Sendable {
+extension TextConfig {
+    @MainActor var resolvedTitle: ResolvedTextStyle {
+        (title ?? .init())
+            .merging(over: TextStyleConfig(size: 18, weight: "bold").merging(over: `default`))
+            .resolve()
+    }
+
+    @MainActor var resolvedArtist: ResolvedTextStyle {
+        (artist ?? .init())
+            .merging(over: TextStyleConfig(weight: "medium").merging(over: `default`))
+            .resolve()
+    }
+
+    @MainActor var resolvedLyric: ResolvedTextStyle {
+        (lyric ?? .init()).merging(over: `default`).resolve()
+    }
+
+    @MainActor var resolvedHighlight: ResolvedTextStyle {
+        highlight.style.merging(over: (lyric ?? .init()).merging(over: `default`)).resolve()
+    }
+}
+
+public struct ArtworkConfig: Sendable {
     public let size: CGFloat
 
     public init(size: CGFloat = 96) { self.size = size }
 }
 
-public struct RippleConfig: Codable, Sendable {
+extension ArtworkConfig: Codable {
+    enum CodingKeys: String, CodingKey { case size }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        size = try c.flexibleDoubleRequired(forKey: .size)
+    }
+}
+
+public struct RippleConfig: Sendable {
     public let color: String
     public let radius: Double
     public let duration: Double
@@ -70,7 +85,19 @@ public struct RippleConfig: Codable, Sendable {
     }
 }
 
-// MARK: - AppConfig (raw Codable)
+extension RippleConfig: Codable {
+    enum CodingKeys: String, CodingKey { case color, radius, duration, idle }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        color = try c.decode(String.self, forKey: .color)
+        radius = try c.flexibleDoubleRequired(forKey: .radius)
+        duration = try c.flexibleDoubleRequired(forKey: .duration)
+        idle = try c.flexibleDoubleRequired(forKey: .idle)
+    }
+}
+
+// MARK: - AppConfig
 
 public struct AppConfig: Codable, Sendable {
     public let text: TextConfig
@@ -81,19 +108,13 @@ public struct AppConfig: Codable, Sendable {
     public let configDir: String?
 
     public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        text = try container.decodeIfPresent(TextConfig.self, forKey: .text) ?? .init()
-        artwork = try container.decodeIfPresent(ArtworkConfig.self, forKey: .artwork) ?? .init()
-        ripple = try container.decodeIfPresent(RippleConfig.self, forKey: .ripple) ?? .init()
-        screen = try container.decodeIfPresent(ScreenSelector.self, forKey: .screen) ?? .main
-        wallpaper = try container.decodeIfPresent(String.self, forKey: .wallpaper)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = try c.decodeIfPresent(TextConfig.self, forKey: .text) ?? .init()
+        artwork = try c.decodeIfPresent(ArtworkConfig.self, forKey: .artwork) ?? .init()
+        ripple = try c.decodeIfPresent(RippleConfig.self, forKey: .ripple) ?? .init()
+        screen = try c.decodeIfPresent(ScreenSelector.self, forKey: .screen) ?? .main
+        wallpaper = try c.decodeIfPresent(String.self, forKey: .wallpaper)
         configDir = nil
-    }
-
-    public var wallpaperURL: URL? {
-        guard let wallpaper else { return nil }
-        guard !wallpaper.hasPrefix("/") else { return URL(fileURLWithPath: wallpaper) }
-        return configDir.map { URL(fileURLWithPath: $0).appendingPathComponent(wallpaper) }
     }
 
     public init(
@@ -115,6 +136,14 @@ public struct AppConfig: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case text, artwork, ripple, screen, wallpaper
     }
+}
+
+extension AppConfig {
+    public var wallpaperURL: URL? {
+        guard let wallpaper else { return nil }
+        guard !wallpaper.hasPrefix("/") else { return URL(fileURLWithPath: wallpaper) }
+        return configDir.map { URL(fileURLWithPath: $0).appendingPathComponent(wallpaper) }
+    }
 
     public static func load() -> AppConfig {
         let home = NSHomeDirectory()
@@ -131,10 +160,19 @@ public struct AppConfig: Codable, Sendable {
 
         let decoded: AppConfig?
         if path.hasSuffix(".toml") {
-            decoded = try? TOMLDecoder().decode(AppConfig.self, from: content)
+            do {
+                decoded = try TOMLDecoder().decode(AppConfig.self, from: content)
+            } catch {
+                notifyConfigError(path: path, error: error)
+                decoded = nil
+            }
         } else {
-            decoded = content.data(using: .utf8)
-                .flatMap { try? JSONDecoder().decode(AppConfig.self, from: $0) }
+            do {
+                decoded = try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
+            } catch {
+                notifyConfigError(path: path, error: error)
+                decoded = nil
+            }
         }
         guard let decoded else { return .init() }
         return AppConfig(
@@ -155,7 +193,8 @@ extension AppConfig {
                 title: text.resolvedTitle,
                 artist: text.resolvedArtist,
                 lyric: text.resolvedLyric,
-                highlightColors: text.highlight
+                highlight: text.resolvedHighlight,
+                highlightColors: text.highlight.color
             ),
             artwork: ResolvedArtworkConfig(size: artwork.size),
             ripple: ResolvedRippleConfig(
@@ -170,29 +209,52 @@ extension AppConfig {
     }
 }
 
-@MainActor
-private func resolveStyle(_ config: TextStyleConfig) -> ResolvedTextStyle {
-    let fontName = config.font ?? "Zen Maru Gothic"
-    let fontSize = config.size ?? 12
-    let fontWeight = config.weight ?? "regular"
-    let spacing = config.spacing ?? 6
+extension TextStyleConfig {
+    @MainActor
+    func resolve() -> ResolvedTextStyle {
+        let fontName = font ?? "Zen Maru Gothic"
+        let fontSize = size ?? 12
+        let fontWeight = weight ?? "regular"
+        let spacing = spacing ?? 6
 
-    let available = NSFontManager.shared.availableFontFamilies.contains(fontName)
-    let nsFont = available ? NSFont(name: fontName, size: fontSize) : nil
-    let fallback = NSFont.systemFont(ofSize: fontSize)
-    let lineHeight = ceil(
-        (nsFont?.ascender ?? fallback.ascender)
-            - (nsFont?.descender ?? fallback.descender)
-            + (nsFont?.leading ?? fallback.leading)
-    ) + spacing * 2
+        let available = NSFontManager.shared.availableFontFamilies.contains(fontName)
+        let nsFont = available ? NSFont(name: fontName, size: fontSize) : nil
+        let fallback = NSFont.systemFont(ofSize: fontSize)
+        let lineHeight = ceil(
+            (nsFont?.ascender ?? fallback.ascender)
+                - (nsFont?.descender ?? fallback.descender)
+                + (nsFont?.leading ?? fallback.leading)
+        ) + spacing * 2
 
-    return ResolvedTextStyle(
-        spacing: spacing,
-        fontName: fontName,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        colorHex: config.color ?? "#FFFFFFD9",
-        shadowHex: config.shadow ?? "#000000E6",
-        lineHeight: lineHeight
+        return ResolvedTextStyle(
+            spacing: spacing,
+            fontName: fontName,
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            colorHex: color ?? "#FFFFFFD9",
+            shadowHex: shadow ?? "#000000E6",
+            lineHeight: lineHeight
+        )
+    }
+}
+
+// MARK: - Config error notification
+
+private func notifyConfigError(path: String, error: Error) {
+    fputs("backdrop: failed to decode \(path): \(error)\n", stderr)
+    @Dependency(\.userNotifier) var notifier
+    notifier.notify(
+        title: "backdrop",
+        subtitle: "Config error: \((path as NSString).lastPathComponent)",
+        message: String(describing: error),
+        fileToOpen: path
     )
+}
+
+// MARK: - DependencyKey registration
+
+extension ConfigKey: DependencyKey {
+    public static let liveValue: ResolvedConfig = MainActor.assumeIsolated {
+        AppConfig.load().toResolvedConfig()
+    }
 }

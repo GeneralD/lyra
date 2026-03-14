@@ -29,17 +29,20 @@ public struct ResolvedTextConfig: Sendable {
     public let title: ResolvedTextStyle
     public let artist: ResolvedTextStyle
     public let lyric: ResolvedTextStyle
+    public let highlight: ResolvedTextStyle
     public let highlightColors: [String]
 
     public init(
         title: ResolvedTextStyle = .init(fontSize: 18, fontWeight: "bold"),
         artist: ResolvedTextStyle = .init(fontWeight: "medium"),
         lyric: ResolvedTextStyle = .init(),
+        highlight: ResolvedTextStyle = .init(),
         highlightColors: [String] = ["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]
     ) {
         self.title = title
         self.artist = artist
         self.lyric = lyric
+        self.highlight = highlight
         self.highlightColors = highlightColors
     }
 }
@@ -101,8 +104,7 @@ public struct ResolvedRippleConfig: Sendable {
 
 // MARK: - DependencyKey
 
-public enum ConfigKey: DependencyKey {
-    public static let liveValue: ResolvedConfig = .init()
+public enum ConfigKey: TestDependencyKey {
     public static let testValue: ResolvedConfig = .init()
 }
 
