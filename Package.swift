@@ -105,8 +105,6 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources/version.txt"),
-                .copy("Resources/backdrop.zsh"),
-                .copy("Resources/backdrop.bash"),
             ]
         ),
 
