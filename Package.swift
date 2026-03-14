@@ -102,6 +102,10 @@ let package = Package(
                 "BackdropConfig",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            resources: [
+                .copy("Resources/backdrop.zsh"),
+                .copy("Resources/backdrop.bash"),
             ]
         ),
 
@@ -123,6 +127,10 @@ let package = Package(
                 "BackdropDomain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
+        ),
+        .testTarget(
+            name: "BackdropCLITests",
+            dependencies: ["BackdropCLI"]
         ),
         .testTarget(
             name: "BackdropPersistenceTests",
