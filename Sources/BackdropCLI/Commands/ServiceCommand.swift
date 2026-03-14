@@ -13,7 +13,7 @@ struct ServiceCommand: ParsableCommand {
         )
 
         func run() throws {
-            try LaunchAgentManager.install()
+            try LaunchAgentManager().install()
         }
     }
 
@@ -23,7 +23,7 @@ struct ServiceCommand: ParsableCommand {
         )
 
         func run() throws {
-            try LaunchAgentManager.uninstall()
+            try LaunchAgentManager().uninstall()
         }
     }
 }

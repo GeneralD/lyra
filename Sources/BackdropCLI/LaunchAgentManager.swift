@@ -1,16 +1,19 @@
 import Foundation
 
-public enum LaunchAgentManager {
-    private static let label = "com.generald.backdrop"
+public struct LaunchAgentManager {
+    private let label = "com.generald.backdrop"
 
-    private static var plistPath: URL {
+    public init() {}
+}
+
+extension LaunchAgentManager {
+    private var plistPath: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(label).plist")
     }
 
-    public static func install() throws {
-        let programArgs = programArguments()
-        let argsXML = programArgs
+    public func install() throws {
+        let argsXML = programArguments
             .map { "            <string>\($0)</string>" }
             .joined(separator: "\n")
         let plist = """
@@ -45,7 +48,7 @@ public enum LaunchAgentManager {
         print("Installed and started: \(plistPath.path)")
     }
 
-    public static func uninstall() throws {
+    public func uninstall() throws {
         guard FileManager.default.fileExists(atPath: plistPath.path) else {
             print("Not installed")
             return
@@ -56,9 +59,31 @@ public enum LaunchAgentManager {
         try FileManager.default.removeItem(at: plistPath)
         print("Uninstalled")
     }
+}
+
+extension LaunchAgentManager {
+    private var programArguments: [String] {
+        guard let mintPath = mintRunPath else {
+            return [installedPath ?? currentExecutablePath, "daemon"]
+        }
+        return [mintPath, "run", "GeneralD/backdrop", "daemon"]
+    }
+
+    private var mintRunPath: String? {
+        guard currentExecutablePath.contains("/.mint/") else { return nil }
+        return whichCommand("mint")
+    }
+
+    private var installedPath: String? {
+        whichCommand(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
+    }
+
+    private var currentExecutablePath: String {
+        URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL.path
+    }
 
     @discardableResult
-    private static func runLaunchctl(_ arguments: [String]) -> Int32 {
+    private func runLaunchctl(_ arguments: [String]) -> Int32 {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = arguments
@@ -67,30 +92,8 @@ public enum LaunchAgentManager {
         task.waitUntilExit()
         return task.terminationStatus
     }
-}
 
-extension LaunchAgentManager {
-    private static func programArguments() -> [String] {
-        guard let mintPath = mintRunPath() else {
-            let binary = installedPath()
-                ?? URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL.path
-            return [binary, "daemon"]
-        }
-        return [mintPath, "run", "GeneralD/backdrop", "daemon"]
-    }
-
-    private static func mintRunPath() -> String? {
-        let execPath = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
-        guard execPath.contains("/.mint/") else { return nil }
-        return whichCommand("mint")
-    }
-
-    private static func installedPath() -> String? {
-        let binaryName = URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent
-        return whichCommand(binaryName)
-    }
-
-    private static func whichCommand(_ name: String) -> String? {
+    private func whichCommand(_ name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [name]
