@@ -1,10 +1,17 @@
 import ArgumentParser
+import Foundation
+
+private let appVersion: String = {
+    guard let url = Bundle.module.url(forResource: "version", withExtension: "txt"),
+          let content = try? String(contentsOf: url, encoding: .utf8) else { return "unknown" }
+    return content.trimmingCharacters(in: .whitespacesAndNewlines)
+}()
 
 public struct BackdropCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "backdrop",
         abstract: "Desktop backdrop — lyrics overlay, video wallpaper, and more",
-        version: "1.0.0",
+        version: appVersion,
         subcommands: [
             StartCommand.self,
             StopCommand.self,

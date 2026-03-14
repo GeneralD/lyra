@@ -15,12 +15,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build and extract version
+      - name: Extract version
         run: |
-          swift build -c debug
-          VERSION=$(swift run backdrop --version 2>/dev/null | tr -d '[:space:]')
+          VERSION=$(tr -d '[:space:]' < Sources/BackdropCLI/Resources/version.txt)
           if ! printf '%s\n' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Error: Invalid version string from 'swift run backdrop --version': '$VERSION'" >&2
+            echo "Error: Invalid version in version.txt: '$VERSION'" >&2
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"

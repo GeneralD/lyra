@@ -104,6 +104,7 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             resources: [
+                .copy("Resources/version.txt"),
                 .copy("Resources/backdrop.zsh"),
                 .copy("Resources/backdrop.bash"),
             ]
