@@ -129,6 +129,10 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "BackdropCLITests",
+            dependencies: ["BackdropCLI"]
+        ),
+        .testTarget(
             name: "BackdropPersistenceTests",
             dependencies: [
                 "BackdropPersistence",
