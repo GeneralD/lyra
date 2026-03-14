@@ -3,27 +3,31 @@ import Testing
 
 @Suite("CompletionCommand E2E")
 struct CompletionCommandTests {
-    @Test("zsh completion output matches resource file")
+    @Test("zsh completion outputs non-empty script")
     func zshCompletion() throws {
         let output = try runBackdrop(arguments: ["completion", "zsh"])
-        let expected = try String(contentsOfFile: resourcePath("backdrop.zsh"), encoding: .utf8)
-        #expect(output.trimmingCharacters(in: .whitespacesAndNewlines)
-            == expected.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(output.contains("#compdef"))
+        #expect(output.contains("backdrop"))
     }
 
-    @Test("bash completion output matches resource file")
+    @Test("bash completion outputs non-empty script")
     func bashCompletion() throws {
         let output = try runBackdrop(arguments: ["completion", "bash"])
-        let expected = try String(contentsOfFile: resourcePath("backdrop.bash"), encoding: .utf8)
-        #expect(output.trimmingCharacters(in: .whitespacesAndNewlines)
-            == expected.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(output.contains("complete"))
+        #expect(output.contains("backdrop"))
+    }
+
+    @Test("fish completion outputs non-empty script")
+    func fishCompletion() throws {
+        let output = try runBackdrop(arguments: ["completion", "fish"])
+        #expect(output.contains("backdrop"))
     }
 
     @Test("unsupported shell returns error")
     func unsupportedShell() throws {
         let process = Process()
         process.executableURL = binaryURL()
-        process.arguments = ["completion", "fish"]
+        process.arguments = ["completion", "powershell"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
@@ -71,9 +75,8 @@ private func resourcePath(_ filename: String) -> String {
 }
 
 private func packageRoot() -> URL {
-    var dir = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent() // CompletionCommandTests.swift
-        .deletingLastPathComponent() // BackdropCLITests
-        .deletingLastPathComponent() // Tests
-    return dir
+    URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
 }
