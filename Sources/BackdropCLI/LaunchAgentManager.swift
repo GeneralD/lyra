@@ -9,8 +9,8 @@ public enum LaunchAgentManager {
     }
 
     public static func install() throws {
-        let executablePath = Bundle.main.executablePath ?? CommandLine.arguments[0]
-        let resolvedPath = URL(fileURLWithPath: executablePath).standardizedFileURL.path
+        let resolvedPath = installedPath()
+            ?? URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL.path
         let plist = """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
@@ -66,6 +66,24 @@ public enum LaunchAgentManager {
         try? task.run()
         task.waitUntilExit()
         return task.terminationStatus
+    }
+}
+
+extension LaunchAgentManager {
+    private static func installedPath() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["backdrop"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let path = output, !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path).standardizedFileURL.path
     }
 }
 
