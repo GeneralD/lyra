@@ -1,7 +1,7 @@
 import Foundation
 
 public enum LaunchAgentManager {
-    private static let label = "com.user.backdrop"
+    private static let label = "com.generald.backdrop"
 
     private static var plistPath: URL {
         FileManager.default.homeDirectoryForCurrentUser
