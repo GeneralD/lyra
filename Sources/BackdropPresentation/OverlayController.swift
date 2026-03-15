@@ -26,7 +26,7 @@ public final class OverlayController {
     }
 }
 
-extension OverlayController {
+private extension OverlayController {
     public func start() {
         nowPlayingTask = Task { [weak self] in
             guard let self else { return }
@@ -57,8 +57,8 @@ extension OverlayController {
     }
 }
 
-extension OverlayController {
-    private func clearIfNeeded() {
+private extension OverlayController {
+    func clearIfNeeded() {
         guard lastTrackKey != (nil, nil) else { return }
         lastTrackKey = (nil, nil)
         latestNowPlaying = nil
@@ -70,12 +70,12 @@ extension OverlayController {
         state.reset()
     }
 
-    private func updateArtwork(from info: NowPlaying) {
+    func updateArtwork(from info: NowPlaying) {
         guard info.artworkData != state.artworkData else { return }
         state.artworkData = info.artworkData
     }
 
-    private func updateTrack(from info: NowPlaying) {
+    func updateTrack(from info: NowPlaying) {
         let trackKey = (info.title, info.artist)
         guard trackKey != lastTrackKey else { return }
 
@@ -113,7 +113,7 @@ extension OverlayController {
         }
     }
 
-    private func updateActiveLineIndex(from info: NowPlaying) {
+    func updateActiveLineIndex(from info: NowPlaying) {
         guard case .success(let .timed(lines)) = state.lyrics else { return }
         guard info.playbackRate != 0 else { return }
         let index = info.elapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
@@ -124,8 +124,8 @@ extension OverlayController {
 
 // MARK: - Reveal animations
 
-extension OverlayController {
-    private func revealTitle(_ text: String?) {
+private extension OverlayController {
+    func revealTitle(_ text: String?) {
         guard let text else {
             state.title = .idle
             state.displayTitle = " "
@@ -140,7 +140,7 @@ extension OverlayController {
         }
     }
 
-    private func revealArtist(_ text: String?) {
+    func revealArtist(_ text: String?) {
         guard let text else {
             state.artist = .idle
             state.displayArtist = " "
@@ -155,7 +155,7 @@ extension OverlayController {
         }
     }
 
-    private func revealLyrics(_ content: LyricsContent) {
+    func revealLyrics(_ content: LyricsContent) {
         state.lyrics = .revealing(content)
         let texts: [String] = switch content {
         case .timed(let lines): lines.map(\.text)

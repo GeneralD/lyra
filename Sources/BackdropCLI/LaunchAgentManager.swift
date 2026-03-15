@@ -6,8 +6,8 @@ public struct LaunchAgentManager {
     public init() {}
 }
 
-extension LaunchAgentManager {
-    private var plistPath: URL {
+private extension LaunchAgentManager {
+    var plistPath: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(label).plist")
     }
@@ -51,29 +51,29 @@ extension LaunchAgentManager {
     }
 }
 
-extension LaunchAgentManager {
-    private var programArguments: [String] {
+private extension LaunchAgentManager {
+    var programArguments: [String] {
         guard let mintPath = mintRunPath else {
             return [installedPath ?? currentExecutablePath, "daemon"]
         }
         return [mintPath, "run", "GeneralD/backdrop", "daemon"]
     }
 
-    private var mintRunPath: String? {
+    var mintRunPath: String? {
         guard currentExecutablePath.contains("/.mint/") else { return nil }
         return whichCommand("mint")
     }
 
-    private var installedPath: String? {
+    var installedPath: String? {
         whichCommand(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
     }
 
-    private var currentExecutablePath: String {
+    var currentExecutablePath: String {
         URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL.path
     }
 
     @discardableResult
-    private func runLaunchctl(_ arguments: [String]) -> Int32 {
+    func runLaunchctl(_ arguments: [String]) -> Int32 {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = arguments
@@ -83,7 +83,7 @@ extension LaunchAgentManager {
         return task.terminationStatus
     }
 
-    private func whichCommand(_ name: String) -> String? {
+    func whichCommand(_ name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [name]

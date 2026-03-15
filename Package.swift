@@ -45,7 +45,7 @@ let package = Package(
             ]
         ),
         .target(
-            name: "BackdropLRCLib",
+            name: "BackdropLyricsSearch",
             dependencies: [
                 "BackdropDomain",
                 .product(name: "CollectionKit", package: "CollectionKit"),
@@ -67,7 +67,7 @@ let package = Package(
         ),
         .target(
             name: "BackdropLyrics",
-            dependencies: ["BackdropDomain", "BackdropLRCLib", "BackdropPersistence"]
+            dependencies: ["BackdropDomain", "BackdropLyricsSearch", "BackdropPersistence"]
         ),
 
         // Presentation logic
