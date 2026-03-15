@@ -108,9 +108,11 @@ public struct ResolvedTextStyle: Sendable {
 
 public struct ResolvedArtworkConfig: Sendable {
     public let size: Double
+    public let opacity: Double
 
-    public init(size: Double = 96) {
+    public init(size: Double = 96, opacity: Double = 1.0) {
         self.size = size
+        self.opacity = opacity
     }
 }
 

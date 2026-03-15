@@ -26,4 +26,9 @@ extension FetchState {
         guard case .revealing = self else { return false }
         return true
     }
+
+    public var isIdle: Bool {
+        guard case .idle = self else { return false }
+        return true
+    }
 }
