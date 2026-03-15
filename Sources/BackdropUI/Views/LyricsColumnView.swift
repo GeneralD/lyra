@@ -62,3 +62,22 @@ public struct LyricsColumnView: View {
         }
     }
 }
+
+#Preview("Lyrics") {
+    LyricsColumnView(state: {
+        let s = OverlayState()
+        let lines: [LyricLine] = [
+            .init(time: 0, text: "夜に駆ける"),
+            .init(time: 5, text: "沈むように"),
+            .init(time: 10, text: "溶けてゆくように"),
+            .init(time: 15, text: "二人だけの空が広がる夜に"),
+            .init(time: 20, text: "あなたの声が聞こえる"),
+        ]
+        s.lyrics = .success(.timed(lines))
+        s.displayLyricLines = lines.map(\.text)
+        s.activeLineIndex = 2
+        return s
+    }())
+    .frame(width: 600, height: 300)
+    .background(.black)
+}

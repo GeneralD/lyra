@@ -1,3 +1,4 @@
+import BackdropDomain
 import BackdropPresentation
 import SwiftUI
 
@@ -23,4 +24,25 @@ public struct OverlayContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
+}
+
+#Preview("Overlay") {
+    OverlayContentView(state: {
+        let s = OverlayState()
+        s.title = .success("Rusty Nail")
+        s.artist = .success("X JAPAN")
+        s.displayTitle = "Rusty Nail"
+        s.displayArtist = "X JAPAN"
+        let lines: [LyricLine] = [
+            .init(time: 0, text: "錆びついた釘を"),
+            .init(time: 5, text: "抜き取るように"),
+            .init(time: 10, text: "心の痛みを"),
+        ]
+        s.lyrics = .success(.timed(lines))
+        s.displayLyricLines = lines.map(\.text)
+        s.activeLineIndex = 1
+        return s
+    }(), rippleState: RippleState())
+    .frame(width: 800, height: 500)
+    .background(.black)
 }

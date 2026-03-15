@@ -52,3 +52,10 @@ public struct RippleView: View {
         }
     }
 }
+
+#Preview("Ripple") {
+    let rippleState = RippleState()
+    RippleView(rippleState: rippleState, screenOrigin: .zero)
+        .frame(width: 400, height: 300)
+        .background(.black)
+}

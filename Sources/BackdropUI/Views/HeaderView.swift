@@ -50,3 +50,16 @@ public struct HeaderView: View {
         }
     }
 }
+
+#Preview("Header") {
+    HeaderView(state: {
+        let s = OverlayState()
+        s.title = .success("Rusty Nail")
+        s.artist = .success("X JAPAN")
+        s.displayTitle = "Rusty Nail"
+        s.displayArtist = "X JAPAN"
+        return s
+    }())
+    .padding()
+    .background(.black)
+}

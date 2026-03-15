@@ -44,3 +44,15 @@ func makeFont(style: ResolvedTextStyle) -> Font {
     }
     return Font.custom(style.fontName, size: style.fontSize).weight(weight)
 }
+
+#Preview("Normal") {
+    LyricLineView(text: "夜に駆ける", isActive: false)
+        .padding()
+        .background(.black)
+}
+
+#Preview("Active") {
+    LyricLineView(text: "夜に駆ける", isActive: true)
+        .padding()
+        .background(.black)
+}
