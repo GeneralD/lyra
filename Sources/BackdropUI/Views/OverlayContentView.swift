@@ -27,6 +27,8 @@ public struct OverlayContentView: View {
     }
 }
 
+
+#if DEBUG
 #Preview("Overlay") {
     withDependencies { $0.config = .init() } operation: {
         OverlayContentView(state: {
@@ -49,3 +51,4 @@ public struct OverlayContentView: View {
         .background(.black)
     }
 }
+#endif

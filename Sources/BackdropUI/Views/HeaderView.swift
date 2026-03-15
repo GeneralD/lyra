@@ -51,6 +51,8 @@ public struct HeaderView: View {
     }
 }
 
+
+#if DEBUG
 #Preview("Header") {
     withDependencies { $0.config = .init() } operation: {
         HeaderView(state: {
@@ -65,3 +67,4 @@ public struct HeaderView: View {
         .background(.black)
     }
 }
+#endif

@@ -64,6 +64,8 @@ public struct LyricsColumnView: View {
     }
 }
 
+
+#if DEBUG
 #Preview("Lyrics") {
     withDependencies { $0.config = .init() } operation: {
         LyricsColumnView(state: {
@@ -84,3 +86,4 @@ public struct LyricsColumnView: View {
         .background(.black)
     }
 }
+#endif

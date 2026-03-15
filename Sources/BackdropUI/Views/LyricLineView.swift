@@ -45,6 +45,8 @@ func makeFont(style: ResolvedTextStyle) -> Font {
     return Font.custom(style.fontName, size: style.fontSize).weight(weight)
 }
 
+
+#if DEBUG
 #Preview("Normal") {
     withDependencies { $0.config = .init() } operation: {
         LyricLineView(text: "It been a long day without you my friend", isActive: false)
@@ -60,3 +62,4 @@ func makeFont(style: ResolvedTextStyle) -> Font {
             .background(.black)
     }
 }
+#endif

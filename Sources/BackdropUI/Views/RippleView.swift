@@ -53,6 +53,8 @@ public struct RippleView: View {
     }
 }
 
+
+#if DEBUG
 #Preview("Ripple") {
     withDependencies { $0.config = .init() } operation: {
         RippleView(rippleState: RippleState(), screenOrigin: .zero)
@@ -60,3 +62,4 @@ public struct RippleView: View {
             .background(.black)
     }
 }
+#endif
