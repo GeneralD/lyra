@@ -26,8 +26,8 @@ public final class OverlayController {
     }
 }
 
-extension OverlayController {
-    public func start() {
+public extension OverlayController {
+    func start() {
         nowPlayingTask = Task { [weak self] in
             guard let self else { return }
             @Dependency(\.nowPlayingProvider) var provider
@@ -42,7 +42,7 @@ extension OverlayController {
         }
     }
 
-    public func stop() {
+    func stop() {
         nowPlayingTask?.cancel()
         fetchTask?.cancel()
         titleEffect.stop()
@@ -51,7 +51,7 @@ extension OverlayController {
     }
 
     /// Called from DisplayLink to keep activeLineIndex in sync at frame rate
-    public func updateActiveLineTick() {
+    func updateActiveLineTick() {
         guard let info = latestNowPlaying else { return }
         updateActiveLineIndex(from: info)
     }
