@@ -31,12 +31,8 @@ jobs:
           CURRENT_SHA=$(git rev-parse HEAD)
           EXISTING_SHA=$(git rev-parse "refs/tags/${TAG}" 2>/dev/null || echo "")
 
-          if [ "$EXISTING_SHA" = "$CURRENT_SHA" ]; then
-            echo "Tag ${TAG} already points to ${CURRENT_SHA}, skipping"
-          elif [ -n "$EXISTING_SHA" ]; then
-            echo "Moving tag ${TAG} from ${EXISTING_SHA} to ${CURRENT_SHA}"
-            git tag -f "$TAG"
-            git push origin "$TAG" --force
+          if [ -n "$EXISTING_SHA" ]; then
+            echo "Tag ${TAG} already exists at ${EXISTING_SHA}, skipping"
           else
             echo "Creating tag ${TAG} at ${CURRENT_SHA}"
             git tag "$TAG"
