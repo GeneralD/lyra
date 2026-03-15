@@ -144,6 +144,14 @@ let package = Package(
             dependencies: ["BackdropCLI"]
         ),
         .testTarget(
+            name: "BackdropPresentationTests",
+            dependencies: [
+                "BackdropPresentation",
+                "BackdropDomain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
             name: "BackdropPersistenceTests",
             dependencies: [
                 "BackdropPersistence",
