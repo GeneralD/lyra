@@ -49,7 +49,7 @@ jobs:
           github-token: ${{ secrets.HOMEBREW_PAT }}
           script: |
             const owner = 'GeneralD';
-            const repo = 'homebrew-private';
+            const repo = 'homebrew-tap';
             const path = 'Formula/backdrop.rb';
             const tag = process.env.TAG;
             const version = process.env.VERSION;
