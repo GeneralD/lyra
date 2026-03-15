@@ -1,9 +1,15 @@
 import Foundation
 
+public enum PollResult: Sendable {
+    case info(MediaRemoteInfo)
+    case noInfo
+    case eof
+}
+
 /// Bridges to MediaRemote.framework via a persistent swift interpreter subprocess.
 /// Compiled binaries cannot access the private framework directly.
-/// A small swift script runs as a long-lived daemon, polling every second
-/// and writing JSON lines to stdout, which the parent reads via pipe.
+/// A small swift script runs as a long-lived daemon, observing now-playing
+/// notifications and writing JSON lines to stdout, which the parent reads via pipe.
 public final class MediaRemoteBridge: @unchecked Sendable {
     private let process: Process
     private let reader: FileHandle
@@ -27,17 +33,20 @@ public final class MediaRemoteBridge: @unchecked Sendable {
 }
 
 extension MediaRemoteBridge {
-    public func poll() async -> MediaRemoteInfo? {
+    public func poll() async -> PollResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.global().async { [reader] in
-                guard let line = Self.readLine(from: reader),
-                      let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      json["has_info"] as? Bool == true else {
-                    continuation.resume(returning: nil)
+                guard let line = Self.readLine(from: reader) else {
+                    continuation.resume(returning: .eof)
                     return
                 }
-                continuation.resume(returning: MediaRemoteInfo(
+                guard let data = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      json["has_info"] as? Bool == true else {
+                    continuation.resume(returning: .noInfo)
+                    return
+                }
+                continuation.resume(returning: .info(MediaRemoteInfo(
                     title: json["title"] as? String,
                     artist: json["artist"] as? String,
                     artworkData: (json["artwork_base64"] as? String).flatMap { Data(base64Encoded: $0) },
@@ -45,7 +54,7 @@ extension MediaRemoteBridge {
                     rawElapsed: json["elapsed"] as? TimeInterval,
                     playbackRate: json["rate"] as? Double ?? 1.0,
                     timestamp: (json["timestamp"] as? TimeInterval).map { Date(timeIntervalSinceReferenceDate: $0) }
-                ))
+                )))
             }
         }
     }

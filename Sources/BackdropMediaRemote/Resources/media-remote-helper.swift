@@ -1,16 +1,25 @@
+#!/usr/bin/env swift
+
 import Foundation
 
 let path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
 guard let handle = dlopen(path, RTLD_NOW),
-      let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else { exit(1) }
-typealias Fn = @convention(c) (DispatchQueue, @escaping (CFDictionary?) -> Void) -> Void
-let fn = unsafeBitCast(sym, to: Fn.self)
+      let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo"),
+      let regSym = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications")
+else { exit(1) }
 
-func poll() {
-    fn(DispatchQueue.main) { dict in
+typealias GetInfoFn = @convention(c) (DispatchQueue, @escaping (CFDictionary?) -> Void) -> Void
+typealias RegisterFn = @convention(c) (DispatchQueue) -> Void
+
+let getInfo = unsafeBitCast(sym, to: GetInfoFn.self)
+let register = unsafeBitCast(regSym, to: RegisterFn.self)
+
+@Sendable func fetchAndPrint() {
+    getInfo(DispatchQueue.main) { dict in
         guard let d = dict as? [String: Any],
               d["kMRMediaRemoteNowPlayingInfoTitle"] != nil else {
             print(#"{"has_info":false}"#)
+            fflush(stdout)
             return
         }
         var r: [String: Any] = ["has_info": true]
@@ -33,6 +42,22 @@ func poll() {
     }
 }
 
-Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in poll() }
-poll()
+// Register for notifications (required before any notifications fire)
+register(DispatchQueue.main)
+
+// Observe track/playback changes — fetch info on each event
+for name in [
+    "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
+    "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
+] {
+    NotificationCenter.default.addObserver(
+        forName: NSNotification.Name(name), object: nil, queue: .main
+    ) { _ in fetchAndPrint() }
+}
+
+// Periodic fallback for elapsed time updates (needed for lyric sync)
+Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in fetchAndPrint() }
+
+// Initial fetch
+fetchAndPrint()
 RunLoop.main.run()

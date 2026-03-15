@@ -5,28 +5,37 @@ import Foundation
 
 public struct NowPlayingService: NowPlayingProvider, Sendable {
     private let bridge: MediaRemoteBridge
-    private let interval: TimeInterval
 
-    public init(bridge: MediaRemoteBridge, interval: TimeInterval = 1.0) {
+    public init(bridge: MediaRemoteBridge) {
         self.bridge = bridge
-        self.interval = interval
     }
+}
 
+extension NowPlayingService {
     public func stream() -> AsyncStream<NowPlaying?> {
-        AsyncStream { continuation in
+        let bridge = self.bridge
+        return AsyncStream { continuation in
             let task = Task {
                 while !Task.isCancelled {
-                    let info = await bridge.poll()
-                    continuation.yield(info.map(Self.toNowPlaying))
-                    try? await Task.sleep(for: .seconds(interval))
+                    switch await bridge.poll() {
+                    case .info(let info):
+                        continuation.yield(NowPlaying(from: info))
+                    case .noInfo:
+                        continuation.yield(nil)
+                    case .eof:
+                        continuation.finish()
+                        return
+                    }
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+}
 
-    private static func toNowPlaying(_ info: MediaRemoteInfo) -> NowPlaying {
-        NowPlaying(
+extension NowPlaying {
+    init(from info: MediaRemoteInfo) {
+        self.init(
             title: info.title,
             artist: info.artist,
             artworkData: info.artworkData,
