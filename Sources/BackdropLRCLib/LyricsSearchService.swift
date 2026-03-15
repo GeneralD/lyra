@@ -23,8 +23,8 @@ extension LyricsSearchService {
     }
 }
 
-extension LyricsSearchService {
-    private func searchFallback(candidates: [SearchCandidate]) async -> LyricsResult? {
+private extension LyricsSearchService {
+    func searchFallback(candidates: [SearchCandidate]) async -> LyricsResult? {
         let results = await candidates
             .map { $0.artist.isEmpty ? $0.title : "\($0.title) \($0.artist)" }
             .asyncCompactMap { await request([LyricsResult].self, from: .search(query: $0)) }
@@ -35,7 +35,7 @@ extension LyricsSearchService {
             ?? results.first
     }
 
-    private func request<T: Decodable & Sendable>(_ type: T.Type, from api: LRCLibAPI) async -> T? {
+    func request<T: Decodable & Sendable>(_ type: T.Type, from api: LRCLibAPI) async -> T? {
         await AF.request(api).serializingDecodable(type).response.value
     }
 }
