@@ -1,9 +1,7 @@
 import AppKit
 import AVFoundation
-import BackdropConfig
 import BackdropDomain
-import BackdropLyrics
-import BackdropNowPlaying
+import BackdropPresentation
 import BackdropUI
 import Dependencies
 import SwiftUI
@@ -11,9 +9,8 @@ import SwiftUI
 @MainActor
 public final class OverlayWindow {
     private let window: NSWindow
-    private let state = OverlayState()
+    private let controller: OverlayController
     private let rippleState = RippleState()
-    private let lyricsService = LyricsService()
     private var displayLinkDriver: DisplayLinkDriver?
     private var loopObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
@@ -22,17 +19,14 @@ public final class OverlayWindow {
     private var wakeObserver: NSObjectProtocol?
     private let hostingView: NSHostingView<OverlayContentView>
     private let hasWallpaper: Bool
-    private var lastTrackKey: (String?, String?) = (nil, nil)
-    private var latestNowPlaying: NowPlaying?
     private var queuePlayer: AVPlayer?
-    private var nowPlayingTask: Task<Void, Never>?
 
     @Dependency(\.config) private var resolvedConfig
-    @Dependency(\.nowPlayingProvider) private var nowPlayingProvider
 
     public init() {
         @Dependency(\.config) var cfg
 
+        controller = OverlayController()
         hasWallpaper = cfg.wallpaperURL != nil
 
         let frames = Self.resolveFrames(
@@ -53,9 +47,9 @@ public final class OverlayWindow {
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
-        state.screenOrigin = frames.origin
+        controller.state.screenOrigin = frames.origin
         let hostingView = NSHostingView(rootView: OverlayContentView(
-            state: state,
+            state: controller.state,
             rippleState: rippleState
         ))
         hostingView.frame = frames.hosting
@@ -95,7 +89,7 @@ public final class OverlayWindow {
         window.orderFront(nil)
 
         let driver = DisplayLinkDriver { [weak self] in
-            self?.updateUI()
+            self?.rippleState.idle()
         }
         self.displayLinkDriver = driver
 
@@ -127,86 +121,10 @@ public final class OverlayWindow {
         driver.start(in: window)
     }
 
-    public func start() {
-        nowPlayingTask = Task { [weak self] in
-            guard let self else { return }
-            for await info in nowPlayingProvider.stream() {
-                guard !Task.isCancelled else { break }
-                if let info {
-                    latestNowPlaying = info
-                    updateTrack(from: info)
-                    updateActiveLineIndex(from: info)
-                } else {
-                    clearIfNeeded()
-                }
-            }
-        }
-    }
-
-    private func recalculateLayout() {
-        let cfg = resolvedConfig
-        let frames = Self.resolveFrames(
-            selector: cfg.screen,
-            wallpaperURL: cfg.wallpaperURL,
-            hasWallpaper: hasWallpaper
-        )
-        window.setFrame(frames.window, display: false)
-        state.screenOrigin = frames.origin
-        hostingView.frame = frames.hosting
-        if let containerView = window.contentView, containerView !== hostingView {
-            containerView.frame = NSRect(origin: .zero, size: frames.window.size)
-        }
-    }
-
-    private func updateUI() {
-        rippleState.idle()
-        guard let info = latestNowPlaying else { return }
-        updateActiveLineIndex(from: info)
-    }
-
-    private func clearIfNeeded() {
-        guard lastTrackKey != (nil, nil) else { return }
-        lastTrackKey = (nil, nil)
-        state.reset()
-    }
-
-    private func updateTrack(from info: NowPlaying) {
-        if info.artworkData != state.artworkData { state.artworkData = info.artworkData }
-
-        let trackKey = (info.title, info.artist)
-        guard trackKey != lastTrackKey else { return }
-
-        lastTrackKey = trackKey
-        state.title = info.title
-        state.artist = info.artist
-        state.activeLineIndex = nil
-        state.fetchGeneration += 1
-        let generation = state.fetchGeneration
-
-        let service = lyricsService
-        Task {
-            let result: LyricsResult? = await {
-                guard let title = info.title, let artist = info.artist else { return nil }
-                return await service.fetch(title: title, artist: artist, duration: info.duration)
-            }()
-            let content = LyricsContent(from: result)
-            guard generation == state.fetchGeneration else { return }
-            state.title = result?.trackName ?? info.title
-            state.artist = result?.artistName ?? info.artist
-            state.lyrics = content
-            state.activeLineIndex = nil
-        }
-    }
-
-    private func updateActiveLineIndex(from info: NowPlaying) {
-        guard case let .timed(lines) = state.lyrics else { return }
-        let index = info.elapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
-        guard index != state.activeLineIndex else { return }
-        state.activeLineIndex = index
-    }
+    public func start() { controller.start() }
 
     public func close() {
-        nowPlayingTask?.cancel()
+        controller.stop()
         displayLinkDriver?.stop()
         queuePlayer?.pause()
         loopObserver.map(NotificationCenter.default.removeObserver)
@@ -217,6 +135,21 @@ public final class OverlayWindow {
         wakeObserver.map(ws.removeObserver)
         window.orderOut(nil)
         window.close()
+    }
+
+    private func recalculateLayout() {
+        let cfg = resolvedConfig
+        let frames = Self.resolveFrames(
+            selector: cfg.screen,
+            wallpaperURL: cfg.wallpaperURL,
+            hasWallpaper: hasWallpaper
+        )
+        window.setFrame(frames.window, display: false)
+        controller.state.screenOrigin = frames.origin
+        hostingView.frame = frames.hosting
+        if let containerView = window.contentView, containerView !== hostingView {
+            containerView.frame = NSRect(origin: .zero, size: frames.window.size)
+        }
     }
 
     // MARK: - Screen resolution

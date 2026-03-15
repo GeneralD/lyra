@@ -3,7 +3,7 @@ import BackdropMediaRemote
 import Dependencies
 import Foundation
 
-public struct NowPlayingService: NowPlayingProvider, Sendable {
+public struct NowPlayingService: NowPlayingProvider {
     private let bridge: MediaRemoteBridge
 
     public init(bridge: MediaRemoteBridge) {
@@ -52,3 +52,5 @@ extension NowPlaying {
 extension NowPlayingProviderKey: DependencyKey {
     public static let liveValue: any NowPlayingProvider = NowPlayingService(bridge: MediaRemoteBridge())
 }
+
+extension NowPlayingService: Sendable {}

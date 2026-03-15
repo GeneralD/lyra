@@ -1,8 +1,10 @@
 import CollectionKit
 
-public struct TitleParser: Sendable {
+public struct TitleParser {
     public init() {}
 }
+
+extension TitleParser: Sendable {}
 
 private let noiseWords: Set<String> = [
     "mv", "pv", "official video", "official music video", "music video",

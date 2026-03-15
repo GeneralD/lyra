@@ -1,4 +1,4 @@
-public struct SearchCandidate: Sendable, Equatable {
+public struct SearchCandidate {
     public let title: String
     public let artist: String
 
@@ -7,3 +7,5 @@ public struct SearchCandidate: Sendable, Equatable {
         self.artist = artist
     }
 }
+
+extension SearchCandidate: Sendable, Equatable {}

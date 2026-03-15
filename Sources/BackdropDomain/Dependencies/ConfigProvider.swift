@@ -1,6 +1,37 @@
 import Dependencies
 import Foundation
 
+// MARK: - Color abstraction (UI-independent)
+
+public enum ColorStyle {
+    case solid(String)
+    case gradient([String])
+}
+
+extension ColorStyle: Sendable, Equatable {}
+
+extension ColorStyle: Decodable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let str = try? container.decode(String.self) {
+            self = .solid(str)
+            return
+        }
+        let arr = try container.decode([String].self)
+        self = arr.count == 1 ? .solid(arr[0]) : .gradient(arr)
+    }
+}
+
+extension ColorStyle: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .solid(let hex): try container.encode(hex)
+        case .gradient(let hexes): try container.encode(hexes)
+        }
+    }
+}
+
 // MARK: - Resolved config value types (pre-computed, Sendable)
 
 public struct ResolvedConfig: Sendable {
@@ -30,20 +61,20 @@ public struct ResolvedTextConfig: Sendable {
     public let artist: ResolvedTextStyle
     public let lyric: ResolvedTextStyle
     public let highlight: ResolvedTextStyle
-    public let highlightColors: [String]
+    public let decodeEffect: ResolvedDecodeEffectConfig
 
     public init(
         title: ResolvedTextStyle = .init(fontSize: 18, fontWeight: "bold"),
         artist: ResolvedTextStyle = .init(fontWeight: "medium"),
         lyric: ResolvedTextStyle = .init(),
         highlight: ResolvedTextStyle = .init(),
-        highlightColors: [String] = ["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]
+        decodeEffect: ResolvedDecodeEffectConfig = .init()
     ) {
         self.title = title
         self.artist = artist
         self.lyric = lyric
         self.highlight = highlight
-        self.highlightColors = highlightColors
+        self.decodeEffect = decodeEffect
     }
 }
 
@@ -52,8 +83,8 @@ public struct ResolvedTextStyle: Sendable {
     public let fontName: String
     public let fontSize: Double
     public let fontWeight: String
-    public let colorHex: String
-    public let shadowHex: String
+    public let color: ColorStyle
+    public let shadow: ColorStyle
     public let lineHeight: Double
 
     public init(
@@ -61,16 +92,16 @@ public struct ResolvedTextStyle: Sendable {
         fontName: String = "Zen Maru Gothic",
         fontSize: Double = 12,
         fontWeight: String = "regular",
-        colorHex: String = "#FFFFFFD9",
-        shadowHex: String = "#000000E6",
+        color: ColorStyle = .solid("#FFFFFFD9"),
+        shadow: ColorStyle = .solid("#000000E6"),
         lineHeight: Double = 24
     ) {
         self.spacing = spacing
         self.fontName = fontName
         self.fontSize = fontSize
         self.fontWeight = fontWeight
-        self.colorHex = colorHex
-        self.shadowHex = shadowHex
+        self.color = color
+        self.shadow = shadow
         self.lineHeight = lineHeight
     }
 }
@@ -84,21 +115,43 @@ public struct ResolvedArtworkConfig: Sendable {
 }
 
 public struct ResolvedRippleConfig: Sendable {
-    public let colorHex: String
+    public let color: ColorStyle
     public let radius: Double
     public let duration: Double
     public let idle: Double
 
     public init(
-        colorHex: String = "#AAAAFFFF",
+        color: ColorStyle = .solid("#AAAAFFFF"),
         radius: Double = 60,
         duration: Double = 0.6,
         idle: Double = 1
     ) {
-        self.colorHex = colorHex
+        self.color = color
         self.radius = radius
         self.duration = duration
         self.idle = idle
+    }
+}
+
+public enum CharsetName: String {
+    case latin
+    case cyrillic
+    case greek
+    case symbols
+}
+
+extension CharsetName: Sendable, Codable, Hashable, CaseIterable {}
+
+public struct ResolvedDecodeEffectConfig: Sendable {
+    public let duration: Double
+    public let charsets: Set<CharsetName>
+
+    public init(
+        duration: Double = 0.8,
+        charsets: Set<CharsetName> = Set(CharsetName.allCases)
+    ) {
+        self.duration = duration
+        self.charsets = charsets
     }
 }
 

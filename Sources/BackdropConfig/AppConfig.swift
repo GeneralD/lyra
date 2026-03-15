@@ -6,31 +6,79 @@ import TOMLKit
 
 // MARK: - Codable Config Models
 
-public struct TextConfig: Sendable {
+public struct TextConfig {
     public let `default`: TextStyleConfig
     public let title: TextStyleConfig?
     public let artist: TextStyleConfig?
     public let lyric: TextStyleConfig?
-    public let highlight: HighlightConfig
+    public let highlight: TextStyleConfig?
+    public let decodeEffect: DecodeEffectConfig
 
     public init(
         `default`: TextStyleConfig = .init(),
         title: TextStyleConfig? = nil,
         artist: TextStyleConfig? = nil,
         lyric: TextStyleConfig? = nil,
-        highlight: HighlightConfig = .init()
+        highlight: TextStyleConfig? = nil,
+        decodeEffect: DecodeEffectConfig = .init()
     ) {
         self.default = `default`
         self.title = title
         self.artist = artist
         self.lyric = lyric
         self.highlight = highlight
+        self.decodeEffect = decodeEffect
     }
 }
 
 extension TextConfig: Codable {
     enum CodingKeys: String, CodingKey {
         case `default`, title, artist, lyric, highlight
+        case decodeEffect = "decode_effect"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        `default` = try c.decodeIfPresent(TextStyleConfig.self, forKey: .default) ?? .init()
+        title = try c.decodeIfPresent(TextStyleConfig.self, forKey: .title)
+        artist = try c.decodeIfPresent(TextStyleConfig.self, forKey: .artist)
+        lyric = try c.decodeIfPresent(TextStyleConfig.self, forKey: .lyric)
+        highlight = try c.decodeIfPresent(TextStyleConfig.self, forKey: .highlight)
+        decodeEffect = try c.decodeIfPresent(DecodeEffectConfig.self, forKey: .decodeEffect) ?? .init()
+    }
+}
+
+public struct DecodeEffectConfig {
+    public let duration: Double
+    public let charset: Set<CharsetName>
+
+    public init(
+        duration: Double = 0.8,
+        charset: Set<CharsetName> = Set(CharsetName.allCases)
+    ) {
+        self.duration = duration
+        self.charset = charset
+    }
+}
+
+extension DecodeEffectConfig: Sendable {}
+
+extension DecodeEffectConfig: Codable {
+    enum CodingKeys: String, CodingKey {
+        case duration, charset
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        duration = try c.flexibleDouble(forKey: .duration) ?? 0.8
+        // Polymorphic: "latin" or ["latin", "cyrillic"]
+        if let arr = try? c.decodeIfPresent([CharsetName].self, forKey: .charset) {
+            charset = Set(arr)
+        } else if let single = try? c.decodeIfPresent(CharsetName.self, forKey: .charset) {
+            charset = [single]
+        } else {
+            charset = Set(CharsetName.allCases)
+        }
     }
 }
 
@@ -51,12 +99,18 @@ extension TextConfig {
         (lyric ?? .init()).merging(over: `default`).resolve()
     }
 
+    private static let highlightDefaults = TextStyleConfig(
+        color: .gradient(["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"])
+    )
+
     @MainActor var resolvedHighlight: ResolvedTextStyle {
-        highlight.style.merging(over: (lyric ?? .init()).merging(over: `default`)).resolve()
+        (highlight ?? .init())
+            .merging(over: Self.highlightDefaults.merging(over: (lyric ?? .init()).merging(over: `default`)))
+            .resolve()
     }
 }
 
-public struct ArtworkConfig: Sendable {
+public struct ArtworkConfig {
     public let size: CGFloat
 
     public init(size: CGFloat = 96) { self.size = size }
@@ -71,7 +125,7 @@ extension ArtworkConfig: Codable {
     }
 }
 
-public struct RippleConfig: Sendable {
+public struct RippleConfig {
     public let color: String
     public let radius: Double
     public let duration: Double
@@ -99,7 +153,7 @@ extension RippleConfig: Codable {
 
 // MARK: - AppConfig
 
-public struct AppConfig: Codable, Sendable {
+public struct AppConfig: Codable {
     public let text: TextConfig
     public let artwork: ArtworkConfig
     public let ripple: RippleConfig
@@ -194,11 +248,14 @@ extension AppConfig {
                 artist: text.resolvedArtist,
                 lyric: text.resolvedLyric,
                 highlight: text.resolvedHighlight,
-                highlightColors: text.highlight.color
+                decodeEffect: ResolvedDecodeEffectConfig(
+                    duration: text.decodeEffect.duration,
+                    charsets: text.decodeEffect.charset
+                )
             ),
             artwork: ResolvedArtworkConfig(size: artwork.size),
             ripple: ResolvedRippleConfig(
-                colorHex: ripple.color,
+                color: .solid(ripple.color),
                 radius: ripple.radius,
                 duration: ripple.duration,
                 idle: ripple.idle
@@ -231,8 +288,8 @@ extension TextStyleConfig {
             fontName: fontName,
             fontSize: fontSize,
             fontWeight: fontWeight,
-            colorHex: color ?? "#FFFFFFD9",
-            shadowHex: shadow ?? "#000000E6",
+            color: color ?? .solid("#FFFFFFD9"),
+            shadow: .solid(shadow ?? "#000000E6"),
             lineHeight: lineHeight
         )
     }
@@ -258,3 +315,8 @@ extension ConfigKey: DependencyKey {
         AppConfig.load().toResolvedConfig()
     }
 }
+
+extension TextConfig: Sendable {}
+extension ArtworkConfig: Sendable {}
+extension RippleConfig: Sendable {}
+extension AppConfig: Sendable {}

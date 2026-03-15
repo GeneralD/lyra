@@ -1,7 +1,7 @@
 import BackdropDomain
 import Dependencies
 
-public struct ColumnLayout: Sendable {
+public struct ColumnLayout {
     public let columnWidth: Double
     public let columnGap: Double
     public let maxColumns: Int
@@ -22,3 +22,5 @@ public struct ColumnLayout: Sendable {
         min(maxColumns, max(1, (lineCount + linesPerColumn - 1) / linesPerColumn))
     }
 }
+
+extension ColumnLayout: Sendable {}

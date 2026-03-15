@@ -68,11 +68,23 @@ let package = Package(
             dependencies: ["BackdropDomain", "BackdropLRCLib", "BackdropPersistence"]
         ),
 
-        // Presentation
+        // Presentation logic
+        .target(
+            name: "BackdropPresentation",
+            dependencies: [
+                "BackdropDomain",
+                "BackdropLyrics",
+                "BackdropNowPlaying",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // UI
         .target(
             name: "BackdropUI",
             dependencies: [
                 "BackdropDomain",
+                "BackdropPresentation",
                 "BackdropConfig",
                 .product(name: "SwiftHEXColors", package: "SwiftHEXColors"),
                 .product(name: "CollectionKit", package: "CollectionKit"),
@@ -84,12 +96,8 @@ let package = Package(
             name: "BackdropApp",
             dependencies: [
                 "BackdropUI",
-                "BackdropLyrics",
-                "BackdropNowPlaying",
+                "BackdropPresentation",
                 "BackdropConfig",
-                "BackdropPersistence",
-                "BackdropLRCLib",
-                "BackdropMediaRemote",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),

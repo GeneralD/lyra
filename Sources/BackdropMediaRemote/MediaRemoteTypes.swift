@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MediaRemoteInfo: Sendable {
+public struct MediaRemoteInfo {
     public let title: String?
     public let artist: String?
     public let artworkData: Data?
@@ -27,3 +27,5 @@ public struct MediaRemoteInfo: Sendable {
         self.timestamp = timestamp
     }
 }
+
+extension MediaRemoteInfo: Sendable {}

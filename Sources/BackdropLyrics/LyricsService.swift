@@ -2,7 +2,7 @@ import BackdropDomain
 import Dependencies
 import Foundation
 
-public struct LyricsService: Sendable {
+public struct LyricsService {
     @Dependency(\.lyricsRepository) private var remote
     @Dependency(\.lyricsCache) private var cache
 
@@ -20,3 +20,5 @@ public struct LyricsService: Sendable {
         return result
     }
 }
+
+extension LyricsService: Sendable {}

@@ -1,4 +1,4 @@
-public struct LyricsResult: Codable, Sendable, Equatable {
+public struct LyricsResult {
     public let id: Int?
     public let trackName: String?
     public let artistName: String?
@@ -30,3 +30,5 @@ public struct LyricsResult: Codable, Sendable, Equatable {
 
     public static let empty = LyricsResult()
 }
+
+extension LyricsResult: Codable, Sendable, Equatable {}

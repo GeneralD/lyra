@@ -1,6 +1,6 @@
 import Foundation
 
-public struct NowPlaying: Sendable, Equatable {
+public struct NowPlaying {
     public let title: String?
     public let artist: String?
     public let artworkData: Data?
@@ -26,7 +26,11 @@ public struct NowPlaying: Sendable, Equatable {
         self.playbackRate = playbackRate
         self.timestamp = timestamp
     }
+}
 
+extension NowPlaying: Sendable, Equatable {}
+
+extension NowPlaying {
     public var elapsed: TimeInterval? {
         rawElapsed.map { base in
             guard let ts = timestamp else { return base }

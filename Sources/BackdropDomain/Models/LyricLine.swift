@@ -1,6 +1,6 @@
 import Foundation
 
-public struct LyricLine: Sendable, Equatable {
+public struct LyricLine {
     public let time: TimeInterval
     public let text: String
 
@@ -9,3 +9,5 @@ public struct LyricLine: Sendable, Equatable {
         self.text = text
     }
 }
+
+extension LyricLine: Sendable, Equatable {}

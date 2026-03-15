@@ -2,7 +2,7 @@ import BackdropDomain
 import Dependencies
 import GRDB
 
-public struct GRDBLyricsCache: LyricsCacheRepository, Sendable {
+public struct GRDBLyricsCache: LyricsCacheRepository {
     private let dbManager: DatabaseManager
 
     public init(dbManager: DatabaseManager) {
@@ -50,3 +50,5 @@ private struct NoopLyricsCache: LyricsCacheRepository {
     func read(title: String, artist: String) async -> LyricsResult? { nil }
     func write(title: String, artist: String, result: LyricsResult) async throws {}
 }
+
+extension GRDBLyricsCache: Sendable {}

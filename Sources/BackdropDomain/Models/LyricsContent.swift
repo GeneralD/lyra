@@ -1,17 +1,20 @@
 import Foundation
 
-public enum LyricsContent: Sendable, Equatable {
+public enum LyricsContent {
     case timed([LyricLine])
     case plain([String])
+}
 
+extension LyricsContent: Sendable, Equatable {}
+
+extension LyricsContent {
     public init?(from result: LyricsResult?) {
-        if let synced = result?.syncedLyrics.flatMap({ Self.parseSyncedLyrics($0) }), !synced.isEmpty {
+        if let synced = result?.syncedLyrics.flatMap(Self.parseSyncedLyrics), !synced.isEmpty {
             self = .timed(synced)
-        } else if let plain = result?.plainLyrics {
-            self = .plain(plain.components(separatedBy: "\n"))
-        } else {
-            return nil
+            return
         }
+        guard let plain = result?.plainLyrics else { return nil }
+        self = .plain(plain.components(separatedBy: "\n"))
     }
 
     private static func parseSyncedLyrics(_ raw: String) -> [LyricLine] {

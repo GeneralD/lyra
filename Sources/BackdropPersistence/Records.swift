@@ -1,7 +1,7 @@
 import BackdropDomain
 import GRDB
 
-struct LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {
+struct LRCLibTrackRecord {
     static let databaseTableName = "lrclib_tracks"
 
     let id: Int
@@ -22,16 +22,22 @@ struct LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {
         case plainLyrics = "plain_lyrics"
         case syncedLyrics = "synced_lyrics"
     }
+}
 
+extension LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {}
+
+extension LRCLibTrackRecord {
     init(from result: LyricsResult) {
-        self.id = result.id ?? 0
-        self.trackName = result.trackName
-        self.artistName = result.artistName
-        self.albumName = result.albumName
-        self.duration = result.duration
-        self.instrumental = result.instrumental
-        self.plainLyrics = result.plainLyrics
-        self.syncedLyrics = result.syncedLyrics
+        self.init(
+            id: result.id ?? 0,
+            trackName: result.trackName,
+            artistName: result.artistName,
+            albumName: result.albumName,
+            duration: result.duration,
+            instrumental: result.instrumental,
+            plainLyrics: result.plainLyrics,
+            syncedLyrics: result.syncedLyrics
+        )
     }
 
     func toLyricsResult() -> LyricsResult {
@@ -48,9 +54,7 @@ struct LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
-struct LyricsLookupRecord: Codable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "lyrics_lookup"
-
+struct LyricsLookupRecord {
     var id: Int64?
     let title: String
     let artist: String
@@ -60,4 +64,8 @@ struct LyricsLookupRecord: Codable, FetchableRecord, PersistableRecord {
         case id, title, artist
         case lrclibId = "lrclib_id"
     }
+}
+
+extension LyricsLookupRecord: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "lyrics_lookup"
 }

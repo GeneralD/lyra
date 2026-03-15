@@ -3,7 +3,7 @@ import CollectionKit
 import Dependencies
 import Foundation
 
-public struct LRCLibClient: LyricsRepository, Sendable {
+public struct LRCLibClient: LyricsRepository {
     public init() {}
 
     public func fetch(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
@@ -80,3 +80,5 @@ private extension Array {
         return results
     }
 }
+
+extension LRCLibClient: Sendable {}

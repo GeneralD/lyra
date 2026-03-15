@@ -1,6 +1,6 @@
 import Foundation
 
-public enum PollResult: Sendable {
+public enum PollResult {
     case info(MediaRemoteInfo)
     case noInfo
     case eof
@@ -88,3 +88,5 @@ extension MediaRemoteBridge {
         return dest
     }
 }
+
+extension PollResult: Sendable {}

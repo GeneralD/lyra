@@ -1,11 +1,15 @@
-public enum ScreenSelector: Codable, Sendable, Equatable {
+public enum ScreenSelector {
     case main
     case primary
     case index(Int)
     case smallest
     case largest
     case match
+}
 
+extension ScreenSelector: Sendable, Equatable {}
+
+extension ScreenSelector: Decodable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let n = try? container.decode(Int.self) {
@@ -22,7 +26,9 @@ public enum ScreenSelector: Codable, Sendable, Equatable {
         default: self = .main
         }
     }
+}
 
+extension ScreenSelector: Encodable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
