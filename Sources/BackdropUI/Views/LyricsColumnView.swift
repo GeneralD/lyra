@@ -1,6 +1,7 @@
 import BackdropDomain
 import BackdropPresentation
 import CollectionKit
+import Dependencies
 import SwiftUI
 
 private struct Column: Identifiable {
@@ -60,5 +61,26 @@ public struct LyricsColumnView: View {
             }
             return Column(id: col, entries: entries, highlightIndex: highlightIndex)
         }
+    }
+}
+
+#Preview("Lyrics") {
+    withDependencies { $0.config = .init() } operation: {
+        LyricsColumnView(state: {
+            let s = OverlayState()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "It been a long day"),
+                .init(time: 5, text: "without you my friend"),
+                .init(time: 10, text: "And I will tell you all about it"),
+                .init(time: 15, text: "when I see you again"),
+                .init(time: 20, text: "We have come a long way"),
+            ]
+            s.lyrics = .success(.timed(lines))
+            s.displayLyricLines = lines.map(\.text)
+            s.activeLineIndex = 2
+            return s
+        }())
+        .frame(width: 600, height: 300)
+        .background(.black)
     }
 }

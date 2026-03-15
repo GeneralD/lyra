@@ -52,3 +52,11 @@ public struct RippleView: View {
         }
     }
 }
+
+#Preview("Ripple") {
+    withDependencies { $0.config = .init() } operation: {
+        RippleView(rippleState: RippleState(), screenOrigin: .zero)
+            .frame(width: 400, height: 300)
+            .background(.black)
+    }
+}

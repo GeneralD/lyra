@@ -44,3 +44,19 @@ func makeFont(style: ResolvedTextStyle) -> Font {
     }
     return Font.custom(style.fontName, size: style.fontSize).weight(weight)
 }
+
+#Preview("Normal") {
+    withDependencies { $0.config = .init() } operation: {
+        LyricLineView(text: "It been a long day without you my friend", isActive: false)
+            .padding()
+            .background(.black)
+    }
+}
+
+#Preview("Active") {
+    withDependencies { $0.config = .init() } operation: {
+        LyricLineView(text: "It been a long day without you my friend", isActive: true)
+            .padding()
+            .background(.black)
+    }
+}
