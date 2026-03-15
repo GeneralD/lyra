@@ -21,7 +21,7 @@ public final class DisplayLinkDriver {
         displayLink = nil
     }
 
-    @objc private func tick(_ link: CADisplayLink) {
+    @objc func tick(_ link: CADisplayLink) {
         onFrame()
     }
 }

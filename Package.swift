@@ -15,6 +15,7 @@ let package = Package(
         .package(url: "https://github.com/LebJe/TOMLKit", from: "0.6.0"),
         .package(url: "https://github.com/thii/SwiftHEXColors", from: "1.4.1"),
         .package(url: "https://github.com/GeneralD/CollectionKit", from: "1.0.0"),
+        .package(url: "https://github.com/Alamofire/Alamofire", from: "5.10.0"),
     ],
     targets: [
         // Core domain — zero external dependencies except swift-dependencies
@@ -44,10 +45,11 @@ let package = Package(
             ]
         ),
         .target(
-            name: "BackdropLRCLib",
+            name: "BackdropLyricsSearch",
             dependencies: [
                 "BackdropDomain",
                 .product(name: "CollectionKit", package: "CollectionKit"),
+                .product(name: "Alamofire", package: "Alamofire"),
             ]
         ),
         .target(
@@ -65,7 +67,7 @@ let package = Package(
         ),
         .target(
             name: "BackdropLyrics",
-            dependencies: ["BackdropDomain", "BackdropLRCLib", "BackdropPersistence"]
+            dependencies: ["BackdropDomain", "BackdropLyricsSearch", "BackdropPersistence"]
         ),
 
         // Presentation logic
