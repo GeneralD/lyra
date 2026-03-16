@@ -1,3 +1,14 @@
+<p align="center">
+  <img src="assets/banner.png" alt="lyra" width="600">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/v/tag/GeneralD/lyra?label=version" alt="Version">
+  <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS">
+  <img src="https://img.shields.io/badge/Swift-6.0-orange" alt="Swift">
+  <img src="https://img.shields.io/github/license/GeneralD/lyra" alt="License">
+</p>
+
 # lyra
 
 Desktop lyrics overlay and video wallpaper for macOS.
