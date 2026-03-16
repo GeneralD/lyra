@@ -4,21 +4,21 @@
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:backdrop}",
-            "name": "Debug backdrop",
-            "target": "backdrop",
+            "cwd": "${workspaceFolder:lyra}",
+            "name": "Debug lyra",
+            "target": "lyra",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug backdrop"
+            "preLaunchTask": "swift: Build Debug lyra"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:backdrop}",
-            "name": "Release backdrop",
-            "target": "backdrop",
+            "cwd": "${workspaceFolder:lyra}",
+            "name": "Release lyra",
+            "target": "lyra",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release backdrop"
+            "preLaunchTask": "swift: Build Release lyra"
         }
     ]
 }

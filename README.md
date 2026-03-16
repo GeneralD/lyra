@@ -1,4 +1,4 @@
-# backdrop
+# lyra
 
 Desktop lyrics overlay and video wallpaper for macOS.
 
@@ -9,10 +9,10 @@ Displays synced lyrics from [LRCLIB](https://lrclib.net) over your desktop, with
 ```sh
 # via Homebrew
 brew tap generald/tap
-brew install backdrop
+brew install lyra
 
 # via Mint
-mint install GeneralD/backdrop
+mint install GeneralD/lyra
 
 # or build from source
 make install
@@ -21,30 +21,30 @@ make install
 ## Usage
 
 ```sh
-backdrop start       # start as background daemon
-backdrop stop        # stop the daemon
-backdrop restart     # restart
-backdrop daemon      # run in foreground (debug)
-backdrop version     # show version
+lyra start       # start as background daemon
+lyra stop        # stop the daemon
+lyra restart     # restart
+lyra daemon      # run in foreground (debug)
+lyra version     # show version
 ```
 
 ### Login item
 
 ```sh
-backdrop service install    # auto-start on login
-backdrop service uninstall
+lyra service install    # auto-start on login
+lyra service uninstall
 ```
 
 ### Shell completion
 
 ```sh
 # zsh / bash / fish
-eval "$(backdrop completion zsh)"
+eval "$(lyra completion zsh)"
 ```
 
 ## Configuration
 
-`~/.config/backdrop/config.toml`
+`~/.config/lyra/config.toml`
 
 ```toml
 screen = "match"           # main, primary, smallest, largest, match, or index

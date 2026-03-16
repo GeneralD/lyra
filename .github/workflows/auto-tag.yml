@@ -18,7 +18,7 @@ jobs:
 
       - name: Extract version
         run: |
-          VERSION=$(tr -d '[:space:]' < Sources/BackdropCLI/Resources/version.txt)
+          VERSION=$(tr -d '[:space:]' < Sources/CLI/Resources/version.txt)
           if ! printf '%s\n' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Error: Invalid version in version.txt: '$VERSION'" >&2
             exit 1
@@ -50,13 +50,13 @@ jobs:
           script: |
             const owner = 'GeneralD';
             const repo = 'homebrew-tap';
-            const path = 'Formula/backdrop.rb';
+            const path = 'Formula/lyra.rb';
             const tag = process.env.TAG;
             const version = process.env.VERSION;
 
             // Download tarball and compute sha256
             const crypto = require('crypto');
-            const url = `https://github.com/GeneralD/backdrop/archive/refs/tags/${tag}.tar.gz`;
+            const url = `https://github.com/GeneralD/lyra/archive/refs/tags/${tag}.tar.gz`;
             const response = await fetch(url);
             const buffer = Buffer.from(await response.arrayBuffer());
             const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
@@ -66,12 +66,12 @@ jobs:
             const { data: file } = await github.rest.repos.getContent({ owner, repo, path });
             const content = Buffer.from(file.content, 'base64').toString('utf8');
             const updated = content
-              .replace(/url ".*"/, `url "https://github.com/GeneralD/backdrop/archive/refs/tags/${tag}.tar.gz"`)
+              .replace(/url ".*"/, `url "https://github.com/GeneralD/lyra/archive/refs/tags/${tag}.tar.gz"`)
               .replace(/sha256 ".*"/, `sha256 "${sha256}"`);
 
             await github.rest.repos.createOrUpdateFileContents({
               owner, repo, path,
-              message: `Update backdrop to ${version}`,
+              message: `Update lyra to ${version}`,
               content: Buffer.from(updated).toString('base64'),
               sha: file.sha,
             });

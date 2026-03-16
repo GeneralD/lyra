@@ -3,10 +3,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "backdrop",
+    name: "lyra",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "backdrop", targets: ["backdrop"]),
+        .executable(name: "lyra", targets: ["lyra"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
@@ -20,7 +20,7 @@ let package = Package(
     targets: [
         // Core domain — zero external dependencies except swift-dependencies
         .target(
-            name: "BackdropDomain",
+            name: "Domain",
             dependencies: [
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "DependenciesMacros", package: "swift-dependencies"),
@@ -30,33 +30,33 @@ let package = Package(
 
         // Isolated unsafe code — no domain dependency
         .target(
-            name: "BackdropMediaRemote",
+            name: "MediaRemote",
             dependencies: [],
             resources: [.copy("Resources/media-remote-helper.swift")]
         ),
 
         // Infrastructure
         .target(
-            name: "BackdropConfig",
+            name: "Config",
             dependencies: [
-                "BackdropDomain",
+                "Domain",
                 .product(name: "TOMLKit", package: "TOMLKit"),
                 .product(name: "SwiftHEXColors", package: "SwiftHEXColors"),
             ]
         ),
         .target(
-            name: "BackdropLyricsSearch",
+            name: "LyricsSearch",
             dependencies: [
-                "BackdropDomain",
+                "Domain",
                 .product(name: "CollectionKit", package: "CollectionKit"),
                 .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .target(
-            name: "BackdropPersistence",
+            name: "Persistence",
             dependencies: [
-                "BackdropDomain",
+                "Domain",
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -64,32 +64,32 @@ let package = Package(
 
         // Use cases
         .target(
-            name: "BackdropNowPlaying",
-            dependencies: ["BackdropDomain", "BackdropMediaRemote"]
+            name: "NowPlaying",
+            dependencies: ["Domain", "MediaRemote"]
         ),
         .target(
-            name: "BackdropLyrics",
-            dependencies: ["BackdropDomain", "BackdropLyricsSearch", "BackdropPersistence"]
+            name: "Lyrics",
+            dependencies: ["Domain", "LyricsSearch", "Persistence"]
         ),
 
         // Presentation logic
         .target(
-            name: "BackdropPresentation",
+            name: "Presentation",
             dependencies: [
-                "BackdropDomain",
-                "BackdropLyrics",
-                "BackdropNowPlaying",
+                "Domain",
+                "Lyrics",
+                "NowPlaying",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
-        // UI
+        // Views
         .target(
-            name: "BackdropUI",
+            name: "Views",
             dependencies: [
-                "BackdropDomain",
-                "BackdropPresentation",
-                "BackdropConfig",
+                "Domain",
+                "Presentation",
+                "Config",
                 .product(name: "SwiftHEXColors", package: "SwiftHEXColors"),
                 .product(name: "CollectionKit", package: "CollectionKit"),
             ]
@@ -97,21 +97,21 @@ let package = Package(
 
         // App wiring
         .target(
-            name: "BackdropApp",
+            name: "App",
             dependencies: [
-                "BackdropUI",
-                "BackdropPresentation",
-                "BackdropConfig",
+                "Views",
+                "Presentation",
+                "Config",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
         // CLI
         .target(
-            name: "BackdropCLI",
+            name: "CLI",
             dependencies: [
-                "BackdropApp",
-                "BackdropConfig",
+                "App",
+                "Config",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
@@ -122,40 +122,40 @@ let package = Package(
 
         // Executable entry point
         .executableTarget(
-            name: "backdrop",
-            dependencies: ["BackdropCLI"]
+            name: "lyra",
+            dependencies: ["CLI"]
         ),
 
         // Tests
         .testTarget(
-            name: "BackdropDomainTests",
-            dependencies: ["BackdropDomain"]
+            name: "DomainTests",
+            dependencies: ["Domain"]
         ),
         .testTarget(
-            name: "BackdropLyricsTests",
+            name: "LyricsTests",
             dependencies: [
-                "BackdropLyrics",
-                "BackdropDomain",
+                "Lyrics",
+                "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
-            name: "BackdropCLITests",
-            dependencies: ["BackdropCLI"]
+            name: "CLITests",
+            dependencies: ["CLI"]
         ),
         .testTarget(
-            name: "BackdropPresentationTests",
+            name: "PresentationTests",
             dependencies: [
-                "BackdropPresentation",
-                "BackdropDomain",
+                "Presentation",
+                "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
-            name: "BackdropPersistenceTests",
+            name: "PersistenceTests",
             dependencies: [
-                "BackdropPersistence",
-                "BackdropDomain",
+                "Persistence",
+                "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
