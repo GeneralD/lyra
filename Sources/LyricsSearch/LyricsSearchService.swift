@@ -15,26 +15,27 @@ public struct LyricsSearchService: LyricsRepository {
 
 extension LyricsSearchService {
     public func fetch(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
-        // Step 1: Resolve display title/artist via extractors (AI → Regex)
-        let resolved = await resolveMetadata(title: title, artist: artist)
-
-        // Step 2: Check lyrics cache
+        // Step 1: Check lyrics cache first (avoid unnecessary AI calls)
         if let cached = await lyricsCache.read(title: title, artist: artist) {
-            guard let first = resolved.first else { return cached }
-            return cached.withDisplay(title: first.title, artist: first.artist)
+            return cached
         }
+
+        // Step 2: Resolve display title/artist via extractors (AI → Regex)
+        let resolved = await resolveMetadata(title: title, artist: artist)
 
         // Step 3: Search lyrics using resolved metadata, then fallback stages
         let lyrics = await fetchLyrics(resolved: resolved, rawTitle: title, rawArtist: artist, duration: duration)
 
-        // Step 4: Cache the result
-        if let lyrics, !artist.isEmpty {
-            try? await lyricsCache.write(title: title, artist: artist, result: lyrics)
+        // Step 4: Build result with resolved metadata
+        let first = resolved.first
+        let result = first.map { (lyrics ?? .empty).withDisplay(title: $0.title, artist: $0.artist) } ?? lyrics
+
+        // Step 5: Cache the result
+        if let result, !artist.isEmpty {
+            try? await lyricsCache.write(title: title, artist: artist, result: result)
         }
 
-        // Always return resolved metadata, even without lyrics
-        guard let first = resolved.first else { return lyrics }
-        return (lyrics ?? .empty).withDisplay(title: first.title, artist: first.artist)
+        return result
     }
 }
 
