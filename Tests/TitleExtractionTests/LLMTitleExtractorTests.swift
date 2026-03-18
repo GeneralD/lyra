@@ -20,7 +20,7 @@ struct LLMTitleExtractorTests {
 
     @Test("Returns cached result without API call")
     func cacheHitSkipsAPI() async {
-        let expected = SearchCandidate(title: "Cached Title", artist: "Cached Artist")
+        let expected = ResolvedTrack(title: "Cached Title", artist: "Cached Artist")
         let extractor = withDependencies {
             $0.config = ResolvedConfig(ai: ResolvedAIConfig(
                 endpoint: "https://example.com/v1",
@@ -43,34 +43,34 @@ struct TitleExtractorPipelineTests {
     func aiFallbackToRegex() async {
         let aiExtractor = FailingTitleExtractor()
         let regexExtractor = StubTitleExtractor(candidates: [
-            SearchCandidate(title: "Regex Title", artist: "Regex Artist"),
+            ResolvedTrack(title: "Regex Title", artist: "Regex Artist"),
         ])
 
         let extractors: [any TitleExtractor] = [aiExtractor, regexExtractor]
-        var result: [SearchCandidate] = []
+        var result: [ResolvedTrack] = []
         for extractor in extractors {
             result = await extractor.extract(rawTitle: "raw", rawArtist: "raw")
             guard result.isEmpty else { break }
         }
-        #expect(result == [SearchCandidate(title: "Regex Title", artist: "Regex Artist")])
+        #expect(result == [ResolvedTrack(title: "Regex Title", artist: "Regex Artist")])
     }
 
     @Test("Uses AI result when available, skips regex")
     func aiSuccessSkipsRegex() async {
         let aiExtractor = StubTitleExtractor(candidates: [
-            SearchCandidate(title: "AI Title", artist: "AI Artist"),
+            ResolvedTrack(title: "AI Title", artist: "AI Artist"),
         ])
         let regexExtractor = StubTitleExtractor(candidates: [
-            SearchCandidate(title: "Regex Title", artist: "Regex Artist"),
+            ResolvedTrack(title: "Regex Title", artist: "Regex Artist"),
         ])
 
         let extractors: [any TitleExtractor] = [aiExtractor, regexExtractor]
-        var result: [SearchCandidate] = []
+        var result: [ResolvedTrack] = []
         for extractor in extractors {
             result = await extractor.extract(rawTitle: "raw", rawArtist: "raw")
             guard result.isEmpty else { break }
         }
-        #expect(result == [SearchCandidate(title: "AI Title", artist: "AI Artist")])
+        #expect(result == [ResolvedTrack(title: "AI Title", artist: "AI Artist")])
     }
 
     @Test("LLM unconfigured returns empty, enabling fallback")
@@ -78,7 +78,7 @@ struct TitleExtractorPipelineTests {
         let result = await withDependencies {
             $0.config = ResolvedConfig(ai: nil)
             $0.titleExtractors = [LLMTitleExtractor(), RegexTitleExtractor()]
-        } operation: { () -> [SearchCandidate] in
+        } operation: { () -> [ResolvedTrack] in
             @Dependency(\.titleExtractors) var extractors
             for extractor in extractors {
                 let candidates = await extractor.extract(
@@ -98,17 +98,17 @@ struct TitleExtractorPipelineTests {
 // MARK: - Test helpers
 
 private struct StubAIMetadataCache: AIMetadataCacheRepository {
-    let stubbedResult: SearchCandidate?
+    let stubbedResult: ResolvedTrack?
 
-    func read(rawTitle: String, rawArtist: String) async -> SearchCandidate? { stubbedResult }
-    func write(rawTitle: String, rawArtist: String, candidate: SearchCandidate) async throws {}
+    func read(rawTitle: String, rawArtist: String) async -> ResolvedTrack? { stubbedResult }
+    func write(rawTitle: String, rawArtist: String, candidate: ResolvedTrack) async throws {}
 }
 
 private struct FailingTitleExtractor: TitleExtractor {
-    func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] { [] }
+    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] { [] }
 }
 
 private struct StubTitleExtractor: TitleExtractor {
-    let candidates: [SearchCandidate]
-    func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] { candidates }
+    let candidates: [ResolvedTrack]
+    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] { candidates }
 }

@@ -8,7 +8,7 @@ public struct RegexTitleExtractor {
 extension RegexTitleExtractor: Sendable {}
 
 extension RegexTitleExtractor: TitleExtractor {
-    public func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] {
+    public func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] {
         generateCandidates(title: rawTitle, artist: rawArtist)
     }
 }
@@ -134,7 +134,7 @@ extension RegexTitleExtractor {
             .unless(isNoise)
     }
 
-    public func generateCandidates(title: String, artist: String) -> [SearchCandidate] {
+    public func generateCandidates(title: String, artist: String) -> [ResolvedTrack] {
         let normalizedArtist = normalizeArtist(artist)
         let parsed = parseArtistTitle(title)
         let normalized = normalize(title)
@@ -145,23 +145,23 @@ extension RegexTitleExtractor {
         var seen = Set<String>()
         return [
             // From parseArtistTitle (best for "Artist - Title" format)
-            parsed.artist.map { [SearchCandidate(title: parsed.title, artist: $0)] } ?? [],
+            parsed.artist.map { [ResolvedTrack(title: parsed.title, artist: $0)] } ?? [],
             // Normalized title with MediaRemote artist
-            artistUsable ? [SearchCandidate(title: normalized, artist: normalizedArtist)] : [],
+            artistUsable ? [ResolvedTrack(title: normalized, artist: normalizedArtist)] : [],
             // Stripped title with artist
-            artistUsable ? [SearchCandidate(title: stripped, artist: normalizedArtist)] : [],
+            artistUsable ? [ResolvedTrack(title: stripped, artist: normalizedArtist)] : [],
             // Split parts as artist-title pairs
             parts.count >= 2
-                ? [SearchCandidate(title: parts[1], artist: parts[0]),
-                   SearchCandidate(title: parts[0], artist: parts[1])]
+                ? [ResolvedTrack(title: parts[1], artist: parts[0]),
+                   ResolvedTrack(title: parts[0], artist: parts[1])]
                 : [],
             // Individual parts with artist
             artistUsable
-                ? parts.unless { $0 == stripped }.map { SearchCandidate(title: $0, artist: normalizedArtist) }
+                ? parts.unless { $0 == stripped }.map { ResolvedTrack(title: $0, artist: normalizedArtist) }
                 : [],
             // Title only (last resort)
             parts.count == 1 && !artistUsable
-                ? [SearchCandidate(title: parts[0], artist: "")]
+                ? [ResolvedTrack(title: parts[0], artist: "")]
                 : [],
         ]
         .flatten

@@ -7,40 +7,64 @@ import Testing
 @testable import LyricsSearch
 @testable import TitleExtraction
 
-@Suite("LyricsSearchService.fetch")
+@Suite("LyricsSearchService")
 struct LyricsSearchServiceTests {
 
-    // MARK: - Cache behavior
+    // MARK: - resolveMetadata
 
-    @Suite("cache behavior")
-    struct CacheBehavior {
+    @Suite("resolveMetadata")
+    struct ResolveMetadata {
+        @Test("returns first candidate from first non-empty extractor")
+        func returnsFirstCandidate() async {
+            await withDependencies {
+                $0.titleExtractors = [StubTitleExtractor(candidates: [
+                    ResolvedTrack(title: "AI Title", artist: "AI Artist"),
+                ])]
+            } operation: {
+                let service = LyricsSearchService()
+                let result = await service.resolveMetadata(title: "raw", artist: "raw")
+                #expect(result?.title == "AI Title")
+                #expect(result?.artist == "AI Artist")
+            }
+        }
+
+        @Test("returns nil when all extractors return empty")
+        func returnsNilWhenEmpty() async {
+            await withDependencies {
+                $0.titleExtractors = [StubTitleExtractor(candidates: [])]
+            } operation: {
+                let service = LyricsSearchService()
+                let result = await service.resolveMetadata(title: "raw", artist: "raw")
+                #expect(result == nil)
+            }
+        }
+
+        @Test("does not call titleExtractors — independent from fetchLyrics")
+        func independentFromLyrics() async {
+            nonisolated(unsafe) var extractorCallCount = 0
+
+            await withDependencies {
+                $0.titleExtractors = [TrackingTitleExtractor {
+                    extractorCallCount += 1
+                }]
+            } operation: {
+                let service = LyricsSearchService()
+                _ = await service.resolveMetadata(title: "raw", artist: "raw")
+                #expect(extractorCallCount == 1)
+            }
+        }
+    }
+
+    // MARK: - fetchLyrics cache behavior
+
+    @Suite("fetchLyrics cache")
+    struct FetchLyricsCache {
         @Test("lyrics cache hit returns result with correct trackName/artistName")
-        @MainActor
         func cacheHitPreservesDisplayMetadata() async {
             let cached = LyricsResult(
                 trackName: "Resolved Title", artistName: "Resolved Artist",
                 syncedLyrics: "[00:01.00] Hello"
             )
-            nonisolated(unsafe) var extractorCalled = false
-
-            await withDependencies {
-                $0.lyricsCache = StubLyricsCache(stored: cached)
-                $0.titleExtractors = [TrackingTitleExtractor(onExtract: { extractorCalled = true })]
-                $0.metadataCache = NoopMetadataCache()
-            } operation: {
-                let service = LyricsSearchService()
-                let result = await service.fetch(title: "raw", artist: "raw", duration: nil) { _ in }
-                #expect(result?.trackName == "Resolved Title")
-                #expect(result?.artistName == "Resolved Artist")
-                #expect(!extractorCalled, "titleExtractors should not be called on cache hit")
-            }
-        }
-
-        @Test("lyrics cache hit does NOT call onMetadataResolved")
-        @MainActor
-        func cacheHitSkipsCallback() async {
-            let cached = LyricsResult(trackName: "T", artistName: "A", syncedLyrics: "[00:01.00] Hi")
-            nonisolated(unsafe) var callbackCalled = false
 
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: cached)
@@ -48,187 +72,95 @@ struct LyricsSearchServiceTests {
                 $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
-                _ = await service.fetch(title: "raw", artist: "raw", duration: nil) { _ in
-                    callbackCalled = true
-                }
-                #expect(!callbackCalled, "onMetadataResolved should not be called on cache hit")
+                let result = await service.fetchLyrics(title: "raw", artist: "raw", duration: nil)
+                #expect(result?.trackName == "Resolved Title")
+                #expect(result?.artistName == "Resolved Artist")
             }
         }
-    }
 
-    // MARK: - Display metadata (withDisplay)
+        @Test("lyrics cache hit does NOT call titleExtractors")
+        func cacheHitSkipsExtractors() async {
+            let cached = LyricsResult(trackName: "T", artistName: "A", syncedLyrics: "[00:01.00] Hi")
+            nonisolated(unsafe) var extractorCalled = false
 
-    @Suite("display metadata")
-    struct DisplayMetadata {
-        @Test("cached result preserves withDisplay values on subsequent cache hits")
-        @MainActor
-        func cachedWithDisplayPersists() async {
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: cached)
+                $0.titleExtractors = [TrackingTitleExtractor { extractorCalled = true }]
+                $0.metadataCache = NoopMetadataCache()
+            } operation: {
+                let service = LyricsSearchService()
+                _ = await service.fetchLyrics(title: "raw", artist: "raw", duration: nil)
+                #expect(!extractorCalled, "titleExtractors should not be called on cache hit")
+            }
+        }
+
+        @Test("does not cache when no lyrics found")
+        func noCacheWithoutLyrics() async {
             let writable = WritableLyricsCache()
 
             await withDependencies {
                 $0.lyricsCache = writable
                 $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    SearchCandidate(title: "AI Title", artist: "AI Artist"),
+                    ResolvedTrack(title: "AI Title", artist: "AI Artist"),
                 ])]
                 $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
+                _ = await service.fetchLyrics(title: "zzz_unique_zzz", artist: "channel", duration: nil)
 
-                // First call — cache miss, should resolve and cache with withDisplay
-                // Note: fetchLyrics will return nil (no LRCLIB), but result should still have metadata
-                let first = await service.fetch(title: "raw", artist: "channel", duration: nil) { _ in }
-                #expect(first?.trackName == "AI Title")
-                #expect(first?.artistName == "AI Artist")
-
-                // Verify what was written to cache
-                let cachedResult = await writable.read(title: "raw", artist: "channel")
-                #expect(cachedResult?.trackName == "AI Title")
-                #expect(cachedResult?.artistName == "AI Artist")
+                let cachedResult = await writable.read(title: "zzz_unique_zzz", artist: "channel")
+                #expect(cachedResult == nil, "should not cache when no lyrics found")
             }
         }
     }
 
-    // MARK: - Metadata resolution + callback
+    // MARK: - fetchLyrics without lyrics
 
-    @Suite("metadata callback")
-    struct MetadataCallback {
-        @Test("onMetadataResolved is called with first candidate before lyrics search")
-        @MainActor
-        func callbackCalledWithCandidate() async {
-            nonisolated(unsafe) var resolvedCandidate: SearchCandidate?
-
+    @Suite("fetchLyrics no match")
+    struct FetchLyricsNoMatch {
+        @Test("returns nil when no lyrics found anywhere")
+        func returnsNilWithoutLyrics() async {
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
                 $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    SearchCandidate(title: "Extracted", artist: "Artist"),
+                    ResolvedTrack(title: "Nonexistent XYZ999", artist: "Nobody ABC123"),
                 ])]
                 $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
-                _ = await service.fetch(title: "raw", artist: "raw", duration: nil) { candidate in
-                    resolvedCandidate = candidate
-                }
-                #expect(resolvedCandidate?.title == "Extracted")
-                #expect(resolvedCandidate?.artist == "Artist")
-            }
-        }
-
-        @Test("onMetadataResolved is NOT called when extractors return empty")
-        @MainActor
-        func callbackNotCalledWhenEmpty() async {
-            nonisolated(unsafe) var callbackCalled = false
-
-            await withDependencies {
-                $0.lyricsCache = StubLyricsCache(stored: nil)
-                $0.titleExtractors = [StubTitleExtractor(candidates: [])]
-                $0.metadataCache = NoopMetadataCache()
-            } operation: {
-                let service = LyricsSearchService()
-                _ = await service.fetch(title: "raw", artist: "raw", duration: nil) { _ in
-                    callbackCalled = true
-                }
-                #expect(!callbackCalled)
+                let result = await service.fetchLyrics(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz", duration: nil)
+                #expect(result == nil)
             }
         }
     }
 
-    // MARK: - Lyrics not found
+    // MARK: - Separation invariant
 
-    @Suite("lyrics not found")
-    struct LyricsNotFound {
-        @Test("returns result with trackName/artistName even when no lyrics found")
-        @MainActor
-        func metadataReturnedWithoutLyrics() async {
+    @Suite("separation invariant")
+    struct SeparationInvariant {
+        @Test("resolveMetadata result is independent from fetchLyrics result")
+        func metadataAndLyricsAreIndependent() async {
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
                 $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    SearchCandidate(title: "Nonexistent Song XYZ999", artist: "Nobody Artist ABC123"),
+                    ResolvedTrack(title: "Correct Title", artist: "Correct Artist"),
                 ])]
                 $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
-                let result = await service.fetch(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz", duration: nil) { _ in }
-                #expect(result?.trackName == "Nonexistent Song XYZ999")
-                #expect(result?.artistName == "Nobody Artist ABC123")
-                #expect(result?.plainLyrics == nil)
-                #expect(result?.syncedLyrics == nil)
+
+                // Metadata resolves correctly
+                let metadata = await service.resolveMetadata(title: "zzz_test_zzz", artist: "zzz_test_zzz")
+                #expect(metadata?.title == "Correct Title")
+                #expect(metadata?.artist == "Correct Artist")
+
+                // Lyrics may not be found — that's fine, metadata is unaffected
+                let lyrics = await service.fetchLyrics(title: "zzz_test_zzz", artist: "zzz_test_zzz", duration: nil)
+                // lyrics can be nil — the point is metadata was already available
+                _ = lyrics
             }
         }
     }
-
-    // MARK: - Invariants
-
-    @Suite("invariants")
-    struct Invariants {
-        @Test("onMetadataResolved candidate matches result's trackName/artistName")
-        @MainActor
-        func callbackMatchesResult() async {
-            nonisolated(unsafe) var resolvedCandidate: SearchCandidate?
-
-            await withDependencies {
-                $0.lyricsCache = StubLyricsCache(stored: nil)
-                $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    SearchCandidate(title: "Consistent", artist: "Value"),
-                ])]
-                $0.metadataCache = NoopMetadataCache()
-            } operation: {
-                let service = LyricsSearchService()
-                let result = await service.fetch(title: "raw", artist: "raw", duration: nil) { candidate in
-                    resolvedCandidate = candidate
-                }
-                #expect(resolvedCandidate?.title == result?.trackName)
-                #expect(resolvedCandidate?.artist == result?.artistName)
-            }
-        }
-    }
-
-    // MARK: - Convenience overload (no callback)
-
-    @Suite("convenience API")
-    struct ConvenienceAPI {
-        @Test("fetch works without onMetadataResolved callback")
-        @MainActor
-        func fetchWithoutCallback() async {
-            let cached = LyricsResult(
-                trackName: "Title", artistName: "Artist",
-                syncedLyrics: "[00:01.00] Lyrics"
-            )
-
-            await withDependencies {
-                $0.lyricsCache = StubLyricsCache(stored: cached)
-                $0.titleExtractors = []
-                $0.metadataCache = NoopMetadataCache()
-            } operation: {
-                let service = LyricsSearchService()
-                let result = await service.fetch(title: "raw", artist: "raw", duration: nil)
-                #expect(result?.trackName == "Title")
-            }
-        }
-    }
-}
-
-// MARK: - LyricsService convenience
-
-@Suite("LyricsService")
-struct LyricsServiceConvenienceTests {
-    @Test("fetch works without onMetadataResolved callback")
-    @MainActor
-    func fetchWithoutCallback() async {
-        let expected = LyricsResult(id: 5, syncedLyrics: "[00:01.00] Test")
-
-        await withDependencies {
-            $0.lyricsRepository = SimpleRepository(result: expected)
-        } operation: {
-            let service = LyricsService()
-            let result = await service.fetch(title: "T", artist: "A", duration: nil)
-            #expect(result.id == 5)
-        }
-    }
-}
-
-private struct SimpleRepository: LyricsRepository {
-    let result: LyricsResult?
-    func fetch(title: String, artist: String, duration: TimeInterval?, onMetadataResolved: @MainActor @Sendable (SearchCandidate) -> Void) async -> LyricsResult? { result }
 }
 
 // MARK: - Test doubles
@@ -252,14 +184,14 @@ private final class WritableLyricsCache: LyricsCacheRepository, @unchecked Senda
 }
 
 private struct StubTitleExtractor: TitleExtractor {
-    let candidates: [SearchCandidate]
-    func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] { candidates }
+    let candidates: [ResolvedTrack]
+    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] { candidates }
 }
 
 private final class TrackingTitleExtractor: TitleExtractor, @unchecked Sendable {
     let onExtract: () -> Void
     init(onExtract: @escaping () -> Void) { self.onExtract = onExtract }
-    func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] {
+    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] {
         onExtract()
         return []
     }

@@ -1,7 +1,7 @@
 import Dependencies
 
 public protocol TitleExtractor: Sendable {
-    func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate]
+    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack]
 }
 
 public enum TitleExtractorKey: TestDependencyKey {

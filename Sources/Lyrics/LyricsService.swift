@@ -7,11 +7,12 @@ public struct LyricsService {
 
     public init() {}
 
-    public func fetch(
-        title: String, artist: String, duration: TimeInterval?,
-        onMetadataResolved: @MainActor @Sendable (SearchCandidate) -> Void = { _ in }
-    ) async -> LyricsResult {
-        await repository.fetch(title: title, artist: artist, duration: duration, onMetadataResolved: onMetadataResolved) ?? .empty
+    public func resolveMetadata(title: String, artist: String) async -> ResolvedTrack? {
+        await repository.resolveMetadata(title: title, artist: artist)
+    }
+
+    public func fetchLyrics(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult {
+        await repository.fetchLyrics(title: title, artist: artist, duration: duration) ?? .empty
     }
 }
 

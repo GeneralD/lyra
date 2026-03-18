@@ -10,7 +10,7 @@ public struct LLMTitleExtractor {
 }
 
 extension LLMTitleExtractor: TitleExtractor {
-    public func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] {
+    public func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] {
         guard let aiConfig = config.ai else { return [] }
 
         if let cached = await cache.read(rawTitle: rawTitle, rawArtist: rawArtist) {
@@ -20,7 +20,7 @@ extension LLMTitleExtractor: TitleExtractor {
         guard let metadata = await callAPI(config: aiConfig, rawTitle: rawTitle, rawArtist: rawArtist),
               !metadata.title.isEmpty
         else { return [] }
-        let candidate = SearchCandidate(title: metadata.title, artist: metadata.artist)
+        let candidate = ResolvedTrack(title: metadata.title, artist: metadata.artist)
         try? await cache.write(rawTitle: rawTitle, rawArtist: rawArtist, candidate: candidate)
         return [candidate]
     }

@@ -6,26 +6,40 @@ import Testing
 
 @Suite("LyricsService")
 struct LyricsServiceTests {
-    @Test("delegates to repository")
-    func delegatesToRepository() async {
-        let expected = LyricsResult(id: 2, syncedLyrics: "[00:01.00] World")
-
+    @Test("resolveMetadata delegates to repository")
+    func resolveMetadata() async {
         await withDependencies {
-            $0.lyricsRepository = MockLyricsRepository(result: expected)
+            $0.lyricsRepository = MockLyricsRepository(
+                metadata: ResolvedTrack(title: "Resolved", artist: "Artist"),
+                lyrics: nil
+            )
         } operation: {
             let service = LyricsService()
-            let result = await service.fetch(title: "Test", artist: "Artist", duration: nil) { _ in }
+            let result = await service.resolveMetadata(title: "raw", artist: "raw")
+            #expect(result?.title == "Resolved")
+            #expect(result?.artist == "Artist")
+        }
+    }
+
+    @Test("fetchLyrics delegates to repository")
+    func fetchLyrics() async {
+        let expected = LyricsResult(id: 2, syncedLyrics: "[00:01.00] World")
+        await withDependencies {
+            $0.lyricsRepository = MockLyricsRepository(metadata: nil, lyrics: expected)
+        } operation: {
+            let service = LyricsService()
+            let result = await service.fetchLyrics(title: "Test", artist: "Artist", duration: nil)
             #expect(result.id == 2)
         }
     }
 
-    @Test("returns empty when repository returns nil")
-    func returnsEmptyOnNil() async {
+    @Test("fetchLyrics returns empty when repository returns nil")
+    func fetchLyricsReturnsEmpty() async {
         await withDependencies {
-            $0.lyricsRepository = MockLyricsRepository(result: nil)
+            $0.lyricsRepository = MockLyricsRepository(metadata: nil, lyrics: nil)
         } operation: {
             let service = LyricsService()
-            let result = await service.fetch(title: "Unknown", artist: "Nobody", duration: nil) { _ in }
+            let result = await service.fetchLyrics(title: "Unknown", artist: "Nobody", duration: nil)
             #expect(result == .empty)
         }
     }
@@ -34,7 +48,9 @@ struct LyricsServiceTests {
 // MARK: - Mocks
 
 private struct MockLyricsRepository: LyricsRepository {
-    let result: LyricsResult?
+    let metadata: ResolvedTrack?
+    let lyrics: LyricsResult?
 
-    func fetch(title: String, artist: String, duration: TimeInterval?, onMetadataResolved: @MainActor @Sendable (SearchCandidate) -> Void) async -> LyricsResult? { result }
+    func resolveMetadata(title: String, artist: String) async -> ResolvedTrack? { metadata }
+    func fetchLyrics(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { lyrics }
 }

@@ -94,20 +94,22 @@ private extension OverlayController {
             // Debounce: wait for title/artist to stabilize
             try? await Task.sleep(for: .milliseconds(300))
             guard let self, generation == self.fetchGeneration else { return }
+            guard let title = info.title, let artist = info.artist else { return }
 
-            let result: LyricsResult? = await {
-                guard let title = info.title, let artist = info.artist else { return nil }
-                return await service.fetch(title: title, artist: artist, duration: info.duration) { [weak self] candidate in
-                    guard let self, generation == self.fetchGeneration else { return }
-                    self.revealTitle(candidate.title)
-                    if !candidate.artist.isEmpty { self.revealArtist(candidate.artist) }
-                }
-            }()
+            // Step 1: Resolve metadata (fast)
+            if let resolved = await service.resolveMetadata(title: title, artist: artist) {
+                guard generation == self.fetchGeneration else { return }
+                self.revealTitle(resolved.title)
+                if !resolved.artist.isEmpty { self.revealArtist(resolved.artist) }
+            }
             guard generation == self.fetchGeneration else { return }
 
-            // Update title/artist from result (covers cache hit path)
-            if let trackName = result?.trackName { self.revealTitle(trackName) }
-            if let artistName = result?.artistName { self.revealArtist(artistName) }
+            // Step 2: Fetch lyrics (slow)
+            let result = await service.fetchLyrics(title: title, artist: artist, duration: info.duration)
+            guard generation == self.fetchGeneration else { return }
+
+            if let trackName = result.trackName { self.revealTitle(trackName) }
+            if let artistName = result.artistName { self.revealArtist(artistName) }
 
             if let content = LyricsContent(from: result) {
                 self.revealLyrics(content)

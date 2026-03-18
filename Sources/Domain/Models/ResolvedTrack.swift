@@ -1,4 +1,4 @@
-public struct SearchCandidate {
+public struct ResolvedTrack {
     public let title: String
     public let artist: String
 
@@ -8,4 +8,4 @@ public struct SearchCandidate {
     }
 }
 
-extension SearchCandidate: Sendable, Equatable {}
+extension ResolvedTrack: Sendable, Equatable {}
