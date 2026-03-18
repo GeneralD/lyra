@@ -7,6 +7,7 @@ import Foundation
 
 public struct LyricsSearchService: LyricsRepository {
     @Dependency(\.metadataCache) private var metadataCache
+    @Dependency(\.lyricsCache) private var lyricsCache
     @Dependency(\.titleExtractors) private var titleExtractors
 
     public init() {}
@@ -17,8 +18,19 @@ extension LyricsSearchService {
         // Step 1: Resolve display title/artist via extractors (AI → Regex)
         let resolved = await resolveMetadata(title: title, artist: artist)
 
-        // Step 2: Search lyrics using resolved metadata, then fallback stages
+        // Step 2: Check lyrics cache
+        if let cached = await lyricsCache.read(title: title, artist: artist) {
+            guard let first = resolved.first else { return cached }
+            return cached.withDisplay(title: first.title, artist: first.artist)
+        }
+
+        // Step 3: Search lyrics using resolved metadata, then fallback stages
         let lyrics = await fetchLyrics(resolved: resolved, rawTitle: title, rawArtist: artist, duration: duration)
+
+        // Step 4: Cache the result
+        if let lyrics, !artist.isEmpty {
+            try? await lyricsCache.write(title: title, artist: artist, result: lyrics)
+        }
 
         // Always return resolved metadata, even without lyrics
         guard let first = resolved.first else { return lyrics }
