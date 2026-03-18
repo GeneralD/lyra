@@ -1,10 +1,17 @@
 import CollectionKit
+import Domain
 
-public struct TitleParser {
+public struct RegexTitleExtractor {
     public init() {}
 }
 
-extension TitleParser: Sendable {}
+extension RegexTitleExtractor: Sendable {}
+
+extension RegexTitleExtractor: TitleExtractor {
+    public func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] {
+        generateCandidates(title: rawTitle, artist: rawArtist)
+    }
+}
 
 // MARK: - Noise patterns
 
@@ -49,7 +56,7 @@ private let artistSuffixPatterns = [
 
 // MARK: - Public API
 
-extension TitleParser {
+extension RegexTitleExtractor {
     /// Normalize a title by removing noise brackets, suffixes, and series markers
     public func normalize(_ title: String) -> String {
         var s = title

@@ -2,25 +2,27 @@ import Dependencies
 import Domain
 import Foundation
 
-public struct LLMTitleExtractor: AITitleExtractor {
+public struct LLMTitleExtractor {
     @Dependency(\.config) private var config
     @Dependency(\.aiMetadataCache) private var cache
 
     public init() {}
+}
 
-    public func extract(rawTitle: String, rawArtist: String) async -> SearchCandidate? {
-        guard let aiConfig = config.ai else { return nil }
+extension LLMTitleExtractor: TitleExtractor {
+    public func extract(rawTitle: String, rawArtist: String) async -> [SearchCandidate] {
+        guard let aiConfig = config.ai else { return [] }
 
         if let cached = await cache.read(rawTitle: rawTitle, rawArtist: rawArtist) {
-            return cached
+            return [cached]
         }
 
         guard let metadata = await callAPI(config: aiConfig, rawTitle: rawTitle, rawArtist: rawArtist),
               !metadata.title.isEmpty
-        else { return nil }
+        else { return [] }
         let candidate = SearchCandidate(title: metadata.title, artist: metadata.artist)
         try? await cache.write(rawTitle: rawTitle, rawArtist: rawArtist, candidate: candidate)
-        return candidate
+        return [candidate]
     }
 }
 
@@ -46,11 +48,11 @@ private extension LLMTitleExtractor {
     }
 }
 
-extension LLMTitleExtractor: Sendable {}
-
-
 // MARK: - DependencyKey
 
-extension AITitleExtractorKey: DependencyKey {
-    public static let liveValue: any AITitleExtractor = LLMTitleExtractor()
+extension TitleExtractorKey: DependencyKey {
+    public static let liveValue: [any TitleExtractor] = [
+        LLMTitleExtractor(),
+        RegexTitleExtractor(),
+    ]
 }

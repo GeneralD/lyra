@@ -2,12 +2,12 @@ import Dependencies
 import Domain
 import Testing
 
-@testable import AIMetadata
+@testable import TitleExtraction
 
 @Suite("LLMTitleExtractor")
 struct LLMTitleExtractorTests {
-    @Test("Returns nil when AI is not configured")
-    func unconfiguredReturnsNil() async {
+    @Test("Returns empty when AI is not configured")
+    func unconfiguredReturnsEmpty() async {
         let extractor = withDependencies {
             $0.config = ResolvedConfig(ai: nil)
         } operation: {
@@ -15,7 +15,7 @@ struct LLMTitleExtractorTests {
         }
 
         let result = await extractor.extract(rawTitle: "Some Song", rawArtist: "Some Artist")
-        #expect(result == nil)
+        #expect(result.isEmpty)
     }
 
     @Test("Returns cached result without API call")
@@ -33,7 +33,7 @@ struct LLMTitleExtractorTests {
         }
 
         let result = await extractor.extract(rawTitle: "raw title", rawArtist: "raw artist")
-        #expect(result == expected)
+        #expect(result == [expected])
     }
 }
 

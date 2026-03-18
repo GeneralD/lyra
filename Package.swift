@@ -24,7 +24,6 @@ let package = Package(
             dependencies: [
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "DependenciesMacros", package: "swift-dependencies"),
-                .product(name: "CollectionKit", package: "CollectionKit"),
             ]
         ),
 
@@ -48,15 +47,17 @@ let package = Package(
             name: "LyricsSearch",
             dependencies: [
                 "Domain",
+                "TitleExtraction",
                 .product(name: "CollectionKit", package: "CollectionKit"),
                 .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .target(
-            name: "AIMetadata",
+            name: "TitleExtraction",
             dependencies: [
                 "Domain",
+                .product(name: "CollectionKit", package: "CollectionKit"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -76,7 +77,7 @@ let package = Package(
         ),
         .target(
             name: "Lyrics",
-            dependencies: ["Domain", "LyricsSearch", "Persistence", "AIMetadata"]
+            dependencies: ["Domain", "LyricsSearch", "Persistence", "TitleExtraction"]
         ),
 
         // Presentation logic
@@ -134,11 +135,7 @@ let package = Package(
         ),
 
         // Tests
-        .testTarget(
-            name: "DomainTests",
-            dependencies: ["Domain"]
-        ),
-        .testTarget(
+.testTarget(
             name: "LyricsTests",
             dependencies: [
                 "Lyrics",
@@ -166,9 +163,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "AIMetadataTests",
+            name: "TitleExtractionTests",
             dependencies: [
-                "AIMetadata",
+                "TitleExtraction",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

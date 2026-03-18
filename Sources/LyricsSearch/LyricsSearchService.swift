@@ -1,64 +1,66 @@
 import Alamofire
-import Domain
 import CollectionKit
+import Domain
+import TitleExtraction
 import Dependencies
 import Foundation
 
 public struct LyricsSearchService: LyricsRepository {
     @Dependency(\.metadataCache) private var metadataCache
-    @Dependency(\.aiTitleExtractor) private var aiExtractor
+    @Dependency(\.titleExtractors) private var titleExtractors
 
     public init() {}
 }
 
 extension LyricsSearchService {
     public func fetch(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
-        // Stage 0: AI-based title/artist extraction → LRCLIB get (cancellation-safe)
-        let extractor = aiExtractor
-        let aiResult = await Task.detached {
-            await fetchViaAI(title: title, artist: artist, duration: duration, extractor: extractor)
+        // Stage 0: Title extractors (AI → Regex) — run in detached task to survive cancellation
+        let extractors = titleExtractors
+        let extractorResult = await Task.detached {
+            await fetchViaTitleExtractors(title: title, artist: artist, duration: duration, extractors: extractors)
         }.value
-        if let aiResult { return aiResult }
+        if let extractorResult { return extractorResult }
 
         // Stage 1: Try MusicBrainz (cached or remote) for accurate metadata → LRCLIB get
         if let result = await fetchViaMusicBrainz(title: title, artist: artist, duration: duration) {
             return result
         }
 
-        // Stage 2: Fallback to candidate-based search
-        let candidates = TitleParser().generateCandidates(title: title, artist: artist)
-
-        let getResults = await candidates
-            .unless(\.artist.isEmpty)
-            .asyncCompactMap { c in await lrclib(LyricsResult.self, from: .get(title: c.title, artist: c.artist, duration: duration)) }
-            .filter { $0.plainLyrics != nil || $0.syncedLyrics != nil }
-
-        if let synced = getResults.first(where: { $0.syncedLyrics != nil }) { return synced }
-        if let first = getResults.first { return first }
+        // Stage 2: Fallback to free-text search using regex candidates
+        let candidates = RegexTitleExtractor().generateCandidates(title: title, artist: artist)
         return await searchFallback(candidates: candidates)
     }
 }
 
-// MARK: - AI → LRCLIB pipeline
+// MARK: - Title extractors → LRCLIB pipeline
 
-private func fetchViaAI(title: String, artist: String, duration: TimeInterval?, extractor: any AITitleExtractor) async -> LyricsResult? {
-    guard let candidate = await extractor.extract(rawTitle: title, rawArtist: artist),
-          !candidate.title.isEmpty
-    else { return nil }
+private func fetchViaTitleExtractors(
+    title: String, artist: String, duration: TimeInterval?,
+    extractors: [any TitleExtractor]
+) async -> LyricsResult? {
+    for extractor in extractors {
+        let candidates = await extractor.extract(rawTitle: title, rawArtist: artist)
+        let results = await candidates
+            .unless(\.artist.isEmpty)
+            .asyncCompactMap { c in
+                await AF.request(LRCLibAPI.get(title: c.title, artist: c.artist, duration: duration))
+                    .validate(statusCode: 200 ..< 300)
+                    .serializingDecodable(LyricsResult.self)
+                    .response.value
+            }
+            .filter { $0.plainLyrics != nil || $0.syncedLyrics != nil }
 
-    let result = await AF.request(LRCLibAPI.get(title: candidate.title, artist: candidate.artist, duration: duration))
-        .validate(statusCode: 200 ..< 300)
-        .serializingDecodable(LyricsResult.self)
-        .response.value
-    guard let result, result.plainLyrics != nil || result.syncedLyrics != nil else { return nil }
-    return result
+        if let synced = results.first(where: { $0.syncedLyrics != nil }) { return synced }
+        if let first = results.first { return first }
+    }
+    return nil
 }
 
 // MARK: - MusicBrainz → LRCLIB pipeline
 
 private extension LyricsSearchService {
     func fetchViaMusicBrainz(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
-        let parser = TitleParser()
+        let parser = RegexTitleExtractor()
         let parsed = parser.parseArtistTitle(title)
         let normalized = parsed.title
         let normalizedArtist = parser.normalizeArtist(parsed.artist ?? artist)
@@ -87,7 +89,7 @@ private extension LyricsSearchService {
     }
 
     func matchRecording(from response: MusicBrainzResponse, cacheKey: (title: String, artist: String)) async -> LyricsResult? {
-        let parser = TitleParser()
+        let parser = RegexTitleExtractor()
         for recording in response.recordings {
             guard let artistName = recording.artistName else { continue }
             // Try raw, normalized, and stripped titles in deterministic order

@@ -1,9 +1,10 @@
+import Domain
 import Testing
-@testable import Domain
+@testable import TitleExtraction
 
-@Suite("TitleParser")
-struct TitleParserTests {
-    let parser = TitleParser()
+@Suite("RegexTitleExtractor")
+struct RegexTitleExtractorTests {
+    let parser = RegexTitleExtractor()
 
     @Test("strips brackets of all types")
     func stripBrackets() {
