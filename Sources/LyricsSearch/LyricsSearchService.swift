@@ -39,13 +39,19 @@ private extension LyricsSearchService {
     ) async -> LyricsResult? {
         for extractor in extractors {
             let candidates = await extractor.extract(rawTitle: title, rawArtist: artist)
-            let results = await candidates
+            guard !candidates.isEmpty else { continue }
+
+            // Try precise .get first
+            let getResults = await candidates
                 .unless(\.artist.isEmpty)
                 .asyncCompactMap { c in await lrclib(LyricsResult.self, from: .get(title: c.title, artist: c.artist, duration: duration)) }
                 .filter { $0.plainLyrics != nil || $0.syncedLyrics != nil }
 
-            if let synced = results.first(where: { $0.syncedLyrics != nil }) { return synced }
-            if let first = results.first { return first }
+            if let synced = getResults.first(where: { $0.syncedLyrics != nil }) { return synced }
+            if let first = getResults.first { return first }
+
+            // Fallback to free-text .search
+            if let result = await searchFallback(candidates: candidates) { return result }
         }
         return nil
     }
