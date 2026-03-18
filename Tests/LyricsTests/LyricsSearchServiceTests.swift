@@ -181,6 +181,54 @@ struct LyricsSearchServiceTests {
             }
         }
     }
+
+    // MARK: - Convenience overload (no callback)
+
+    @Suite("convenience API")
+    struct ConvenienceAPI {
+        @Test("fetch works without onMetadataResolved callback")
+        @MainActor
+        func fetchWithoutCallback() async {
+            let cached = LyricsResult(
+                trackName: "Title", artistName: "Artist",
+                syncedLyrics: "[00:01.00] Lyrics"
+            )
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: cached)
+                $0.titleExtractors = []
+                $0.metadataCache = NoopMetadataCache()
+            } operation: {
+                let service = LyricsSearchService()
+                let result = await service.fetch(title: "raw", artist: "raw", duration: nil)
+                #expect(result?.trackName == "Title")
+            }
+        }
+    }
+}
+
+// MARK: - LyricsService convenience
+
+@Suite("LyricsService")
+struct LyricsServiceConvenienceTests {
+    @Test("fetch works without onMetadataResolved callback")
+    @MainActor
+    func fetchWithoutCallback() async {
+        let expected = LyricsResult(id: 5, syncedLyrics: "[00:01.00] Test")
+
+        await withDependencies {
+            $0.lyricsRepository = SimpleRepository(result: expected)
+        } operation: {
+            let service = LyricsService()
+            let result = await service.fetch(title: "T", artist: "A", duration: nil)
+            #expect(result.id == 5)
+        }
+    }
+}
+
+private struct SimpleRepository: LyricsRepository {
+    let result: LyricsResult?
+    func fetch(title: String, artist: String, duration: TimeInterval?, onMetadataResolved: @MainActor @Sendable (SearchCandidate) -> Void) async -> LyricsResult? { result }
 }
 
 // MARK: - Test doubles

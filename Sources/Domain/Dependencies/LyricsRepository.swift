@@ -8,6 +8,12 @@ public protocol LyricsRepository: Sendable {
     ) async -> LyricsResult?
 }
 
+extension LyricsRepository {
+    public func fetch(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        await fetch(title: title, artist: artist, duration: duration, onMetadataResolved: { _ in })
+    }
+}
+
 public enum LyricsRepositoryKey: TestDependencyKey {
     public static let testValue: any LyricsRepository = UnimplementedLyricsRepository()
 }
