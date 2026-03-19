@@ -67,6 +67,7 @@ Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 |---|---|---|---|
 | `screen` | string / int | `"main"` | Which display to use (see [Screen selection](#screen-selection)) |
 | `wallpaper` | string | — | Video file path. Relative to config dir or absolute |
+| `includes` | array | — | List of TOML files to merge (relative to config dir or absolute) |
 
 ### `[text.default]` — base text style
 
@@ -119,6 +120,33 @@ Mouse-reactive ripple effect on the overlay.
 | `duration` | number | `0.6` | Ripple animation duration in seconds |
 | `idle` | number | `1` | Seconds before ripple fades after mouse stops |
 
+### `[ai]`
+
+Optional LLM-based song title and artist extraction via any OpenAI-compatible API. When omitted, lyra uses regex-based parsing only. All three fields are required to enable this feature.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `endpoint` | string | — | OpenAI-compatible API base URL (e.g. `"https://api.openai.com/v1"`) |
+| `model` | string | — | Model name (e.g. `"gpt-4o-mini"`) |
+| `api_key` | string | — | API key for authentication |
+
+> **Tip:** Keep your API key out of version control by splitting `[ai]` into a separate file and using `includes`:
+>
+> ```toml
+> # config.toml
+> includes = ["ai.toml"]
+> ```
+>
+> ```toml
+> # ai.toml (add to .gitignore)
+> [ai]
+> endpoint = "https://api.openai.com/v1"
+> model = "gpt-4o-mini"
+> api_key = "sk-..."
+> ```
+>
+> Included files are merged into the main config. Values in the main file take precedence over included ones.
+
 ### Screen selection
 
 | Value | Behavior |
@@ -133,6 +161,7 @@ Mouse-reactive ripple effect on the overlay.
 ### Full example
 
 ```toml
+# includes = ["ai.toml"]
 screen = "main"
 # wallpaper = "loop.mp4"
 
@@ -169,6 +198,11 @@ color = "#AAAAFFFF"
 radius = 80
 duration = 0.4
 idle = 1.5
+
+# [ai]
+# endpoint = "https://api.openai.com/v1"
+# model = "gpt-4o-mini"
+# api_key = "sk-..."
 ```
 
 ## Requirements
