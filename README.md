@@ -100,7 +100,7 @@ Controls the matrix-style text reveal animation.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `duration` | number | `0.8` | Animation duration in seconds |
-| `charset` | string / array | all | Character sets for scramble: `"latin"`, `"cyrillic"`, `"greek"`, `"symbols"`. Single string or array |
+| `charset` | string / array | all | Character sets for scramble: `"latin"`, `"cyrillic"`, `"greek"`, `"symbols"`, `"cjk"`. Single string or array |
 
 ### `[artwork]`
 
