@@ -1,27 +1,39 @@
 import Domain
 import Foundation
 
-extension CharsetName {
-    var characters: [Character] {
+// MARK: - CharacterPool
+
+struct CharacterPool {
+    private let characters: [Character]
+
+    init(charsets: Set<CharsetName>) {
+        characters = charsets.flatMap(\.allCharacters)
+    }
+
+    var random: Character { characters.randomElement() ?? "?" }
+
+    func random(count: Int) -> String {
+        String((0 ..< count).map { _ in random })
+    }
+}
+
+private extension CharsetName {
+    var allCharacters: [Character] {
         switch self {
-        case .latin: Array("ÄÖÜßÆØÅÐÞÀÁÂÃÈÉÊËÌÍÎÏÒÓÔÕÙÚÛÝŒàáâãäåæèéêëìíîïòóôõöùúûüý")
-        case .cyrillic: Array("ЖЗИКЛМНПРСТУФХЦЧШЩЭЮЯжзиклмнпрстуфхцчшщэюя")
-        case .greek: Array("αβγδεζηθικλμνξπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΠΡΣΤΥΦΧΨΩ")
-        case .symbols: Array("†‡§¶©®™±≠≈∞∆∑∏√∫◊♠♣♥♦")
-        case .cjk: Array("一二三四五六七八九十百千万上下左右中大小月日年時分秒人口手目耳心火水木金土山川田林森空雨雪花草竹米糸貝石")
+        case .latin:    Array("ÄÖÜßÆØÅÐÞÀÁÂÃÈÉÊËÌÍÎÏÒÓÔÕÙÚÛÝŒàáâãäåæèéêëìíîïòóôõöùúûüý")
+        case .cyrillic: scalars(in: 0x0410...0x042F, 0x0430...0x044F)
+        case .greek:    scalars(in: 0x0391...0x03A9, 0x03B1...0x03C9)
+        case .symbols:  Array("†‡§¶©®™±≠≈∞∆∑∏√∫◊♠♣♥♦")
+        case .cjk:      scalars(in: 0x4E00...0x9FFF)
         }
     }
-}
 
-extension ResolvedDecodeEffectConfig {
-    var allCharacters: [Character] {
-        charsets.flatMap(\.characters)
-    }
-
-    func randomCharacter() -> Character {
-        allCharacters.randomElement() ?? "?"
+    func scalars(in ranges: ClosedRange<UInt32>...) -> [Character] {
+        ranges.flatMap { $0.compactMap(UnicodeScalar.init).map(Character.init) }
     }
 }
+
+// MARK: - DecodeEffectState
 
 @MainActor
 final class DecodeEffectState {
@@ -31,10 +43,12 @@ final class DecodeEffectState {
     private var targetText: String = ""
     private var lockedIndices: Set<Int> = []
     private var timer: Timer?
-    private let config: ResolvedDecodeEffectConfig
+    private let duration: Double
+    private let pool: CharacterPool
 
     init(config: ResolvedDecodeEffectConfig) {
-        self.config = config
+        self.duration = config.duration
+        self.pool = CharacterPool(charsets: config.charsets)
     }
 
     deinit {
@@ -48,7 +62,7 @@ extension DecodeEffectState {
     func startLoading(placeholderLength: Int = 12) {
         stop()
         isAnimating = true
-        updateDisplay((0 ..< placeholderLength).map { _ in String(config.randomCharacter()) }.joined())
+        updateDisplay(pool.random(count: placeholderLength))
 
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tickLoading() }
@@ -60,7 +74,7 @@ extension DecodeEffectState {
         isAnimating = true
         targetText = text
         lockedIndices = []
-        updateDisplay(String(text.map { _ in config.randomCharacter() }))
+        updateDisplay(pool.random(count: text.count))
 
         let totalChars = text.count
         guard totalChars > 0 else {
@@ -71,12 +85,12 @@ extension DecodeEffectState {
 
         var elapsed: Double = 0
         let interval: Double = 0.03
-        let duration = config.duration
+        let animationDuration = duration
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 elapsed += interval
-                let progress = min(elapsed / duration, 1.0)
+                let progress = min(elapsed / animationDuration, 1.0)
                 let easedProgress = progress * progress * progress
                 let targetLocked = Int(easedProgress * Double(totalChars))
 
@@ -107,26 +121,26 @@ extension DecodeEffectState {
     }
 }
 
-extension DecodeEffectState {
-    private func finish(_ onComplete: (() -> Void)?) {
+private extension DecodeEffectState {
+    func finish(_ onComplete: (() -> Void)?) {
         stop()
         onComplete?()
     }
 
-    private func updateDisplay(_ text: String) {
+    func updateDisplay(_ text: String) {
         displayText = text
         onUpdate?(text)
     }
 
-    private func tickLoading() {
-        updateDisplay(displayText.map { _ in String(config.randomCharacter()) }.joined())
+    func tickLoading() {
+        updateDisplay(pool.random(count: displayText.count))
     }
 
-    private func tickDecode() {
+    func tickDecode() {
         let chars = Array(targetText)
         updateDisplay(
             chars.enumerated()
-                .map { lockedIndices.contains($0.offset) ? String($0.element) : String(config.randomCharacter()) }
+                .map { lockedIndices.contains($0.offset) ? String($0.element) : String(pool.random) }
                 .joined()
         )
     }
