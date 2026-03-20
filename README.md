@@ -115,6 +115,7 @@ Mouse-reactive ripple effect on the overlay.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `enabled` | boolean | `true` | Set to `false` to disable ripple effects entirely |
 | `color` | string | `"#AAAAFFFF"` | Ripple color in hex |
 | `radius` | number | `60` | Ripple radius in points |
 | `duration` | number | `0.6` | Ripple animation duration in seconds |
@@ -194,6 +195,7 @@ size = 120
 opacity = 0.9
 
 [ripple]
+# enabled = true
 color = "#AAAAFFFF"
 radius = 80
 duration = 0.4

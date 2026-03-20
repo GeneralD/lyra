@@ -17,22 +17,28 @@ public struct RippleView: View {
     }
 
     public var body: some View {
-        let rc = config.ripple
+        if config.ripple.enabled {
+            rippleCanvas
+        }
+    }
+
+    private var rippleCanvas: some View {
+        let rippleConfig = config.ripple
         let baseNSColor: NSColor = {
-            guard case .solid(let hex) = rc.color else { return .white }
+            guard case .solid(let hex) = rippleConfig.color else { return .white }
             return (NSColor(hexString: hex) ?? .white).usingColorSpace(.deviceRGB) ?? .white
         }()
 
-        TimelineView(.animation) { timeline in
+        return TimelineView(.animation) { timeline in
             Canvas { context, size in
                 let now = timeline.date
                 for ripple in rippleState.ripples {
                     let elapsed = now.timeIntervalSince(ripple.startTime)
-                    let dur = ripple.idle ? rc.duration * 3 : rc.duration
+                    let dur = ripple.idle ? rippleConfig.duration * 3 : rippleConfig.duration
                     guard elapsed < dur else { continue }
                     let t = elapsed / dur
                     let easeOut = 1 - (1 - t) * (1 - t)
-                    let radius = easeOut * rc.radius
+                    let radius = easeOut * rippleConfig.radius
                     let shifted = Color(
                         hue: (baseNSColor.hueComponent + ripple.hueShift).truncatingRemainder(dividingBy: 1),
                         saturation: baseNSColor.saturationComponent,
