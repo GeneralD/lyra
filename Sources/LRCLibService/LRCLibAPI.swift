@@ -9,7 +9,7 @@ public enum LRCLibAPI {
 extension LRCLibAPI: URLRequestConvertible {
     public func asURLRequest() throws -> URLRequest {
         var request = try URLRequest(url: Self.baseURL + path, method: .get)
-        request.setValue("now-playing/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("lyra (https://github.com/GeneralD/lyra)", forHTTPHeaderField: "User-Agent")
         return try URLEncoding.default.encode(request, with: parameters)
     }
 }

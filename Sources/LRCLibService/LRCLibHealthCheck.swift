@@ -9,7 +9,7 @@ extension LRCLibAPI: HealthCheckable {
             return HealthCheckResult(status: .fail, detail: "invalid URL")
         }
         var request = URLRequest(url: url)
-        request.setValue("now-playing/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("lyra (https://github.com/GeneralD/lyra)", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10
 
         let start = ContinuousClock.now
