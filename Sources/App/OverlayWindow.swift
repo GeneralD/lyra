@@ -94,8 +94,10 @@ public final class OverlayWindow {
         }
         self.displayLinkDriver = driver
 
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [rippleState] event in
-            rippleState.update(screenPoint: NSEvent.mouseLocation)
+        if cfg.ripple.enabled {
+            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [rippleState] event in
+                rippleState.update(screenPoint: NSEvent.mouseLocation)
+            }
         }
 
         screenObserver = NotificationCenter.default.addObserver(

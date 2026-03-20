@@ -24,6 +24,7 @@ public final class RippleState {
     public init() {}
 
     public func update(screenPoint: CGPoint) {
+        guard config.ripple.enabled else { return }
         currentPosition = screenPoint
         let distance = hypot(screenPoint.x - lastRipplePosition.x, screenPoint.y - lastRipplePosition.y)
         guard distance > 40 else { return }
@@ -34,7 +35,8 @@ public final class RippleState {
     }
 
     public func idle() {
-        guard config.ripple.idle > 0,
+        guard config.ripple.enabled,
+              config.ripple.idle > 0,
               Date.now.timeIntervalSince(lastIdleRipple) > config.ripple.idle else { return }
         lastIdleRipple = .now
         ripples.append(.init(position: currentPosition, startTime: .now, idle: true))
