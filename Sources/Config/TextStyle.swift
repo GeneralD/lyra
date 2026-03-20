@@ -42,14 +42,14 @@ extension TextStyleConfig: Codable {
 }
 
 extension TextStyleConfig {
-    public func merging(over base: TextStyleConfig) -> TextStyleConfig {
+    public func filled(with fallback: TextStyleConfig) -> TextStyleConfig {
         .init(
-            font: font ?? base.font,
-            size: size ?? base.size,
-            weight: weight ?? base.weight,
-            color: color ?? base.color,
-            shadow: shadow ?? base.shadow,
-            spacing: spacing ?? base.spacing
+            font: font ?? fallback.font,
+            size: size ?? fallback.size,
+            weight: weight ?? fallback.weight,
+            color: color ?? fallback.color,
+            shadow: shadow ?? fallback.shadow,
+            spacing: spacing ?? fallback.spacing
         )
     }
 }

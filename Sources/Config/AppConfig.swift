@@ -1,180 +1,11 @@
 import Domain
 import Dependencies
 import Foundation
-import SwiftUI
 import TOMLKit
-
-// MARK: - Codable Config Models
-
-public struct TextConfig {
-    public let `default`: TextStyleConfig
-    public let title: TextStyleConfig?
-    public let artist: TextStyleConfig?
-    public let lyric: TextStyleConfig?
-    public let highlight: TextStyleConfig?
-    public let decodeEffect: DecodeEffectConfig
-
-    public init(
-        `default`: TextStyleConfig = .init(),
-        title: TextStyleConfig? = nil,
-        artist: TextStyleConfig? = nil,
-        lyric: TextStyleConfig? = nil,
-        highlight: TextStyleConfig? = nil,
-        decodeEffect: DecodeEffectConfig = .init()
-    ) {
-        self.default = `default`
-        self.title = title
-        self.artist = artist
-        self.lyric = lyric
-        self.highlight = highlight
-        self.decodeEffect = decodeEffect
-    }
-}
-
-extension TextConfig: Codable {
-    enum CodingKeys: String, CodingKey {
-        case `default`, title, artist, lyric, highlight
-        case decodeEffect = "decode_effect"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        `default` = try c.decodeIfPresent(TextStyleConfig.self, forKey: .default) ?? .init()
-        title = try c.decodeIfPresent(TextStyleConfig.self, forKey: .title)
-        artist = try c.decodeIfPresent(TextStyleConfig.self, forKey: .artist)
-        lyric = try c.decodeIfPresent(TextStyleConfig.self, forKey: .lyric)
-        highlight = try c.decodeIfPresent(TextStyleConfig.self, forKey: .highlight)
-        decodeEffect = try c.decodeIfPresent(DecodeEffectConfig.self, forKey: .decodeEffect) ?? .init()
-    }
-}
-
-public struct DecodeEffectConfig {
-    public let duration: Double
-    public let charset: Set<CharsetName>
-
-    public init(
-        duration: Double = 0.8,
-        charset: Set<CharsetName> = Set(CharsetName.allCases)
-    ) {
-        self.duration = duration
-        self.charset = charset
-    }
-}
-
-extension DecodeEffectConfig: Sendable {}
-
-extension DecodeEffectConfig: Codable {
-    enum CodingKeys: String, CodingKey {
-        case duration, charset
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        duration = try c.flexibleDouble(forKey: .duration) ?? 0.8
-        // Polymorphic: "latin" or ["latin", "cyrillic"]
-        if let arr = try? c.decodeIfPresent([CharsetName].self, forKey: .charset) {
-            charset = Set(arr)
-        } else if let single = try? c.decodeIfPresent(CharsetName.self, forKey: .charset) {
-            charset = [single]
-        } else {
-            charset = Set(CharsetName.allCases)
-        }
-    }
-}
-
-extension TextConfig {
-    @MainActor var resolvedTitle: ResolvedTextStyle {
-        (title ?? .init())
-            .merging(over: TextStyleConfig(size: 18, weight: "bold").merging(over: `default`))
-            .resolve()
-    }
-
-    @MainActor var resolvedArtist: ResolvedTextStyle {
-        (artist ?? .init())
-            .merging(over: TextStyleConfig(weight: "medium").merging(over: `default`))
-            .resolve()
-    }
-
-    @MainActor var resolvedLyric: ResolvedTextStyle {
-        (lyric ?? .init()).merging(over: `default`).resolve()
-    }
-
-    private static let highlightDefaults = TextStyleConfig(
-        color: .gradient(["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"])
-    )
-
-    @MainActor var resolvedHighlight: ResolvedTextStyle {
-        (highlight ?? .init())
-            .merging(over: Self.highlightDefaults.merging(over: (lyric ?? .init()).merging(over: `default`)))
-            .resolve()
-    }
-}
-
-public struct ArtworkConfig {
-    public let size: CGFloat
-    public let opacity: Double
-
-    public init(size: CGFloat = 96, opacity: Double = 1.0) {
-        self.size = size
-        self.opacity = opacity
-    }
-}
-
-extension ArtworkConfig: Codable {
-    enum CodingKeys: String, CodingKey { case size, opacity }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        size = try c.flexibleDoubleRequired(forKey: .size)
-        opacity = try c.flexibleDouble(forKey: .opacity) ?? 1.0
-    }
-}
-
-public struct RippleConfig {
-    public let enabled: Bool
-    public let color: String
-    public let radius: Double
-    public let duration: Double
-    public let idle: Double
-
-    public init(enabled: Bool = true, color: String = "#AAAAFFFF", radius: Double = 60, duration: Double = 0.6, idle: Double = 1) {
-        self.enabled = enabled
-        self.color = color
-        self.radius = radius
-        self.duration = duration
-        self.idle = idle
-    }
-}
-
-extension RippleConfig: Codable {
-    enum CodingKeys: String, CodingKey { case enabled, color, radius, duration, idle }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        color = try c.decode(String.self, forKey: .color)
-        radius = try c.flexibleDoubleRequired(forKey: .radius)
-        duration = try c.flexibleDoubleRequired(forKey: .duration)
-        idle = try c.flexibleDoubleRequired(forKey: .idle)
-    }
-}
-
-// MARK: - AI Config
-
-public struct AIConfig: Codable, Sendable {
-    public let endpoint: String
-    public let model: String
-    public let apiKey: String
-
-    enum CodingKeys: String, CodingKey {
-        case endpoint, model
-        case apiKey = "api_key"
-    }
-}
 
 // MARK: - AppConfig
 
-public struct AppConfig: Decodable {
+public struct AppConfig: Sendable, Decodable {
     public let text: TextConfig
     public let artwork: ArtworkConfig
     public let ripple: RippleConfig
@@ -217,13 +48,19 @@ public struct AppConfig: Decodable {
     }
 }
 
+// MARK: - Wallpaper URL
+
 extension AppConfig {
     public var wallpaperURL: URL? {
         guard let wallpaper else { return nil }
         guard !wallpaper.hasPrefix("/") else { return URL(fileURLWithPath: wallpaper) }
         return configDir.map { URL(fileURLWithPath: $0).appendingPathComponent(wallpaper) }
     }
+}
 
+// MARK: - Load
+
+extension AppConfig {
     public static func load() -> AppConfig {
         let home = NSHomeDirectory()
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
@@ -272,11 +109,7 @@ extension AppConfig {
 extension AppConfig {
     @MainActor
     public func toResolvedConfig() -> ResolvedConfig {
-        let resolvedAI = ai.map {
-            ResolvedAIConfig(endpoint: $0.endpoint, model: $0.model, apiKey: $0.apiKey)
-        }
-
-        return ResolvedConfig(
+        ResolvedConfig(
             text: ResolvedTextConfig(
                 title: text.resolvedTitle,
                 artist: text.resolvedArtist,
@@ -297,80 +130,9 @@ extension AppConfig {
             ),
             screen: screen,
             wallpaperURL: wallpaperURL,
-            ai: resolvedAI
+            ai: ai.map { ResolvedAIConfig(endpoint: $0.endpoint, model: $0.model, apiKey: $0.apiKey) }
         )
     }
-}
-
-extension TextStyleConfig {
-    @MainActor
-    func resolve() -> ResolvedTextStyle {
-        let fontName = font ?? NSFont.systemFont(ofSize: 0).familyName ?? ".AppleSystemUIFont"
-        let fontSize = size ?? 12
-        let fontWeight = weight ?? "regular"
-        let spacing = spacing ?? 6
-
-        let available = NSFontManager.shared.availableFontFamilies.contains(fontName)
-        let nsFont = available ? NSFont(name: fontName, size: fontSize) : nil
-        let fallback = NSFont.systemFont(ofSize: fontSize)
-        let lineHeight = ceil(
-            (nsFont?.ascender ?? fallback.ascender)
-                - (nsFont?.descender ?? fallback.descender)
-                + (nsFont?.leading ?? fallback.leading)
-        ) + spacing * 2
-
-        return ResolvedTextStyle(
-            spacing: spacing,
-            fontName: fontName,
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: color ?? .solid("#FFFFFFD9"),
-            shadow: .solid(shadow ?? "#000000E6"),
-            lineHeight: lineHeight
-        )
-    }
-}
-
-// MARK: - Include resolution
-
-func resolveIncludes(into table: TOMLTable, configDir: String) {
-    guard let paths = table["includes"]?.array else { return }
-
-    for element in paths {
-        guard let relativePath = element.string else { continue }
-        let absolutePath = relativePath.hasPrefix("/")
-            ? relativePath
-            : (configDir as NSString).appendingPathComponent(relativePath)
-        guard let content = try? String(contentsOfFile: absolutePath, encoding: .utf8),
-              let included = try? TOMLTable(string: content)
-        else { continue }
-        deepMerge(from: included, into: table)
-    }
-}
-
-private func deepMerge(from source: TOMLTable, into target: TOMLTable) {
-    for (key, value) in source {
-        guard let sourceTable = value.table,
-              let targetTable = target[key]?.table
-        else {
-            if target[key] == nil { target[key] = value }
-            continue
-        }
-        deepMerge(from: sourceTable, into: targetTable)
-    }
-}
-
-// MARK: - Config error notification
-
-private func notifyConfigError(path: String, error: Error) {
-    fputs("lyra: failed to decode \(path): \(error)\n", stderr)
-    @Dependency(\.userNotifier) var notifier
-    notifier.notify(
-        title: "lyra",
-        subtitle: "Config error: \((path as NSString).lastPathComponent)",
-        message: String(describing: error),
-        fileToOpen: path
-    )
 }
 
 // MARK: - DependencyKey registration
@@ -380,8 +142,3 @@ extension ConfigKey: DependencyKey {
         AppConfig.load().toResolvedConfig()
     }
 }
-
-extension TextConfig: Sendable {}
-extension ArtworkConfig: Sendable {}
-extension RippleConfig: Sendable {}
-extension AppConfig: Sendable {}
