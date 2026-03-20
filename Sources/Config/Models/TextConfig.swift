@@ -30,11 +30,11 @@ extension TextConfig: Codable {
         let unresolvedLyric = try container.decodeIfPresent(UnresolvedTextAppearance.self, forKey: .lyric)
         let unresolvedHighlight = try container.decodeIfPresent(UnresolvedTextAppearance.self, forKey: .highlight)
 
-        `default` = unresolvedDefault?.resolve(defaults: .defaults, filled: .defaults) ?? .defaults
-        title = unresolvedTitle?.resolve(defaults: .titleDefaults, filled: `default`) ?? `default`
-        artist = unresolvedArtist?.resolve(defaults: .artistDefaults, filled: `default`) ?? `default`
-        lyric = unresolvedLyric?.resolve(filled: `default`) ?? `default`
-        highlight = unresolvedHighlight?.resolve(defaults: .highlightDefaults, filled: lyric) ?? lyric
+        `default` = unresolvedDefault.resolve(defaults: .defaults, filled: .defaults)
+        title = unresolvedTitle.resolve(defaults: .titleDefaults, filled: `default`)
+        artist = unresolvedArtist.resolve(defaults: .artistDefaults, filled: `default`)
+        lyric = unresolvedLyric.resolve(filled: `default`)
+        highlight = unresolvedHighlight.resolve(defaults: .highlightDefaults, filled: lyric)
 
         decodeEffect = try container.decodeIfPresent(DecodeEffectConfig.self, forKey: .decodeEffect) ?? .defaults
     }

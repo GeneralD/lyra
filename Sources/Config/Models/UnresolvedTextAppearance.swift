@@ -31,8 +31,10 @@ extension UnresolvedTextAppearance {
     func resolve(defaults: UnresolvedTextAppearance..., filled: TextAppearanceConfig) -> TextAppearanceConfig {
         resolve(defaults: defaults, filled: filled)
     }
+}
 
-    private func resolve(defaults: [UnresolvedTextAppearance], filled: TextAppearanceConfig) -> TextAppearanceConfig {
+fileprivate extension UnresolvedTextAppearance {
+    func resolve(defaults: [UnresolvedTextAppearance], filled: TextAppearanceConfig) -> TextAppearanceConfig {
         guard let first = defaults.first else {
             return TextAppearanceConfig(
                 fontName: fontName ?? filled.fontName,
@@ -52,5 +54,12 @@ extension UnresolvedTextAppearance {
             spacing: spacing ?? first.spacing
         )
         return merged.resolve(defaults: Array(defaults.dropFirst()), filled: filled)
+    }
+}
+
+
+extension Optional where Wrapped == UnresolvedTextAppearance {
+    func resolve(defaults: UnresolvedTextAppearance..., filled: TextAppearanceConfig) -> TextAppearanceConfig {
+        (self ?? .init()).resolve(defaults: defaults, filled: filled)
     }
 }
