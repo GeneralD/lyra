@@ -19,7 +19,7 @@ public final class RippleState {
     private var lastIdleRipple: Date = .now
 
     @ObservationIgnored
-    @Dependency(\.config) private var config
+    @Dependency(\.appStyle) private var config
 
     public init() {}
 

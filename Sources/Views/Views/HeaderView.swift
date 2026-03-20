@@ -8,7 +8,7 @@ import SwiftUI
 public struct HeaderView: View {
     let state: OverlayState
 
-    @Dependency(\.config) private var config
+    @Dependency(\.appStyle) private var config
 
     public init(state: OverlayState) {
         self.state = state
@@ -54,7 +54,7 @@ public struct HeaderView: View {
 
 #if DEBUG
 #Preview("Header") {
-    withDependencies { $0.config = .init() } operation: {
+    withDependencies { $0.appStyle = .init() } operation: {
         HeaderView(state: {
             let s = OverlayState()
             s.title = .success("See You Again")

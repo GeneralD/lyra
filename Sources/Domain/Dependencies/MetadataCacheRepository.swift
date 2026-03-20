@@ -1,7 +1,7 @@
 import Dependencies
 import Foundation
 
-public struct ResolvedMetadata {
+public struct MusicBrainzMetadata {
     public let title: String
     public let artist: String
     public let duration: TimeInterval?
@@ -15,11 +15,11 @@ public struct ResolvedMetadata {
     }
 }
 
-extension ResolvedMetadata: Sendable {}
+extension MusicBrainzMetadata: Sendable {}
 
 public protocol MetadataCacheRepository: Sendable {
-    func read(title: String, artist: String) async -> ResolvedMetadata?
-    func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws
+    func read(title: String, artist: String) async -> MusicBrainzMetadata?
+    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws
 }
 
 public enum MetadataCacheRepositoryKey: TestDependencyKey {
@@ -34,6 +34,6 @@ extension DependencyValues {
 }
 
 private struct NoopMetadataCache: MetadataCacheRepository {
-    func read(title: String, artist: String) async -> ResolvedMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws {}
+    func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
+    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
 }

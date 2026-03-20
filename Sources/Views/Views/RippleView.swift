@@ -9,7 +9,7 @@ public struct RippleView: View {
     let rippleState: RippleState
     let screenOrigin: CGPoint
 
-    @Dependency(\.config) private var config
+    @Dependency(\.appStyle) private var config
 
     public init(rippleState: RippleState, screenOrigin: CGPoint) {
         self.rippleState = rippleState
@@ -62,7 +62,7 @@ public struct RippleView: View {
 
 #if DEBUG
 #Preview("Ripple") {
-    withDependencies { $0.config = .init() } operation: {
+    withDependencies { $0.appStyle = .init() } operation: {
         RippleView(rippleState: RippleState(), screenOrigin: .zero)
             .frame(width: 400, height: 300)
             .background(.black)

@@ -8,7 +8,7 @@ public struct LyricLineView: View {
     let text: String
     let isActive: Bool
 
-    @Dependency(\.config) private var config
+    @Dependency(\.appStyle) private var config
 
     public init(text: String, isActive: Bool) {
         self.text = text
@@ -30,7 +30,7 @@ public struct LyricLineView: View {
     }
 }
 
-func makeFont(style: ResolvedTextStyle) -> Font {
+func makeFont(style: TextAppearance) -> Font {
     let weight: Font.Weight = switch style.fontWeight.lowercased() {
     case "ultralight": .ultraLight
     case "thin": .thin
@@ -48,7 +48,7 @@ func makeFont(style: ResolvedTextStyle) -> Font {
 
 #if DEBUG
 #Preview("Normal") {
-    withDependencies { $0.config = .init() } operation: {
+    withDependencies { $0.appStyle = .init() } operation: {
         LyricLineView(text: "It been a long day without you my friend", isActive: false)
             .padding()
             .background(.black)
@@ -56,7 +56,7 @@ func makeFont(style: ResolvedTextStyle) -> Font {
 }
 
 #Preview("Active") {
-    withDependencies { $0.config = .init() } operation: {
+    withDependencies { $0.appStyle = .init() } operation: {
         LyricLineView(text: "It been a long day without you my friend", isActive: true)
             .padding()
             .background(.black)

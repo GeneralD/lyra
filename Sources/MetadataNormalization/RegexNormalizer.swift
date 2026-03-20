@@ -61,7 +61,7 @@ private extension RegexNormalizer {
             }
             // Cache the first recording's metadata for future lookups
             if candidates.count == titles.count {
-                let metadata = ResolvedMetadata(
+                let metadata = MusicBrainzMetadata(
                     title: recording.title, artist: artistName,
                     duration: recording.duration, musicbrainzId: recording.id
                 )

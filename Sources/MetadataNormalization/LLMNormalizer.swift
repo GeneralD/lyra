@@ -4,7 +4,7 @@ import Domain
 import Foundation
 
 public struct LLMNormalizer {
-    @Dependency(\.config) private var config
+    @Dependency(\.appStyle) private var config
     @Dependency(\.aiMetadataCache) private var cache
 
     public init() {}
@@ -28,7 +28,7 @@ extension LLMNormalizer: MetadataNormalizer {
 }
 
 private extension LLMNormalizer {
-    func callAPI(config: ResolvedAIConfig, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
+    func callAPI(config: AIEndpoint, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
         let api = OpenAICompatibleAPI(config: config)
         guard let request = try? api.chatCompletion(rawTitle: rawTitle, rawArtist: rawArtist) else { return nil }
 

@@ -2,9 +2,9 @@ import Domain
 import Foundation
 
 public struct OpenAICompatibleAPI: Sendable {
-    let config: ResolvedAIConfig
+    let config: AIEndpoint
 
-    public init(config: ResolvedAIConfig) {
+    public init(config: AIEndpoint) {
         self.config = config
     }
 }

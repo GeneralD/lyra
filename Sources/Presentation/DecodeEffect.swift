@@ -46,7 +46,7 @@ final class DecodeEffectState {
     private let duration: Double
     private let pool: CharacterPool
 
-    init(config: ResolvedDecodeEffectConfig) {
+    init(config: DecodeEffect) {
         self.duration = config.duration
         self.pool = CharacterPool(charsets: config.charsets)
     }

@@ -67,7 +67,7 @@ public struct LyricsColumnView: View {
 
 #if DEBUG
 #Preview("Lyrics") {
-    withDependencies { $0.config = .init() } operation: {
+    withDependencies { $0.appStyle = .init() } operation: {
         LyricsColumnView(state: {
             let s = OverlayState()
             let lines: [LyricLine] = [

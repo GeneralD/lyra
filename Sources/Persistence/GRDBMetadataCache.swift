@@ -11,12 +11,12 @@ public struct GRDBMetadataCache: MetadataCacheRepository {
 }
 
 extension GRDBMetadataCache {
-    public func read(title: String, artist: String) async -> ResolvedMetadata? {
+    public func read(title: String, artist: String) async -> MusicBrainzMetadata? {
         try? await dbManager.dbQueue.read { db in
             guard let record = try MusicBrainzCacheRecord
                 .filter(Column("query_title") == title && Column("query_artist") == artist)
                 .fetchOne(db) else { return nil }
-            return ResolvedMetadata(
+            return MusicBrainzMetadata(
                 title: record.resolvedTitle,
                 artist: record.resolvedArtist,
                 duration: record.duration,
@@ -25,7 +25,7 @@ extension GRDBMetadataCache {
         }
     }
 
-    public func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws {
+    public func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {
         try await dbManager.dbQueue.write { db in
             var record = MusicBrainzCacheRecord(
                 queryTitle: queryTitle,
@@ -52,6 +52,6 @@ extension MetadataCacheRepositoryKey: DependencyKey {
 }
 
 private struct NoopMetadataCacheLive: MetadataCacheRepository {
-    func read(title: String, artist: String) async -> ResolvedMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws {}
+    func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
+    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
 }

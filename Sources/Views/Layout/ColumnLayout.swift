@@ -9,7 +9,7 @@ public struct ColumnLayout {
 
     @MainActor
     public init(width: Double, lyricsHeight: Double) {
-        @Dependency(\.config) var config
+        @Dependency(\.appStyle) var config
         let lineHeight = config.text.lyric.lineHeight
 
         columnGap = (width * 0.03).rounded()

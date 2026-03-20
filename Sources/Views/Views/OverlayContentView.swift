@@ -30,7 +30,7 @@ public struct OverlayContentView: View {
 
 #if DEBUG
 #Preview("Overlay") {
-    withDependencies { $0.config = .init() } operation: {
+    withDependencies { $0.appStyle = .init() } operation: {
         OverlayContentView(state: {
             let s = OverlayState()
             s.title = .success("See You Again")

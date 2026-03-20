@@ -17,7 +17,7 @@ struct OverlayControllerTests {
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
             $0.metadataCache = MockMetadataCache()
-            $0.config = .init()
+            $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
             controller.start()
@@ -39,7 +39,7 @@ struct OverlayControllerTests {
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
             $0.metadataCache = MockMetadataCache()
-            $0.config = .init()
+            $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
             controller.start()
@@ -61,7 +61,7 @@ struct OverlayControllerTests {
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
             $0.metadataCache = MockMetadataCache()
-            $0.config = .init()
+            $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
             controller.start()
@@ -86,7 +86,7 @@ struct OverlayControllerTests {
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
             $0.metadataCache = MockMetadataCache()
-            $0.config = .init()
+            $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
             controller.start()
@@ -111,7 +111,7 @@ struct OverlayControllerTests {
             ))
             $0.lyricsCache = MockLyricsCache()
             $0.metadataCache = MockMetadataCache()
-            $0.config = .init()
+            $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
             controller.start()
@@ -160,6 +160,6 @@ private struct MockLyricsCache: LyricsCacheRepository {
 }
 
 private struct MockMetadataCache: MetadataCacheRepository {
-    func read(title: String, artist: String) async -> ResolvedMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws {}
+    func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
+    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
 }

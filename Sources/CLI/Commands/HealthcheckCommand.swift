@@ -83,11 +83,11 @@ private extension HealthcheckCommand {
         ]
         guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
             printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "using defaults (no config file found)"))
-            return (AppConfig.load(), false)
+            return (ConfigLoader.shared.load(), false)
         }
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "cannot read \(path)"))
-            return (AppConfig.load(), true)
+            return (ConfigLoader.shared.load(), true)
         }
         do {
             if path.hasSuffix(".toml") {
@@ -97,10 +97,10 @@ private extension HealthcheckCommand {
                 _ = try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
             }
             printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "loaded (\(path))"))
-            return (AppConfig.load(), false)
+            return (ConfigLoader.shared.load(), false)
         } catch {
             printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error.localizedDescription)"))
-            return (AppConfig.load(), true)
+            return (ConfigLoader.shared.load(), true)
         }
     }
 

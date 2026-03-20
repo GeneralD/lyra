@@ -9,7 +9,7 @@ struct LLMNormalizerTests {
     @Test("Returns empty when AI is not configured")
     func unconfiguredReturnsEmpty() async {
         let normalizer = withDependencies {
-            $0.config = ResolvedConfig(ai: nil)
+            $0.appStyle = AppStyle(ai: nil)
         } operation: {
             LLMNormalizer()
         }
@@ -22,7 +22,7 @@ struct LLMNormalizerTests {
     func cacheHitSkipsAPI() async {
         let expected = Track(title: "Cached Title", artist: "Cached Artist")
         let normalizer = withDependencies {
-            $0.config = ResolvedConfig(ai: ResolvedAIConfig(
+            $0.appStyle = AppStyle(ai: AIEndpoint(
                 endpoint: "https://example.com/v1",
                 model: "test-model",
                 apiKey: "test-key"
@@ -76,7 +76,7 @@ struct MetadataNormalizerPipelineTests {
     @Test("LLM unconfigured returns empty, enabling fallback")
     func unconfiguredLLMFallsThrough() async {
         let result = await withDependencies {
-            $0.config = ResolvedConfig(ai: nil)
+            $0.appStyle = AppStyle(ai: nil)
             $0.metadataCache = NoopMetadataCache()
             $0.metadataNormalizers = [LLMNormalizer(), RegexNormalizer()]
         } operation: { () -> [Track] in
@@ -114,6 +114,6 @@ private struct StubMetadataNormalizer: MetadataNormalizer {
 }
 
 private struct NoopMetadataCache: MetadataCacheRepository {
-    func read(title: String, artist: String) async -> ResolvedMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws {}
+    func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
+    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
 }

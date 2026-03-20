@@ -32,23 +32,23 @@ extension ColorStyle: Encodable {
     }
 }
 
-// MARK: - Resolved config value types (pre-computed, Sendable)
+// MARK: - App Style
 
-public struct ResolvedConfig: Sendable {
-    public let text: ResolvedTextConfig
-    public let artwork: ResolvedArtworkConfig
-    public let ripple: ResolvedRippleConfig
+public struct AppStyle: Sendable {
+    public let text: TextLayout
+    public let artwork: ArtworkStyle
+    public let ripple: RippleStyle
     public let screen: ScreenSelector
     public let wallpaperURL: URL?
-    public let ai: ResolvedAIConfig?
+    public let ai: AIEndpoint?
 
     public init(
-        text: ResolvedTextConfig = .init(),
-        artwork: ResolvedArtworkConfig = .init(),
-        ripple: ResolvedRippleConfig = .init(),
+        text: TextLayout = .init(),
+        artwork: ArtworkStyle = .init(),
+        ripple: RippleStyle = .init(),
         screen: ScreenSelector = .main,
         wallpaperURL: URL? = nil,
-        ai: ResolvedAIConfig? = nil
+        ai: AIEndpoint? = nil
     ) {
         self.text = text
         self.artwork = artwork
@@ -59,19 +59,19 @@ public struct ResolvedConfig: Sendable {
     }
 }
 
-public struct ResolvedTextConfig: Sendable {
-    public let title: ResolvedTextStyle
-    public let artist: ResolvedTextStyle
-    public let lyric: ResolvedTextStyle
-    public let highlight: ResolvedTextStyle
-    public let decodeEffect: ResolvedDecodeEffectConfig
+public struct TextLayout: Sendable {
+    public let title: TextAppearance
+    public let artist: TextAppearance
+    public let lyric: TextAppearance
+    public let highlight: TextAppearance
+    public let decodeEffect: DecodeEffect
 
     public init(
-        title: ResolvedTextStyle = .init(fontSize: 18, fontWeight: "bold"),
-        artist: ResolvedTextStyle = .init(fontWeight: "medium"),
-        lyric: ResolvedTextStyle = .init(),
-        highlight: ResolvedTextStyle = .init(),
-        decodeEffect: ResolvedDecodeEffectConfig = .init()
+        title: TextAppearance = .init(fontSize: 18, fontWeight: "bold"),
+        artist: TextAppearance = .init(fontWeight: "medium"),
+        lyric: TextAppearance = .init(),
+        highlight: TextAppearance = .init(),
+        decodeEffect: DecodeEffect = .init()
     ) {
         self.title = title
         self.artist = artist
@@ -81,7 +81,7 @@ public struct ResolvedTextConfig: Sendable {
     }
 }
 
-public struct ResolvedTextStyle: Sendable {
+public struct TextAppearance: Sendable {
     public let spacing: Double
     public let fontName: String
     public let fontSize: Double
@@ -109,7 +109,7 @@ public struct ResolvedTextStyle: Sendable {
     }
 }
 
-public struct ResolvedArtworkConfig: Sendable {
+public struct ArtworkStyle: Sendable {
     public let size: Double
     public let opacity: Double
 
@@ -119,7 +119,7 @@ public struct ResolvedArtworkConfig: Sendable {
     }
 }
 
-public struct ResolvedRippleConfig: Sendable {
+public struct RippleStyle: Sendable {
     public let enabled: Bool
     public let color: ColorStyle
     public let radius: Double
@@ -151,7 +151,7 @@ public enum CharsetName: String {
 
 extension CharsetName: Sendable, Codable, Hashable, CaseIterable {}
 
-public struct ResolvedDecodeEffectConfig: Sendable {
+public struct DecodeEffect: Sendable {
     public let duration: Double
     public let charsets: Set<CharsetName>
 
@@ -164,7 +164,7 @@ public struct ResolvedDecodeEffectConfig: Sendable {
     }
 }
 
-public struct ResolvedAIConfig: Sendable {
+public struct AIEndpoint: Sendable {
     public let endpoint: String
     public let model: String
     public let apiKey: String
@@ -178,13 +178,13 @@ public struct ResolvedAIConfig: Sendable {
 
 // MARK: - DependencyKey
 
-public enum ConfigKey: TestDependencyKey {
-    public static let testValue: ResolvedConfig = .init()
+public enum AppStyleKey: TestDependencyKey {
+    public static let testValue: AppStyle = .init()
 }
 
 extension DependencyValues {
-    public var config: ResolvedConfig {
-        get { self[ConfigKey.self] }
-        set { self[ConfigKey.self] = newValue }
+    public var appStyle: AppStyle {
+        get { self[AppStyleKey.self] }
+        set { self[AppStyleKey.self] = newValue }
     }
 }

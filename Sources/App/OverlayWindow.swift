@@ -21,10 +21,10 @@ public final class OverlayWindow {
     private let hasWallpaper: Bool
     private var queuePlayer: AVPlayer?
 
-    @Dependency(\.config) private var resolvedConfig
+    @Dependency(\.appStyle) private var resolvedConfig
 
     public init() async {
-        @Dependency(\.config) var cfg
+        @Dependency(\.appStyle) var cfg
 
         controller = OverlayController()
         hasWallpaper = cfg.wallpaperURL != nil

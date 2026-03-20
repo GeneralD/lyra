@@ -16,11 +16,11 @@ public final class OverlayController {
     private var artistEffect: DecodeEffectState
     private var lyricEffects: [DecodeEffectState] = []
 
-    @Dependency(\.config) private var config
+    @Dependency(\.appStyle) private var config
     private let lyricsService = LyricsService()
 
     public init() {
-        @Dependency(\.config) var cfg
+        @Dependency(\.appStyle) var cfg
         titleEffect = DecodeEffectState(config: cfg.text.decodeEffect)
         artistEffect = DecodeEffectState(config: cfg.text.decodeEffect)
     }
