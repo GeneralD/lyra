@@ -9,7 +9,7 @@ struct UnresolvedTextAppearance {
     var spacing: Double?
 }
 
-extension UnresolvedTextAppearance: Decodable {
+extension UnresolvedTextAppearance: Codable {
     enum CodingKeys: String, CodingKey {
         case fontName = "font"
         case fontSize = "size"

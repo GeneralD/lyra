@@ -11,17 +11,15 @@ extension DecodeEffectConfig {
 
 extension DecodeEffectConfig: Codable {
     public init(from decoder: Decoder) throws {
-        let defaults = Self.defaults
-
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        duration = try container.flexibleDouble(forKey: .duration) ?? defaults.duration
+        duration = try container.flexibleDouble(forKey: .duration) ?? Self.defaults.duration
         switch (try? container.decodeIfPresent([CharsetName].self, forKey: .charset), try? container.decodeIfPresent(CharsetName.self, forKey: .charset)) {
         case let (.some(arr), _):
             charset = Set(arr)
         case let (_, .some(single)):
             charset = [single]
         default:
-            charset = defaults.charset
+            charset = Self.defaults.charset
         }
     }
 }

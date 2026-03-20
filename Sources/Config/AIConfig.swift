@@ -1,4 +1,4 @@
-public struct AIConfig: Codable, Sendable {
+public struct AIConfig: Sendable, Codable {
     public let endpoint: String
     public let model: String
     public let apiKey: String

@@ -50,7 +50,7 @@ extension AppConfig {
                 idle: ripple.idle
             ),
             screen: screen,
-            wallpaperURL: wallpaperURL,
+            wallpaperURL: wallpaper.map { URL(fileURLWithPath: $0) },
             ai: ai.map { AIEndpoint(endpoint: $0.endpoint, model: $0.model, apiKey: $0.apiKey) }
         )
     }

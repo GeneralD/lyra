@@ -19,15 +19,15 @@ public extension ConfigLoader {
         ]
         guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }),
               let content = try? String(contentsOfFile: path, encoding: .utf8)
-        else { return AppConfig() }
+        else { return .defaults }
 
         let configDir = (path as NSString).deletingLastPathComponent
-        let decoded = decode(content: content, path: path, configDir: configDir)
-        guard let decoded else { return AppConfig() }
+        guard let decoded = decode(content: content, path: path, configDir: configDir) else { return .defaults }
+
+        let wallpaper = decoded.wallpaper.map { resolveWallpaperPath($0, configDir: configDir) }
         return AppConfig(
             text: decoded.text, artwork: decoded.artwork, ripple: decoded.ripple,
-            screen: decoded.screen, wallpaper: decoded.wallpaper,
-            configDir: configDir,
+            screen: decoded.screen, wallpaper: wallpaper,
             ai: decoded.ai
         )
     }
@@ -79,6 +79,11 @@ extension ConfigLoader {
             }
             deepMerge(from: sourceTable, into: targetTable)
         }
+    }
+
+    func resolveWallpaperPath(_ wallpaper: String, configDir: String) -> String {
+        guard !wallpaper.hasPrefix("/") else { return wallpaper }
+        return (configDir as NSString).appendingPathComponent(wallpaper)
     }
 
     func notifyError(path: String, error: Error) {
