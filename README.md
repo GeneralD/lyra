@@ -39,12 +39,19 @@ lyra daemon      # run in foreground (debug)
 lyra version     # show version
 ```
 
-### Login item
+### Auto-start
 
 ```sh
-lyra service install    # auto-start on login
+# via Homebrew (recommended for Homebrew installs)
+brew services start lyra
+brew services stop lyra
+
+# or manually (Mint / source-build users)
+lyra service install    # register LaunchAgent directly
 lyra service uninstall
 ```
+
+> **Note:** Both methods use LaunchAgent but with different labels (`homebrew.mxcl.lyra` vs `com.generald.lyra`). Use one approach — do not mix them, or the daemon will run twice.
 
 ### Shell completion
 
