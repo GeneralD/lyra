@@ -132,15 +132,14 @@ struct TextStyleInheritanceTests {
         #expect(config.text.highlight.spacing == 10)
     }
 
-    @Test("unspecified title section falls back to default (layer defaults not applied)")
-    func titleUnspecifiedFallsToDefault() throws {
+    @Test("unspecified title section still applies titleDefaults: size=18, weight=bold")
+    func titleUnspecifiedAppliesLayerDefaults() throws {
         let config = try decode("")
-        // When [text.title] section is entirely absent, title == default (no titleDefaults applied)
-        #expect(config.text.title.fontSize == config.text.default.fontSize)
-        #expect(config.text.title.fontWeight == config.text.default.fontWeight)
+        #expect(config.text.title.fontSize == 18)
+        #expect(config.text.title.fontWeight == "bold")
     }
 
-    @Test("empty title section triggers titleDefaults: size=18, weight=bold")
+    @Test("empty title section also applies titleDefaults")
     func emptyTitleSectionAppliesLayerDefaults() throws {
         let config = try decode("""
             [text.title]
@@ -149,13 +148,13 @@ struct TextStyleInheritanceTests {
         #expect(config.text.title.fontWeight == "bold")
     }
 
-    @Test("unspecified artist section falls back to default")
-    func artistUnspecifiedFallsToDefault() throws {
+    @Test("unspecified artist section still applies artistDefaults: weight=medium")
+    func artistUnspecifiedAppliesLayerDefaults() throws {
         let config = try decode("")
-        #expect(config.text.artist.fontWeight == config.text.default.fontWeight)
+        #expect(config.text.artist.fontWeight == "medium")
     }
 
-    @Test("empty artist section triggers artistDefaults: weight=medium")
+    @Test("empty artist section also applies artistDefaults")
     func emptyArtistSectionAppliesLayerDefaults() throws {
         let config = try decode("""
             [text.artist]
@@ -163,13 +162,13 @@ struct TextStyleInheritanceTests {
         #expect(config.text.artist.fontWeight == "medium")
     }
 
-    @Test("unspecified highlight falls back to lyric (no highlightDefaults)")
-    func highlightUnspecifiedFallsToLyric() throws {
+    @Test("unspecified highlight applies highlightDefaults: gold gradient")
+    func highlightUnspecifiedAppliesLayerDefaults() throws {
         let config = try decode("")
-        #expect(config.text.highlight.color == config.text.lyric.color)
+        #expect(config.text.highlight.color == .gradient(["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]))
     }
 
-    @Test("empty highlight section triggers highlightDefaults: gold gradient")
+    @Test("empty highlight section also applies highlightDefaults")
     func emptyHighlightSectionAppliesLayerDefaults() throws {
         let config = try decode("""
             [text.highlight]

@@ -10,10 +10,13 @@ public struct TextConfig: Sendable {
 }
 
 extension TextConfig {
-    static let defaults = TextConfig(
-        default: .defaults, title: .defaults, artist: .defaults, lyric: .defaults, highlight: .defaults,
-        decodeEffect: .defaults
-    )
+    static let defaults: TextConfig = {
+        let base = TextAppearanceConfig.defaults
+        let title = UnresolvedTextAppearance().resolve(defaults: .titleDefaults, filled: base)
+        let artist = UnresolvedTextAppearance().resolve(defaults: .artistDefaults, filled: base)
+        let highlight = UnresolvedTextAppearance().resolve(defaults: .highlightDefaults, filled: base)
+        return TextConfig(default: base, title: title, artist: artist, lyric: base, highlight: highlight, decodeEffect: .defaults)
+    }()
 }
 
 extension TextConfig: Codable {
