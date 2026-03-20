@@ -2,6 +2,7 @@ import Foundation
 
 public struct LaunchAgentManager {
     private let label = "com.generald.lyra"
+    private let homebrewLabel = "homebrew.mxcl.lyra"
 
     public init() {}
 }
@@ -12,7 +13,17 @@ extension LaunchAgentManager {
             .appendingPathComponent("Library/LaunchAgents/\(label).plist")
     }
 
+    private var homebrewPlistPath: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(homebrewLabel).plist")
+    }
+
     func install() throws {
+        guard !FileManager.default.fileExists(atPath: homebrewPlistPath.path) else {
+            print("Already managed by brew services. Run 'brew services stop lyra' first.")
+            return
+        }
+
         let plistDict: [String: Any] = [
             "Label": label,
             "ProgramArguments": programArguments,
@@ -40,7 +51,11 @@ extension LaunchAgentManager {
 
     func uninstall() throws {
         guard FileManager.default.fileExists(atPath: plistPath.path) else {
-            print("Not installed")
+            if FileManager.default.fileExists(atPath: homebrewPlistPath.path) {
+                print("Managed by brew services. Run 'brew services stop lyra' instead.")
+            } else {
+                print("Not installed")
+            }
             return
         }
         let uid = getuid()
