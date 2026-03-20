@@ -1,8 +1,8 @@
 import Dependencies
 
 public protocol AIMetadataCacheRepository: Sendable {
-    func read(rawTitle: String, rawArtist: String) async -> ResolvedTrack?
-    func write(rawTitle: String, rawArtist: String, candidate: ResolvedTrack) async throws
+    func read(rawTitle: String, rawArtist: String) async -> Track?
+    func write(rawTitle: String, rawArtist: String, candidate: Track) async throws
 }
 
 public enum AIMetadataCacheRepositoryKey: TestDependencyKey {
@@ -17,6 +17,6 @@ extension DependencyValues {
 }
 
 private struct NoopAIMetadataCache: AIMetadataCacheRepository {
-    func read(rawTitle: String, rawArtist: String) async -> ResolvedTrack? { nil }
-    func write(rawTitle: String, rawArtist: String, candidate: ResolvedTrack) async throws {}
+    func read(rawTitle: String, rawArtist: String) async -> Track? { nil }
+    func write(rawTitle: String, rawArtist: String, candidate: Track) async throws {}
 }

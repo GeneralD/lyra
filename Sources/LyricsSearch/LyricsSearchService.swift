@@ -1,15 +1,12 @@
 import Alamofire
 import Domain
 import LRCLibService
-import MusicBrainzService
-import TitleExtraction
 import Dependencies
 import Foundation
 
 public struct LyricsSearchService: LyricsRepository {
-    @Dependency(\.metadataCache) private var metadataCache
     @Dependency(\.lyricsCache) private var lyricsCache
-    @Dependency(\.titleExtractors) private var titleExtractors
+    @Dependency(\.metadataNormalizers) private var metadataNormalizers
 
     public init() {}
 }
@@ -17,9 +14,10 @@ public struct LyricsSearchService: LyricsRepository {
 // MARK: - LyricsRepository
 
 extension LyricsSearchService {
-    public func resolveMetadata(title: String, artist: String) async -> ResolvedTrack? {
-        for extractor in titleExtractors {
-            let candidates = await extractor.extract(rawTitle: title, rawArtist: artist)
+    public func resolveMetadata(title: String, artist: String) async -> Track? {
+        let rawTrack = Track(title: title, artist: artist)
+        for normalizer in metadataNormalizers {
+            let candidates = await normalizer.resolve(track: rawTrack)
             guard let first = candidates.first else { continue }
             return first
         }
@@ -32,36 +30,29 @@ extension LyricsSearchService {
             return cached
         }
 
-        // Resolve candidates for search
-        var allCandidates: [ResolvedTrack] = []
-        for extractor in titleExtractors {
-            let candidates = await extractor.extract(rawTitle: title, rawArtist: artist)
+        let rawTrack = Track(title: title, artist: artist)
+        var fallbackCandidates: [Track] = []
+
+        // Try each normalizer: get candidates → LRCLIB get
+        for normalizer in metadataNormalizers {
+            let candidates = await normalizer.resolve(track: rawTrack)
             guard !candidates.isEmpty else { continue }
-            allCandidates = candidates
-            break
-        }
-
-        // Search with resolved candidates
-        if let result = await searchWithCandidates(allCandidates, duration: duration) {
-            let displayResult = allCandidates.first
-                .map { result.withDisplay(title: $0.title, artist: $0.artist) } ?? result
-            if !artist.isEmpty {
-                try? await lyricsCache.write(title: title, artist: artist, result: displayResult)
+            if let result = await searchWithCandidates(candidates, duration: duration) {
+                let displayResult = candidates.first
+                    .map { result.withDisplay(title: $0.title, artist: $0.artist) } ?? result
+                if !artist.isEmpty {
+                    try? await lyricsCache.write(title: title, artist: artist, result: displayResult)
+                }
+                return displayResult
             }
-            return displayResult
-        }
-
-        // MusicBrainz fallback
-        if let result = await fetchViaMusicBrainz(title: title, artist: artist, duration: duration) {
-            if !artist.isEmpty {
-                try? await lyricsCache.write(title: title, artist: artist, result: result)
+            if fallbackCandidates.isEmpty {
+                fallbackCandidates = candidates
             }
-            return result
         }
 
-        // Regex free-text search fallback
-        let regexCandidates = RegexTitleExtractor().generateCandidates(title: title, artist: artist)
-        if let result = await searchFallback(candidates: regexCandidates) {
+        // LRCLIB search fallback
+        let searchCandidates = fallbackCandidates.isEmpty ? [rawTrack] : fallbackCandidates
+        if let result = await searchFallback(candidates: searchCandidates) {
             if !artist.isEmpty {
                 try? await lyricsCache.write(title: title, artist: artist, result: result)
             }
@@ -75,7 +66,7 @@ extension LyricsSearchService {
 // MARK: - Search helpers
 
 private extension LyricsSearchService {
-    func searchWithCandidates(_ candidates: [ResolvedTrack], duration: TimeInterval?) async -> LyricsResult? {
+    func searchWithCandidates(_ candidates: [Track], duration: TimeInterval?) async -> LyricsResult? {
         for c in candidates where !c.artist.isEmpty {
             guard let result = await lrclib(LyricsResult.self, from: .get(title: c.title, artist: c.artist, duration: duration)),
                   result.plainLyrics != nil || result.syncedLyrics != nil
@@ -87,65 +78,10 @@ private extension LyricsSearchService {
     }
 }
 
-// MARK: - MusicBrainz → LRCLIB pipeline
-
-private extension LyricsSearchService {
-    func fetchViaMusicBrainz(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
-        let parser = RegexTitleExtractor()
-        let parsed = parser.parseArtistTitle(title)
-        let normalized = parsed.title
-        let normalizedArtist = parser.normalizeArtist(parsed.artist ?? artist)
-
-        if let cached = await metadataCache.read(title: normalized, artist: normalizedArtist) {
-            let result = await lrclib(LyricsResult.self, from: .get(
-                title: cached.title, artist: cached.artist, duration: cached.duration
-            ))
-            if let result, result.plainLyrics != nil || result.syncedLyrics != nil {
-                return result
-            }
-        }
-
-        for query: MusicBrainzAPI in [
-            .searchRecording(title: normalized, artist: normalizedArtist, duration: duration),
-            .searchRecording(title: normalized, artist: nil, duration: nil),
-        ] {
-            guard let response: MusicBrainzResponse = await musicbrainz(query) else { continue }
-            if let result = await matchRecording(from: response, cacheKey: (normalized, normalizedArtist)) {
-                return result
-            }
-        }
-        return nil
-    }
-
-    func matchRecording(from response: MusicBrainzResponse, cacheKey: (title: String, artist: String)) async -> LyricsResult? {
-        let parser = RegexTitleExtractor()
-        for recording in response.recordings {
-            guard let artistName = recording.artistName else { continue }
-            var seen = Set<String>()
-            let titles = [recording.title, parser.normalize(recording.title), parser.stripBrackets(recording.title)]
-                .filter { seen.insert($0).inserted }
-            for title in titles {
-                let result = await lrclib(LyricsResult.self, from: .get(
-                    title: title, artist: artistName, duration: recording.duration
-                ))
-                guard let result, result.plainLyrics != nil || result.syncedLyrics != nil else { continue }
-
-                let metadata = ResolvedMetadata(
-                    title: title, artist: artistName,
-                    duration: recording.duration, musicbrainzId: recording.id
-                )
-                try? await metadataCache.write(queryTitle: cacheKey.title, queryArtist: cacheKey.artist, metadata: metadata)
-                return result
-            }
-        }
-        return nil
-    }
-}
-
 // MARK: - Fallback search
 
 private extension LyricsSearchService {
-    func searchFallback(candidates: [ResolvedTrack]) async -> LyricsResult? {
+    func searchFallback(candidates: [Track]) async -> LyricsResult? {
         let matches = await candidates
             .map { $0.artist.isEmpty ? $0.title : "\($0.title) \($0.artist)" }
             .asyncCompactMap { await lrclib([LyricsResult].self, from: .search(query: $0)) }
@@ -164,13 +100,6 @@ private extension LyricsSearchService {
         await AF.request(api)
             .validate(statusCode: 200 ..< 300)
             .serializingDecodable(type)
-            .response.value
-    }
-
-    func musicbrainz<T: Decodable & Sendable>(_ api: MusicBrainzAPI) async -> T? {
-        await AF.request(api)
-            .validate(statusCode: 200 ..< 300)
-            .serializingDecodable(T.self)
             .response.value
     }
 }

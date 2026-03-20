@@ -7,7 +7,7 @@ public struct LyricsService {
 
     public init() {}
 
-    public func resolveMetadata(title: String, artist: String) async -> ResolvedTrack? {
+    public func resolveMetadata(title: String, artist: String) async -> Track? {
         await repository.resolveMetadata(title: title, artist: artist)
     }
 

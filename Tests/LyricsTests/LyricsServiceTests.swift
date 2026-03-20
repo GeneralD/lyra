@@ -10,7 +10,7 @@ struct LyricsServiceTests {
     func resolveMetadata() async {
         await withDependencies {
             $0.lyricsRepository = MockLyricsRepository(
-                metadata: ResolvedTrack(title: "Resolved", artist: "Artist"),
+                metadata: Track(title: "Resolved", artist: "Artist"),
                 lyrics: nil
             )
         } operation: {
@@ -48,9 +48,9 @@ struct LyricsServiceTests {
 // MARK: - Mocks
 
 private struct MockLyricsRepository: LyricsRepository {
-    let metadata: ResolvedTrack?
+    let metadata: Track?
     let lyrics: LyricsResult?
 
-    func resolveMetadata(title: String, artist: String) async -> ResolvedTrack? { metadata }
+    func resolveMetadata(title: String, artist: String) async -> Track? { metadata }
     func fetchLyrics(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { lyrics }
 }

@@ -1,15 +1,67 @@
+import Alamofire
 import CollectionKit
+import Dependencies
 import Domain
+import MusicBrainzService
 
-public struct RegexTitleExtractor {
+public struct RegexNormalizer {
+    @Dependency(\.metadataCache) private var metadataCache
+
     public init() {}
 }
 
-extension RegexTitleExtractor: Sendable {}
+extension RegexNormalizer: Sendable {}
 
-extension RegexTitleExtractor: TitleExtractor {
-    public func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] {
-        generateCandidates(title: rawTitle, artist: rawArtist)
+extension RegexNormalizer: MetadataNormalizer {
+    public func resolve(track: Track) async -> [Track] {
+        let regexCandidates = generateCandidates(title: track.title, artist: track.artist)
+        let musicBrainzCandidates = await fetchMusicBrainzCandidates(title: track.title, artist: track.artist)
+
+        var seen = Set<String>()
+        return (musicBrainzCandidates + regexCandidates)
+            .filter { seen.insert("\($0.title.lowercased())|\($0.artist.lowercased())").inserted }
+    }
+}
+
+// MARK: - MusicBrainz refinement
+
+private extension RegexNormalizer {
+    func fetchMusicBrainzCandidates(title: String, artist: String) async -> [Track] {
+        let parsed = parseArtistTitle(title)
+        let normalized = parsed.title
+        let normalizedArtist = normalizeArtist(parsed.artist ?? artist)
+
+        var candidates: [Track] = []
+
+        if let cached = await metadataCache.read(title: normalized, artist: normalizedArtist) {
+            candidates.append(Track(title: cached.title, artist: cached.artist))
+        }
+
+        for query: MusicBrainzAPI in [
+            .searchRecording(title: normalized, artist: normalizedArtist, duration: nil),
+            .searchRecording(title: normalized, artist: nil, duration: nil),
+        ] {
+            guard candidates.isEmpty else { break }
+            guard let response: MusicBrainzResponse = await musicbrainz(query) else { continue }
+            for recording in response.recordings {
+                guard let artistName = recording.artistName else { continue }
+                var seen = Set<String>()
+                let titles = [recording.title, normalize(recording.title), stripBrackets(recording.title)]
+                    .filter { seen.insert($0).inserted }
+                for t in titles {
+                    candidates.append(Track(title: t, artist: artistName))
+                }
+            }
+        }
+
+        return candidates
+    }
+
+    func musicbrainz<T: Decodable & Sendable>(_ api: MusicBrainzAPI) async -> T? {
+        await AF.request(api)
+            .validate(statusCode: 200 ..< 300)
+            .serializingDecodable(T.self)
+            .response.value
     }
 }
 
@@ -56,7 +108,7 @@ private let artistSuffixPatterns = [
 
 // MARK: - Public API
 
-extension RegexTitleExtractor {
+extension RegexNormalizer {
     /// Normalize a title by removing noise brackets, suffixes, and series markers
     public func normalize(_ title: String) -> String {
         var s = title
@@ -134,7 +186,7 @@ extension RegexTitleExtractor {
             .unless(isNoise)
     }
 
-    public func generateCandidates(title: String, artist: String) -> [ResolvedTrack] {
+    public func generateCandidates(title: String, artist: String) -> [Track] {
         let normalizedArtist = normalizeArtist(artist)
         let parsed = parseArtistTitle(title)
         let normalized = normalize(title)
@@ -145,23 +197,23 @@ extension RegexTitleExtractor {
         var seen = Set<String>()
         return [
             // From parseArtistTitle (best for "Artist - Title" format)
-            parsed.artist.map { [ResolvedTrack(title: parsed.title, artist: $0)] } ?? [],
+            parsed.artist.map { [Track(title: parsed.title, artist: $0)] } ?? [],
             // Normalized title with MediaRemote artist
-            artistUsable ? [ResolvedTrack(title: normalized, artist: normalizedArtist)] : [],
+            artistUsable ? [Track(title: normalized, artist: normalizedArtist)] : [],
             // Stripped title with artist
-            artistUsable ? [ResolvedTrack(title: stripped, artist: normalizedArtist)] : [],
+            artistUsable ? [Track(title: stripped, artist: normalizedArtist)] : [],
             // Split parts as artist-title pairs
             parts.count >= 2
-                ? [ResolvedTrack(title: parts[1], artist: parts[0]),
-                   ResolvedTrack(title: parts[0], artist: parts[1])]
+                ? [Track(title: parts[1], artist: parts[0]),
+                   Track(title: parts[0], artist: parts[1])]
                 : [],
             // Individual parts with artist
             artistUsable
-                ? parts.unless { $0 == stripped }.map { ResolvedTrack(title: $0, artist: normalizedArtist) }
+                ? parts.unless { $0 == stripped }.map { Track(title: $0, artist: normalizedArtist) }
                 : [],
             // Title only (last resort)
             parts.count == 1 && !artistUsable
-                ? [ResolvedTrack(title: parts[0], artist: "")]
+                ? [Track(title: parts[0], artist: "")]
                 : [],
         ]
         .flatten

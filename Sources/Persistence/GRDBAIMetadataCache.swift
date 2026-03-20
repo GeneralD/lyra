@@ -11,16 +11,16 @@ public struct GRDBAIMetadataCache: AIMetadataCacheRepository {
 }
 
 extension GRDBAIMetadataCache {
-    public func read(rawTitle: String, rawArtist: String) async -> ResolvedTrack? {
+    public func read(rawTitle: String, rawArtist: String) async -> Track? {
         try? await dbManager.dbQueue.read { db in
             guard let record = try AIMetadataCacheRecord
                 .filter(Column("raw_title") == rawTitle && Column("raw_artist") == rawArtist)
                 .fetchOne(db) else { return nil }
-            return ResolvedTrack(title: record.resolvedTitle, artist: record.resolvedArtist)
+            return Track(title: record.resolvedTitle, artist: record.resolvedArtist)
         }
     }
 
-    public func write(rawTitle: String, rawArtist: String, candidate: ResolvedTrack) async throws {
+    public func write(rawTitle: String, rawArtist: String, candidate: Track) async throws {
         try await dbManager.dbQueue.write { db in
             let record = AIMetadataCacheRecord(
                 rawTitle: rawTitle,
@@ -45,6 +45,6 @@ extension AIMetadataCacheRepositoryKey: DependencyKey {
 }
 
 private struct NoopAIMetadataCacheLive: AIMetadataCacheRepository {
-    func read(rawTitle: String, rawArtist: String) async -> ResolvedTrack? { nil }
-    func write(rawTitle: String, rawArtist: String, candidate: ResolvedTrack) async throws {}
+    func read(rawTitle: String, rawArtist: String) async -> Track? { nil }
+    func write(rawTitle: String, rawArtist: String, candidate: Track) async throws {}
 }

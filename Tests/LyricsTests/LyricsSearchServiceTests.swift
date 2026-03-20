@@ -5,7 +5,6 @@ import Testing
 
 @testable import Lyrics
 @testable import LyricsSearch
-@testable import TitleExtraction
 
 @Suite("LyricsSearchService")
 struct LyricsSearchServiceTests {
@@ -14,24 +13,24 @@ struct LyricsSearchServiceTests {
 
     @Suite("resolveMetadata")
     struct ResolveMetadata {
-        @Test("returns first candidate from first non-empty extractor")
+        @Test("returns first candidate from first non-empty normalizer")
         func returnsFirstCandidate() async {
             await withDependencies {
-                $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    ResolvedTrack(title: "AI Title", artist: "AI Artist"),
+                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                    Track(title: "LLM Title", artist: "LLM Artist"),
                 ])]
             } operation: {
                 let service = LyricsSearchService()
                 let result = await service.resolveMetadata(title: "raw", artist: "raw")
-                #expect(result?.title == "AI Title")
-                #expect(result?.artist == "AI Artist")
+                #expect(result?.title == "LLM Title")
+                #expect(result?.artist == "LLM Artist")
             }
         }
 
-        @Test("returns nil when all extractors return empty")
+        @Test("returns nil when all normalizers return empty")
         func returnsNilWhenEmpty() async {
             await withDependencies {
-                $0.titleExtractors = [StubTitleExtractor(candidates: [])]
+                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [])]
             } operation: {
                 let service = LyricsSearchService()
                 let result = await service.resolveMetadata(title: "raw", artist: "raw")
@@ -39,18 +38,18 @@ struct LyricsSearchServiceTests {
             }
         }
 
-        @Test("calls titleExtractors exactly once per invocation")
-        func callsExtractorOnce() async {
-            nonisolated(unsafe) var extractorCallCount = 0
+        @Test("calls metadataNormalizers exactly once per invocation")
+        func callsNormalizerOnce() async {
+            nonisolated(unsafe) var normalizerCallCount = 0
 
             await withDependencies {
-                $0.titleExtractors = [TrackingTitleExtractor {
-                    extractorCallCount += 1
+                $0.metadataNormalizers = [TrackingMetadataNormalizer {
+                    normalizerCallCount += 1
                 }]
             } operation: {
                 let service = LyricsSearchService()
                 _ = await service.resolveMetadata(title: "raw", artist: "raw")
-                #expect(extractorCallCount == 1)
+                #expect(normalizerCallCount == 1)
             }
         }
     }
@@ -68,8 +67,7 @@ struct LyricsSearchServiceTests {
 
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: cached)
-                $0.titleExtractors = []
-                $0.metadataCache = NoopMetadataCache()
+                $0.metadataNormalizers = []
             } operation: {
                 let service = LyricsSearchService()
                 let result = await service.fetchLyrics(title: "raw", artist: "raw", duration: nil)
@@ -78,19 +76,18 @@ struct LyricsSearchServiceTests {
             }
         }
 
-        @Test("lyrics cache hit does NOT call titleExtractors")
-        func cacheHitSkipsExtractors() async {
+        @Test("lyrics cache hit does NOT call metadataNormalizers")
+        func cacheHitSkipsNormalizers() async {
             let cached = LyricsResult(trackName: "T", artistName: "A", syncedLyrics: "[00:01.00] Hi")
-            nonisolated(unsafe) var extractorCalled = false
+            nonisolated(unsafe) var normalizerCalled = false
 
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: cached)
-                $0.titleExtractors = [TrackingTitleExtractor { extractorCalled = true }]
-                $0.metadataCache = NoopMetadataCache()
+                $0.metadataNormalizers = [TrackingMetadataNormalizer { normalizerCalled = true }]
             } operation: {
                 let service = LyricsSearchService()
                 _ = await service.fetchLyrics(title: "raw", artist: "raw", duration: nil)
-                #expect(!extractorCalled, "titleExtractors should not be called on cache hit")
+                #expect(!normalizerCalled, "metadataNormalizers should not be called on cache hit")
             }
         }
 
@@ -100,10 +97,9 @@ struct LyricsSearchServiceTests {
 
             await withDependencies {
                 $0.lyricsCache = writable
-                $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    ResolvedTrack(title: "AI Title", artist: "AI Artist"),
+                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                    Track(title: "LLM Title", artist: "LLM Artist"),
                 ])]
-                $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
                 _ = await service.fetchLyrics(title: "zzz_unique_zzz", artist: "channel", duration: nil)
@@ -122,10 +118,9 @@ struct LyricsSearchServiceTests {
         func returnsNilWithoutLyrics() async {
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
-                $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    ResolvedTrack(title: "Nonexistent XYZ999", artist: "Nobody ABC123"),
+                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                    Track(title: "Nonexistent XYZ999", artist: "Nobody ABC123"),
                 ])]
-                $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
                 let result = await service.fetchLyrics(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz", duration: nil)
@@ -142,10 +137,9 @@ struct LyricsSearchServiceTests {
         func metadataAndLyricsAreIndependent() async {
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
-                $0.titleExtractors = [StubTitleExtractor(candidates: [
-                    ResolvedTrack(title: "Correct Title", artist: "Correct Artist"),
+                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                    Track(title: "Correct Title", artist: "Correct Artist"),
                 ])]
-                $0.metadataCache = NoopMetadataCache()
             } operation: {
                 let service = LyricsSearchService()
 
@@ -183,21 +177,16 @@ private final class WritableLyricsCache: LyricsCacheRepository, @unchecked Senda
     }
 }
 
-private struct StubTitleExtractor: TitleExtractor {
-    let candidates: [ResolvedTrack]
-    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] { candidates }
+private struct StubMetadataNormalizer: MetadataNormalizer {
+    let candidates: [Track]
+    func resolve(track: Track) async -> [Track] { candidates }
 }
 
-private final class TrackingTitleExtractor: TitleExtractor, @unchecked Sendable {
-    let onExtract: () -> Void
-    init(onExtract: @escaping () -> Void) { self.onExtract = onExtract }
-    func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] {
-        onExtract()
+private final class TrackingMetadataNormalizer: MetadataNormalizer, @unchecked Sendable {
+    let onResolve: () -> Void
+    init(onResolve: @escaping () -> Void) { self.onResolve = onResolve }
+    func resolve(track: Track) async -> [Track] {
+        onResolve()
         return []
     }
-}
-
-private struct NoopMetadataCache: MetadataCacheRepository {
-    func read(title: String, artist: String) async -> ResolvedMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: ResolvedMetadata) async throws {}
 }

@@ -1,4 +1,4 @@
-public struct ResolvedTrack {
+public struct Track {
     public let title: String
     public let artist: String
 
@@ -8,4 +8,4 @@ public struct ResolvedTrack {
     }
 }
 
-extension ResolvedTrack: Sendable, Equatable {}
+extension Track: Sendable, Equatable {}

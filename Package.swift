@@ -66,8 +66,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "LRCLibService",
-                "MusicBrainzService",
-                "TitleExtraction",
                 .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -77,6 +75,8 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "AIService",
+                "MusicBrainzService",
+                .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "CollectionKit", package: "CollectionKit"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

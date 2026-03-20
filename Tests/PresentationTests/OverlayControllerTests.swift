@@ -150,7 +150,7 @@ private struct MockNowPlayingProvider: NowPlayingProvider {
 private struct MockLyricsRepository: LyricsRepository {
     let result: LyricsResult?
 
-    func resolveMetadata(title: String, artist: String) async -> ResolvedTrack? { nil }
+    func resolveMetadata(title: String, artist: String) async -> Track? { nil }
     func fetchLyrics(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { result }
 }
 

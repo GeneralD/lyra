@@ -3,31 +3,31 @@ import Dependencies
 import Domain
 import Foundation
 
-public struct LLMTitleExtractor {
+public struct LLMNormalizer {
     @Dependency(\.config) private var config
     @Dependency(\.aiMetadataCache) private var cache
 
     public init() {}
 }
 
-extension LLMTitleExtractor: TitleExtractor {
-    public func extract(rawTitle: String, rawArtist: String) async -> [ResolvedTrack] {
+extension LLMNormalizer: MetadataNormalizer {
+    public func resolve(track: Track) async -> [Track] {
         guard let aiConfig = config.ai else { return [] }
 
-        if let cached = await cache.read(rawTitle: rawTitle, rawArtist: rawArtist) {
+        if let cached = await cache.read(rawTitle: track.title, rawArtist: track.artist) {
             return [cached]
         }
 
-        guard let metadata = await callAPI(config: aiConfig, rawTitle: rawTitle, rawArtist: rawArtist),
+        guard let metadata = await callAPI(config: aiConfig, rawTitle: track.title, rawArtist: track.artist),
               !metadata.title.isEmpty
         else { return [] }
-        let candidate = ResolvedTrack(title: metadata.title, artist: metadata.artist)
-        try? await cache.write(rawTitle: rawTitle, rawArtist: rawArtist, candidate: candidate)
+        let candidate = Track(title: metadata.title, artist: metadata.artist)
+        try? await cache.write(rawTitle: track.title, rawArtist: track.artist, candidate: candidate)
         return [candidate]
     }
 }
 
-private extension LLMTitleExtractor {
+private extension LLMNormalizer {
     func callAPI(config: ResolvedAIConfig, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
         let api = OpenAICompatibleAPI(config: config)
         guard let request = try? api.chatCompletion(rawTitle: rawTitle, rawArtist: rawArtist) else { return nil }
@@ -60,9 +60,9 @@ private extension LLMTitleExtractor {
 
 // MARK: - DependencyKey
 
-extension TitleExtractorKey: DependencyKey {
-    public static let liveValue: [any TitleExtractor] = [
-        LLMTitleExtractor(),
-        RegexTitleExtractor(),
+extension MetadataNormalizerKey: DependencyKey {
+    public static let liveValue: [any MetadataNormalizer] = [
+        LLMNormalizer(),
+        RegexNormalizer(),
     ]
 }
