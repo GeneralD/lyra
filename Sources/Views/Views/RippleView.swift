@@ -17,38 +17,42 @@ public struct RippleView: View {
     }
 
     public var body: some View {
-        let rippleConfig = config.ripple
-        if rippleConfig.enabled {
-            let baseNSColor: NSColor = {
-                guard case .solid(let hex) = rippleConfig.color else { return .white }
-                return (NSColor(hexString: hex) ?? .white).usingColorSpace(.deviceRGB) ?? .white
-            }()
+        if config.ripple.enabled {
+            rippleCanvas
+        }
+    }
 
-            TimelineView(.animation) { timeline in
-                Canvas { context, size in
-                    let now = timeline.date
-                    for ripple in rippleState.ripples {
-                        let elapsed = now.timeIntervalSince(ripple.startTime)
-                        let dur = ripple.idle ? rippleConfig.duration * 3 : rippleConfig.duration
-                        guard elapsed < dur else { continue }
-                        let t = elapsed / dur
-                        let easeOut = 1 - (1 - t) * (1 - t)
-                        let radius = easeOut * rippleConfig.radius
-                        let shifted = Color(
-                            hue: (baseNSColor.hueComponent + ripple.hueShift).truncatingRemainder(dividingBy: 1),
-                            saturation: baseNSColor.saturationComponent,
-                            brightness: baseNSColor.brightnessComponent,
-                            opacity: baseNSColor.alphaComponent * pow(1 - t, 0.6)
-                        )
-                        let x = ripple.position.x - screenOrigin.x
-                        let y = size.height - (ripple.position.y - screenOrigin.y)
-                        let rect = CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)
-                        context.stroke(
-                            Path(ellipseIn: rect),
-                            with: .color(shifted),
-                            lineWidth: 2.5
-                        )
-                    }
+    private var rippleCanvas: some View {
+        let rippleConfig = config.ripple
+        let baseNSColor: NSColor = {
+            guard case .solid(let hex) = rippleConfig.color else { return .white }
+            return (NSColor(hexString: hex) ?? .white).usingColorSpace(.deviceRGB) ?? .white
+        }()
+
+        return TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                let now = timeline.date
+                for ripple in rippleState.ripples {
+                    let elapsed = now.timeIntervalSince(ripple.startTime)
+                    let dur = ripple.idle ? rippleConfig.duration * 3 : rippleConfig.duration
+                    guard elapsed < dur else { continue }
+                    let t = elapsed / dur
+                    let easeOut = 1 - (1 - t) * (1 - t)
+                    let radius = easeOut * rippleConfig.radius
+                    let shifted = Color(
+                        hue: (baseNSColor.hueComponent + ripple.hueShift).truncatingRemainder(dividingBy: 1),
+                        saturation: baseNSColor.saturationComponent,
+                        brightness: baseNSColor.brightnessComponent,
+                        opacity: baseNSColor.alphaComponent * pow(1 - t, 0.6)
+                    )
+                    let x = ripple.position.x - screenOrigin.x
+                    let y = size.height - (ripple.position.y - screenOrigin.y)
+                    let rect = CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)
+                    context.stroke(
+                        Path(ellipseIn: rect),
+                        with: .color(shifted),
+                        lineWidth: 2.5
+                    )
                 }
             }
         }
