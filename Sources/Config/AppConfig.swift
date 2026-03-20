@@ -1,9 +1,5 @@
 import Domain
-import Dependencies
 import Foundation
-import TOMLKit
-
-// MARK: - AppConfig
 
 public struct AppConfig: Sendable, Decodable {
     public let text: TextConfig
@@ -48,58 +44,10 @@ public struct AppConfig: Sendable, Decodable {
     }
 }
 
-// MARK: - Wallpaper URL
-
 extension AppConfig {
     public var wallpaperURL: URL? {
         guard let wallpaper else { return nil }
         guard !wallpaper.hasPrefix("/") else { return URL(fileURLWithPath: wallpaper) }
         return configDir.map { URL(fileURLWithPath: $0).appendingPathComponent(wallpaper) }
-    }
-}
-
-// MARK: - Load
-
-extension AppConfig {
-    public static func load() -> AppConfig {
-        let home = NSHomeDirectory()
-        let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
-        let candidates = [
-            "\(xdgConfig)/lyra/config.toml",
-            "\(home)/.lyra/config.toml",
-            "\(xdgConfig)/lyra/config.json",
-            "\(home)/.lyra/config.json",
-        ]
-        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }),
-              let content = try? String(contentsOfFile: path, encoding: .utf8)
-        else { return .init() }
-
-        let configDir = (path as NSString).deletingLastPathComponent
-        let decoded: AppConfig?
-        if path.hasSuffix(".toml") {
-            do {
-                let table = try TOMLTable(string: content)
-                resolveIncludes(into: table, configDir: configDir)
-                table.remove(at: "includes")
-                decoded = try TOMLDecoder().decode(AppConfig.self, from: table)
-            } catch {
-                notifyConfigError(path: path, error: error)
-                decoded = nil
-            }
-        } else {
-            do {
-                decoded = try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
-            } catch {
-                notifyConfigError(path: path, error: error)
-                decoded = nil
-            }
-        }
-        guard let decoded else { return .init() }
-        return AppConfig(
-            text: decoded.text, artwork: decoded.artwork, ripple: decoded.ripple,
-            screen: decoded.screen, wallpaper: decoded.wallpaper,
-            configDir: configDir,
-            ai: decoded.ai
-        )
     }
 }

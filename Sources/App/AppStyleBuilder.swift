@@ -60,6 +60,6 @@ extension AppConfig {
 
 extension AppStyleKey: DependencyKey {
     public static let liveValue: AppStyle = MainActor.assumeIsolated {
-        AppConfig.load().toAppStyle()
+        ConfigLoader.shared.load().toAppStyle()
     }
 }

@@ -13,7 +13,7 @@ struct DaemonCommand: ParsableCommand {
 
     func run() {
         MainActor.assumeIsolated {
-            let appConfig = AppConfig.load()
+            let appConfig = ConfigLoader.shared.load()
             let resolvedConfig = appConfig.toAppStyle()
 
             withDependencies {
