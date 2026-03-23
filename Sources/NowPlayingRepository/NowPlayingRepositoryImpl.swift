@@ -3,7 +3,7 @@ import MediaRemoteDataSource
 import Dependencies
 import Foundation
 
-public struct NowPlayingService: NowPlayingProvider {
+public struct NowPlayingRepositoryImpl: NowPlayingProvider {
     private let bridge: MediaRemoteBridge
 
     public init(bridge: MediaRemoteBridge) {
@@ -11,7 +11,7 @@ public struct NowPlayingService: NowPlayingProvider {
     }
 }
 
-extension NowPlayingService {
+extension NowPlayingRepositoryImpl {
     public func stream() -> AsyncStream<NowPlaying?> {
         let bridge = self.bridge
         return AsyncStream { continuation in
@@ -50,7 +50,7 @@ extension NowPlaying {
 // MARK: - DependencyKey
 
 extension NowPlayingProviderKey: DependencyKey {
-    public static let liveValue: any NowPlayingProvider = NowPlayingService(bridge: MediaRemoteBridge())
+    public static let liveValue: any NowPlayingProvider = NowPlayingRepositoryImpl(bridge: MediaRemoteBridge())
 }
 
-extension NowPlayingService: Sendable {}
+extension NowPlayingRepositoryImpl: Sendable {}
