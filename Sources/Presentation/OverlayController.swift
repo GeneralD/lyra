@@ -99,7 +99,8 @@ private extension OverlayController {
             guard let title = info.title, let artist = info.artist else { return }
 
             // Step 1: Resolve metadata (fast)
-            let candidates = await self.metadataService.resolveCandidates(title: title, artist: artist)
+            let rawTrack = Track(title: title, artist: artist, duration: info.duration)
+            let candidates = await self.metadataService.resolveCandidates(track: rawTrack)
             guard generation == self.fetchGeneration else { return }
             if let resolved = candidates.first {
                 self.revealTitle(resolved.title)
@@ -108,8 +109,8 @@ private extension OverlayController {
 
             // Step 2: Fetch lyrics (slow)
             let result = candidates.isEmpty
-                ? await service.fetchLyrics(track: Track(title: title, artist: artist), duration: info.duration)
-                : await service.fetchLyrics(candidates: candidates, duration: info.duration)
+                ? await service.fetchLyrics(track: rawTrack)
+                : await service.fetchLyrics(candidates: candidates)
             guard generation == self.fetchGeneration else { return }
 
             if let trackName = result.trackName { self.revealTitle(trackName) }

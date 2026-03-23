@@ -6,12 +6,12 @@ public struct MetadataService: Sendable {
 
     public init() {}
 
-    public func resolve(title: String, artist: String) async -> Track? {
-        let candidates = await repository.resolve(track: Track(title: title, artist: artist))
+    public func resolve(track: Track) async -> Track? {
+        let candidates = await repository.resolve(track: track)
         return candidates.first
     }
 
-    public func resolveCandidates(title: String, artist: String) async -> [Track] {
-        await repository.resolve(track: Track(title: title, artist: artist))
+    public func resolveCandidates(track: Track) async -> [Track] {
+        await repository.resolve(track: track)
     }
 }

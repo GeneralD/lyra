@@ -1,9 +1,8 @@
 import Dependencies
-import Foundation
 
 public protocol LyricsRepository: Sendable {
-    func fetchLyrics(track: Track, duration: TimeInterval?) async -> LyricsResult?
-    func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult?
+    func fetchLyrics(track: Track) async -> LyricsResult?
+    func fetchLyrics(candidates: [Track]) async -> LyricsResult?
 }
 
 public enum LyricsRepositoryKey: TestDependencyKey {
@@ -18,6 +17,6 @@ extension DependencyValues {
 }
 
 private struct UnimplementedLyricsRepository: LyricsRepository {
-    func fetchLyrics(track: Track, duration: TimeInterval?) async -> LyricsResult? { nil }
-    func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult? { nil }
+    func fetchLyrics(track: Track) async -> LyricsResult? { nil }
+    func fetchLyrics(candidates: [Track]) async -> LyricsResult? { nil }
 }

@@ -118,7 +118,7 @@ let package = Package(
         ),
         .target(
             name: "NowPlayingRepository",
-            dependencies: ["Domain", "MediaRemote"]
+            dependencies: ["Domain", "MediaRemoteDataSource"]
         ),
 
         // DataSource
@@ -159,7 +159,7 @@ let package = Package(
 
         // Isolated
         .target(
-            name: "MediaRemote",
+            name: "MediaRemoteDataSource",
             dependencies: [],
             resources: [.copy("Resources/media-remote-helper.swift")]
         ),

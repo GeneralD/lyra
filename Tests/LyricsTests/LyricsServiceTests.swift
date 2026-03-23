@@ -15,7 +15,7 @@ struct LyricsServiceTests {
         } operation: {
             let service = LyricsService()
             let result = await service.fetchLyrics(
-                candidates: [Track(title: "Test", artist: "Artist")], duration: nil
+                candidates: [Track(title: "Test", artist: "Artist")]
             )
             #expect(result.id == 2)
         }
@@ -28,7 +28,7 @@ struct LyricsServiceTests {
         } operation: {
             let service = LyricsService()
             let result = await service.fetchLyrics(
-                track: Track(title: "Unknown", artist: "Nobody"), duration: nil
+                track: Track(title: "Unknown", artist: "Nobody")
             )
             #expect(result == .empty)
         }
@@ -45,7 +45,7 @@ struct MetadataServiceTests {
             ])
         } operation: {
             let service = MetadataService()
-            let result = await service.resolve(title: "raw", artist: "raw")
+            let result = await service.resolve(track: Track(title: "raw", artist: "raw"))
             #expect(result?.title == "Resolved")
             #expect(result?.artist == "Artist")
         }
@@ -57,7 +57,7 @@ struct MetadataServiceTests {
             $0.metadataRepository = MockMetadataRepository(candidates: [])
         } operation: {
             let service = MetadataService()
-            let result = await service.resolve(title: "raw", artist: "raw")
+            let result = await service.resolve(track: Track(title: "raw", artist: "raw"))
             #expect(result == nil)
         }
     }
@@ -67,8 +67,8 @@ struct MetadataServiceTests {
 
 private struct MockLyricsRepository: LyricsRepository {
     let lyrics: LyricsResult?
-    func fetchLyrics(track: Track, duration: TimeInterval?) async -> LyricsResult? { lyrics }
-    func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult? { lyrics }
+    func fetchLyrics(track: Track) async -> LyricsResult? { lyrics }
+    func fetchLyrics(candidates: [Track]) async -> LyricsResult? { lyrics }
 }
 
 private struct MockMetadataRepository: MetadataRepository {

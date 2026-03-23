@@ -150,8 +150,8 @@ private struct MockNowPlayingProvider: NowPlayingProvider {
 private struct MockLyricsRepository: LyricsRepository {
     let result: LyricsResult?
 
-    func fetchLyrics(track: Track, duration: TimeInterval?) async -> LyricsResult? { result }
-    func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult? { result }
+    func fetchLyrics(track: Track) async -> LyricsResult? { result }
+    func fetchLyrics(candidates: [Track]) async -> LyricsResult? { result }
 }
 
 private struct MockLyricsCache: LyricsCacheRepository {

@@ -1,5 +1,5 @@
 import Domain
-import MediaRemote
+import MediaRemoteDataSource
 import Dependencies
 import Foundation
 

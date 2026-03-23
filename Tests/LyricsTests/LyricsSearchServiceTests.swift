@@ -23,7 +23,7 @@ struct LyricsSearchServiceTests {
             } operation: {
                 let lyricsService = LyricsService()
                 let metadataService = MetadataService()
-                let result = await metadataService.resolve(title: "raw", artist: "raw")
+                let result = await metadataService.resolve(track: Track(title: "raw", artist: "raw"))
                 #expect(result?.title == "LLM Title")
                 #expect(result?.artist == "LLM Artist")
             }
@@ -37,7 +37,7 @@ struct LyricsSearchServiceTests {
             } operation: {
                 let lyricsService = LyricsService()
                 let metadataService = MetadataService()
-                let result = await metadataService.resolve(title: "raw", artist: "raw")
+                let result = await metadataService.resolve(track: Track(title: "raw", artist: "raw"))
                 #expect(result == nil)
             }
         }
@@ -53,7 +53,7 @@ struct LyricsSearchServiceTests {
             } operation: {
                 let lyricsService = LyricsService()
                 let metadataService = MetadataService()
-                _ = await metadataService.resolve(title: "raw", artist: "raw")
+                _ = await metadataService.resolve(track: Track(title: "raw", artist: "raw"))
                 #expect(callCount == 1)
             }
         }
@@ -76,7 +76,7 @@ struct LyricsSearchServiceTests {
             } operation: {
                 let lyricsService = LyricsService()
                 let metadataService = MetadataService()
-                _ = await lyricsService.fetchLyrics(track: Track(title: "zzz_unique_zzz", artist: "channel"), duration: nil)
+                _ = await lyricsService.fetchLyrics(track: Track(title: "zzz_unique_zzz", artist: "channel"))
 
                 let cachedResult = await writable.read(title: "zzz_unique_zzz", artist: "channel")
                 #expect(cachedResult == nil, "should not cache when no lyrics found")
@@ -99,7 +99,7 @@ struct LyricsSearchServiceTests {
             } operation: {
                 let lyricsService = LyricsService()
                 let metadataService = MetadataService()
-                let result = await lyricsService.fetchLyrics(track: Track(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz"), duration: nil)
+                let result = await lyricsService.fetchLyrics(track: Track(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz"))
                 #expect(result == .empty)
             }
         }
@@ -121,7 +121,7 @@ struct LyricsSearchServiceTests {
                 let lyricsService = LyricsService()
                 let metadataService = MetadataService()
 
-                let metadata = await metadataService.resolve(title: "zzz_test_zzz", artist: "zzz_test_zzz")
+                let metadata = await metadataService.resolve(track: Track(title: "zzz_test_zzz", artist: "zzz_test_zzz"))
                 #expect(metadata?.title == "Correct Title")
                 #expect(metadata?.artist == "Correct Artist")
             }
@@ -157,6 +157,6 @@ private final class WritableLyricsCache: LyricsCacheRepository, @unchecked Senda
 }
 
 private struct NoopLyricsRepository: LyricsRepository {
-    func fetchLyrics(track: Track, duration: TimeInterval?) async -> LyricsResult? { nil }
-    func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult? { nil }
+    func fetchLyrics(track: Track) async -> LyricsResult? { nil }
+    func fetchLyrics(candidates: [Track]) async -> LyricsResult? { nil }
 }
