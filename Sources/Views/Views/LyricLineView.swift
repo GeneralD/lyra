@@ -1,4 +1,3 @@
-import Config
 import Domain
 import Dependencies
 import SwiftUI

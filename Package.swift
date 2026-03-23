@@ -40,7 +40,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "TOMLKit", package: "TOMLKit"),
-                .product(name: "SwiftHEXColors", package: "SwiftHEXColors"),
             ]
         ),
         .target(
@@ -117,7 +116,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "Presentation",
-                "Config",
                 .product(name: "SwiftHEXColors", package: "SwiftHEXColors"),
                 .product(name: "CollectionKit", package: "CollectionKit"),
             ]
@@ -130,6 +128,9 @@ let package = Package(
                 "Views",
                 "Presentation",
                 "Config",
+                "LRCLibService",
+                "MusicBrainzService",
+                "AIService",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -139,12 +140,7 @@ let package = Package(
             name: "CLI",
             dependencies: [
                 "App",
-                "Config",
-                "LRCLibService",
-                "MusicBrainzService",
-                "AIService",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "TOMLKit", package: "TOMLKit"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             resources: [

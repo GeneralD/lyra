@@ -1,4 +1,3 @@
-import Config
 import Domain
 import Presentation
 import Dependencies

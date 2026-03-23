@@ -1,4 +1,5 @@
 import Dependencies
+import Domain
 import Foundation
 import TOMLKit
 
@@ -7,7 +8,55 @@ public struct ConfigLoader: Sendable {
     public static let shared = ConfigLoader()
 }
 
+extension ConfigLoader: HealthCheckable {
+    public var serviceName: String { "Config" }
+
+    public func healthCheck() async -> HealthCheckResult {
+        switch validate() {
+        case .loaded(let path):
+            return HealthCheckResult(status: .pass, detail: "loaded (\(path))")
+        case .defaults:
+            return HealthCheckResult(status: .pass, detail: "using defaults (no config file found)")
+        case .unreadable(let path):
+            return HealthCheckResult(status: .fail, detail: "cannot read \(path)")
+        case .decodeError(let path, let error):
+            return HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error)")
+        }
+    }
+}
+
+public enum ConfigValidationResult {
+    case loaded(path: String)
+    case defaults
+    case unreadable(path: String)
+    case decodeError(path: String, error: String)
+}
+
 public extension ConfigLoader {
+    func validate() -> ConfigValidationResult {
+        let home = NSHomeDirectory()
+        let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
+        let candidates = [
+            "\(xdgConfig)/lyra/config.toml",
+            "\(home)/.lyra/config.toml",
+            "\(xdgConfig)/lyra/config.json",
+            "\(home)/.lyra/config.json",
+        ]
+        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            return .defaults
+        }
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return .unreadable(path: path)
+        }
+        let configDir = (path as NSString).deletingLastPathComponent
+        do {
+            try decodeOrThrow(content: content, path: path, configDir: configDir)
+            return .loaded(path: path)
+        } catch {
+            return .decodeError(path: path, error: error.localizedDescription)
+        }
+    }
+
     func load() -> AppConfig {
         let home = NSHomeDirectory()
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
@@ -34,6 +83,18 @@ public extension ConfigLoader {
 }
 
 extension ConfigLoader {
+    @discardableResult
+    func decodeOrThrow(content: String, path: String, configDir: String) throws -> AppConfig {
+        if path.hasSuffix(".toml") {
+            let table = try TOMLTable(string: content)
+            resolveIncludes(into: table, configDir: configDir)
+            table.remove(at: "includes")
+            return try TOMLDecoder().decode(AppConfig.self, from: table)
+        } else {
+            return try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
+        }
+    }
+
     func decode(content: String, path: String, configDir: String) -> AppConfig? {
         if path.hasSuffix(".toml") {
             do {

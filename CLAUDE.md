@@ -8,31 +8,95 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 swift build                          # debug build
 swift build -c release               # release build
 swift test                           # run all tests
-swift test --filter TitleParser      # run single test suite
+swift test --filter ConfigTests      # run single test suite
 make build                           # release build via Makefile
 make install                         # install to /usr/local/bin
 ```
 
 ## Architecture
 
-macOS desktop overlay app showing synced lyrics and video wallpaper. Clean Architecture with 12 Swift Package targets enforcing layer boundaries at compile time.
+macOS desktop overlay app showing synced lyrics and video wallpaper. Clean Architecture with Swift Package targets enforcing layer boundaries at compile time.
 
-### Layer Dependency Flow
+### Module Dependency Graph
 
+```mermaid
+graph TD
+    subgraph Entry
+        lyra[lyra]
+        CLI[CLI]
+    end
+
+    subgraph UI
+        App[App]
+        Views[Views]
+    end
+
+    subgraph Logic
+        Presentation[Presentation]
+    end
+
+    subgraph Use Cases
+        Lyrics[Lyrics]
+        NowPlaying[NowPlaying]
+    end
+
+    subgraph Configuration
+        Config[Config]
+    end
+
+    subgraph Infrastructure
+        LyricsSearch[LyricsSearch]
+        MetadataNormalization[MetadataNormalization]
+        Persistence[Persistence]
+        subgraph API Services
+            LRCLibService[LRCLibService]
+            MusicBrainzService[MusicBrainzService]
+            AIService[AIService]
+        end
+    end
+
+    subgraph Isolated
+        MediaRemote[MediaRemote]
+    end
+
+    Domain[Domain]
+
+    lyra --> CLI
+    CLI --> App
+    App --> Views & Presentation & Config
+    App -.->|healthcheck registration| LRCLibService & MusicBrainzService & AIService
+    Views --> Presentation & Domain
+    Presentation --> Lyrics & NowPlaying & Domain
+    Lyrics --> LyricsSearch & Persistence & MetadataNormalization & Domain
+    NowPlaying --> MediaRemote & Domain
+    LyricsSearch --> LRCLibService & Domain
+    MetadataNormalization --> AIService & MusicBrainzService & Domain
+    Persistence --> Domain
+    Config --> Domain
+    LRCLibService --> Domain
+    MusicBrainzService --> Domain
+    AIService --> Domain
+
+    style Domain fill:#4a9,stroke:#333,color:#fff
+    style Lyrics fill:#59c,stroke:#333,color:#fff
+    style NowPlaying fill:#59c,stroke:#333,color:#fff
+    style MediaRemote fill:#966,stroke:#333,color:#fff
+    style lyra fill:#333,stroke:#fff,color:#fff
 ```
-lyra (executable entry point)
-  → CLI (ArgumentParser commands, ProcessManager, LaunchAgent)
-    → App (AppDelegate, OverlayWindow — window management only)
-      → Presentation (OverlayController, OverlayState, DecodeEffect)
-        → Lyrics (cache→API→cache orchestration)
-        → NowPlaying (MediaRemote notifications → AsyncStream)
-      → Views (SwiftUI views — purely declarative, no logic)
-      → Config (TOML/JSON config loading, text style resolution)
-        → Domain (models, protocols, DependencyKeys)
-  MediaRemote (isolated, no domain dependency)
-  Persistence (GRDB SQLite cache)
-  LyricsSearch (LRCLIB REST API client)
-```
+
+### Layer Summary
+
+| Layer | Modules | Responsibility |
+|---|---|---|
+| Executable | `lyra` | Entry point |
+| CLI | `CLI` | ArgumentParser commands, LaunchAgent, healthcheck |
+| App Wiring | `App` | OverlayWindow, AppStyleBuilder (font metrics → Domain types) |
+| UI | `Views` | SwiftUI views — purely declarative, no logic |
+| Presentation | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
+| Use Case | `Lyrics`, `NowPlaying` | Orchestration (cache→API→cache, MediaRemote→AsyncStream) |
+| Infrastructure | `LyricsSearch`, `MetadataNormalization`, `Persistence`, `Config`, `LRCLibService`, `MusicBrainzService`, `AIService` | API clients, DB, config loading |
+| Isolated | `MediaRemote` | Private framework access via swift interpreter subprocess |
+| Core | `Domain` | Models, protocols, DependencyKeys |
 
 ### Key Design Decisions
 
@@ -40,13 +104,25 @@ lyra (executable entry point)
 
 **Presentation / UI separation**: `Presentation` owns all state and logic (NowPlaying observation, lyrics fetching, decode animation timing, FetchState transitions). `Views` are purely declarative — they read display-ready strings from `OverlayState` and render them. `App.OverlayWindow` handles only window management.
 
-**FetchState<T>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by `OverlayController` using `DecodeEffectState`.
+**FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by `OverlayController` using `DecodeEffectState`.
+
+**Domain types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`. DI via `AppStyleKey` / `\.appStyle`.
+
+**Config layer**: Pure data — no AppKit imports. `Config/Models/` contains `AppConfig`, `TextConfig`, `TextAppearanceConfig`, `UnresolvedTextAppearance`, `ArtworkConfig`, `RippleConfig`, `DecodeEffectConfig`, `AIConfig`. Font metrics resolution lives in `App/AppStyleBuilder.swift`.
+
+**Text style resolution**: `UnresolvedTextAppearance` (all-optional fields from TOML) → variadic `resolve(defaults:filled:)` chain → `TextAppearanceConfig` (all non-optional). Layer defaults (title: bold/18pt, artist: medium, highlight: gold gradient) are applied via `Optional<UnresolvedTextAppearance>.resolve()`, ensuring defaults apply even when the TOML section is absent.
+
+**FlexibleDouble**: `Codable` wrapper that decodes both TOML Int and Double via `singleValueContainer`. Used for all numeric config fields.
+
+**ConfigLoader**: Singleton (`ConfigLoader.shared`) handling file discovery, TOML/JSON parsing, includes resolution, and error notification.
+
+**MetadataNormalizer**: Protocol for song metadata resolution. `LLMNormalizer` (AI-based) and `RegexNormalizer` (regex + MusicBrainz) are tried in order. When LLM succeeds, MusicBrainz never runs.
 
 **ColorStyle**: Domain-level enum (`.solid(hex)`, `.gradient([hex])`) enabling any text style to use either solid colors or gradients. Polymorphic TOML decoding supports both `color = "#FFF"` and `color = ["#AAA", "#BBB"]`.
 
-**DI with swift-dependencies**: Protocol definitions + `DependencyKey` in `Domain`, `liveValue` registered in infrastructure modules. Config is resolved once at startup via `ConfigKey.liveValue` in `Config`.
+**DI with swift-dependencies**: Protocol definitions + `DependencyKey` in `Domain`, `liveValue` registered in infrastructure modules. App style is resolved once at startup via `AppStyleKey.liveValue` in `App/AppStyleBuilder.swift`.
 
-**TOML config with Int→Double coercion**: `FlexibleDouble.swift` handles TOML's strict typing where `12` is Int, not Double. Config errors show a macOS alert dialog via `UserNotifier`.
+**HealthCheckable**: Protocol in Domain with `serviceName` + `healthCheck()`. Implemented by `LRCLibAPI`, `MusicBrainzAPI`, `OpenAICompatibleAPI`. `lyra healthcheck` validates config, API connectivity, and AI token validity.
 
 ### Version Management
 
