@@ -69,6 +69,17 @@ let package = Package(
             ]
         ),
 
+        // Repository
+        .target(
+            name: "LyricsRepository",
+            dependencies: [
+                "Domain",
+                "LyricsDataSource",
+                "SQLiteDataStore",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // Use cases
         .target(
             name: "NowPlaying",
@@ -76,7 +87,7 @@ let package = Package(
         ),
         .target(
             name: "Lyrics",
-            dependencies: ["Domain", "LyricsDataSource", "SQLiteDataStore", "MetadataDataSource"]
+            dependencies: ["Domain", "LyricsRepository", "MetadataDataSource"]
         ),
 
         // Presentation
@@ -137,6 +148,7 @@ let package = Package(
             name: "LyricsTests",
             dependencies: [
                 "Lyrics",
+                "LyricsRepository",
                 "LyricsDataSource",
                 "MetadataDataSource",
                 "Domain",

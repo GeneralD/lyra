@@ -6,13 +6,13 @@ import Testing
 
 @Suite("LyricsService")
 struct LyricsServiceTests {
-    @Test("resolveMetadata delegates to repository")
+    @Test("resolveMetadata delegates to normalizers")
     func resolveMetadata() async {
         await withDependencies {
-            $0.lyricsRepository = MockLyricsRepository(
-                metadata: Track(title: "Resolved", artist: "Artist"),
-                lyrics: nil
-            )
+            $0.lyricsRepository = MockLyricsRepository(lyrics: nil)
+            $0.metadataNormalizers = [StubNormalizer(candidates: [
+                Track(title: "Resolved", artist: "Artist"),
+            ])]
         } operation: {
             let service = LyricsService()
             let result = await service.resolveMetadata(title: "raw", artist: "raw")
@@ -25,7 +25,10 @@ struct LyricsServiceTests {
     func fetchLyrics() async {
         let expected = LyricsResult(id: 2, syncedLyrics: "[00:01.00] World")
         await withDependencies {
-            $0.lyricsRepository = MockLyricsRepository(metadata: nil, lyrics: expected)
+            $0.lyricsRepository = MockLyricsRepository(lyrics: expected)
+            $0.metadataNormalizers = [StubNormalizer(candidates: [
+                Track(title: "Test", artist: "Artist"),
+            ])]
         } operation: {
             let service = LyricsService()
             let result = await service.fetchLyrics(title: "Test", artist: "Artist", duration: nil)
@@ -36,7 +39,8 @@ struct LyricsServiceTests {
     @Test("fetchLyrics returns empty when repository returns nil")
     func fetchLyricsReturnsEmpty() async {
         await withDependencies {
-            $0.lyricsRepository = MockLyricsRepository(metadata: nil, lyrics: nil)
+            $0.lyricsRepository = MockLyricsRepository(lyrics: nil)
+            $0.metadataNormalizers = []
         } operation: {
             let service = LyricsService()
             let result = await service.fetchLyrics(title: "Unknown", artist: "Nobody", duration: nil)
@@ -48,9 +52,13 @@ struct LyricsServiceTests {
 // MARK: - Mocks
 
 private struct MockLyricsRepository: LyricsRepository {
-    let metadata: Track?
     let lyrics: LyricsResult?
 
-    func resolveMetadata(title: String, artist: String) async -> Track? { metadata }
-    func fetchLyrics(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { lyrics }
+    func fetchLyrics(track: Track, duration: TimeInterval?) async -> LyricsResult? { lyrics }
+    func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult? { lyrics }
+}
+
+private struct StubNormalizer: MetadataNormalizer {
+    let candidates: [Track]
+    func resolve(track: Track) async -> [Track] { candidates }
 }
