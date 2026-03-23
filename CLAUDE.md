@@ -67,12 +67,13 @@ graph TD
     lyra --> CLI
     CLI --> App
     App --> Views & Presentation & ConfigDataSource
+    App -.->|DI link guarantee| LyricsUseCase & MetadataUseCase & NowPlayingRepository
     App -.->|healthcheck DI| LyricsDataSource & MetadataDataSource
     Views --> Presentation & Domain
-    Presentation --> LyricsUseCase & MetadataUseCase & NowPlayingRepository & Domain
+    Presentation -.->|DI only| Domain
     LyricsUseCase --> LyricsRepository & Domain
     MetadataUseCase --> MetadataRepository & Domain
-    LyricsRepository --> LyricsDataSource & SQLiteDataStore & Domain
+    LyricsRepository --> SQLiteDataStore & Domain
     MetadataRepository --> MetadataDataSource & Domain
     NowPlayingRepository --> MediaRemoteDataSource & Domain
     LyricsDataSource --> Domain
