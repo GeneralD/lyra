@@ -1,5 +1,6 @@
 import Domain
-import Lyrics
+import LyricsUseCase
+import MetadataUseCase
 import Dependencies
 import Foundation
 
@@ -18,6 +19,7 @@ public final class OverlayController {
 
     @Dependency(\.appStyle) private var config
     private let lyricsService = LyricsService()
+    private let metadataService = MetadataService()
 
     public init() {
         @Dependency(\.appStyle) var cfg
@@ -97,15 +99,17 @@ private extension OverlayController {
             guard let title = info.title, let artist = info.artist else { return }
 
             // Step 1: Resolve metadata (fast)
-            if let resolved = await service.resolveMetadata(title: title, artist: artist) {
-                guard generation == self.fetchGeneration else { return }
+            let candidates = await self.metadataService.resolveCandidates(title: title, artist: artist)
+            guard generation == self.fetchGeneration else { return }
+            if let resolved = candidates.first {
                 self.revealTitle(resolved.title)
                 if !resolved.artist.isEmpty { self.revealArtist(resolved.artist) }
             }
-            guard generation == self.fetchGeneration else { return }
 
             // Step 2: Fetch lyrics (slow)
-            let result = await service.fetchLyrics(title: title, artist: artist, duration: info.duration)
+            let result = candidates.isEmpty
+                ? await service.fetchLyrics(track: Track(title: title, artist: artist), duration: info.duration)
+                : await service.fetchLyrics(candidates: candidates, duration: info.duration)
             guard generation == self.fetchGeneration else { return }
 
             if let trackName = result.trackName { self.revealTitle(trackName) }

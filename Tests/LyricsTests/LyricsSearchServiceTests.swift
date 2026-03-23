@@ -3,7 +3,8 @@ import Domain
 import Foundation
 import Testing
 
-@testable import Lyrics
+@testable import LyricsUseCase
+@testable import MetadataUseCase
 
 @Suite("LyricsSearchService")
 struct LyricsSearchServiceTests {
@@ -20,8 +21,9 @@ struct LyricsSearchServiceTests {
                 ])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
-                let service = LyricsService()
-                let result = await service.resolveMetadata(title: "raw", artist: "raw")
+                let lyricsService = LyricsService()
+                let metadataService = MetadataService()
+                let result = await metadataService.resolve(title: "raw", artist: "raw")
                 #expect(result?.title == "LLM Title")
                 #expect(result?.artist == "LLM Artist")
             }
@@ -33,8 +35,9 @@ struct LyricsSearchServiceTests {
                 $0.metadataRepository = StubMetadataRepository(candidates: [])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
-                let service = LyricsService()
-                let result = await service.resolveMetadata(title: "raw", artist: "raw")
+                let lyricsService = LyricsService()
+                let metadataService = MetadataService()
+                let result = await metadataService.resolve(title: "raw", artist: "raw")
                 #expect(result == nil)
             }
         }
@@ -48,8 +51,9 @@ struct LyricsSearchServiceTests {
                 }
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
-                let service = LyricsService()
-                _ = await service.resolveMetadata(title: "raw", artist: "raw")
+                let lyricsService = LyricsService()
+                let metadataService = MetadataService()
+                _ = await metadataService.resolve(title: "raw", artist: "raw")
                 #expect(callCount == 1)
             }
         }
@@ -70,8 +74,9 @@ struct LyricsSearchServiceTests {
                     Track(title: "LLM Title", artist: "LLM Artist"),
                 ])
             } operation: {
-                let service = LyricsService()
-                _ = await service.fetchLyrics(title: "zzz_unique_zzz", artist: "channel", duration: nil)
+                let lyricsService = LyricsService()
+                let metadataService = MetadataService()
+                _ = await lyricsService.fetchLyrics(track: Track(title: "zzz_unique_zzz", artist: "channel"), duration: nil)
 
                 let cachedResult = await writable.read(title: "zzz_unique_zzz", artist: "channel")
                 #expect(cachedResult == nil, "should not cache when no lyrics found")
@@ -92,8 +97,9 @@ struct LyricsSearchServiceTests {
                     Track(title: "Nonexistent XYZ999", artist: "Nobody ABC123"),
                 ])
             } operation: {
-                let service = LyricsService()
-                let result = await service.fetchLyrics(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz", duration: nil)
+                let lyricsService = LyricsService()
+                let metadataService = MetadataService()
+                let result = await lyricsService.fetchLyrics(track: Track(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz"), duration: nil)
                 #expect(result == .empty)
             }
         }
@@ -112,9 +118,10 @@ struct LyricsSearchServiceTests {
                     Track(title: "Correct Title", artist: "Correct Artist"),
                 ])
             } operation: {
-                let service = LyricsService()
+                let lyricsService = LyricsService()
+                let metadataService = MetadataService()
 
-                let metadata = await service.resolveMetadata(title: "zzz_test_zzz", artist: "zzz_test_zzz")
+                let metadata = await metadataService.resolve(title: "zzz_test_zzz", artist: "zzz_test_zzz")
                 #expect(metadata?.title == "Correct Title")
                 #expect(metadata?.artist == "Correct Artist")
             }

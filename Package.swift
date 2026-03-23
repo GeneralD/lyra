@@ -88,14 +88,28 @@ let package = Package(
             ]
         ),
 
-        // Use cases
+        // Repository
         .target(
             name: "NowPlayingRepository",
             dependencies: ["Domain", "MediaRemote"]
         ),
+
+        // Use cases
         .target(
-            name: "Lyrics",
-            dependencies: ["Domain", "LyricsRepository", "MetadataRepository"]
+            name: "LyricsUseCase",
+            dependencies: [
+                "Domain",
+                "LyricsRepository",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "MetadataUseCase",
+            dependencies: [
+                "Domain",
+                "MetadataRepository",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
         ),
 
         // Presentation
@@ -103,7 +117,8 @@ let package = Package(
             name: "Presentation",
             dependencies: [
                 "Domain",
-                "Lyrics",
+                "LyricsUseCase",
+                "MetadataUseCase",
                 "NowPlayingRepository",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -155,8 +170,10 @@ let package = Package(
         .testTarget(
             name: "LyricsTests",
             dependencies: [
-                "Lyrics",
+                "LyricsUseCase",
+                "MetadataUseCase",
                 "LyricsRepository",
+                "MetadataRepository",
                 "LyricsDataSource",
                 "MetadataDataSource",
                 "Domain",
