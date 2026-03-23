@@ -48,7 +48,7 @@ public extension ConfigLoader {
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             return .unreadable(path: path)
         }
-        let configDir = (path as NSString).deletingLastPathComponent
+        let configDir = URL(fileURLWithPath: path).deletingLastPathComponent().path
         do {
             try decodeOrThrow(content: content, path: path, configDir: configDir)
             return .loaded(path: path)
@@ -70,7 +70,7 @@ public extension ConfigLoader {
               let content = try? String(contentsOfFile: path, encoding: .utf8)
         else { return .defaults }
 
-        let configDir = (path as NSString).deletingLastPathComponent
+        let configDir = URL(fileURLWithPath: path).deletingLastPathComponent().path
         guard let decoded = decode(content: content, path: path, configDir: configDir) else { return .defaults }
 
         let wallpaper = decoded.wallpaper.map { resolveWallpaperPath($0, configDir: configDir) }
@@ -122,7 +122,7 @@ extension ConfigLoader {
             guard let relativePath = element.string else { continue }
             let absolutePath = relativePath.hasPrefix("/")
                 ? relativePath
-                : (configDir as NSString).appendingPathComponent(relativePath)
+                : URL(fileURLWithPath: configDir).appendingPathComponent(relativePath).path
             guard let content = try? String(contentsOfFile: absolutePath, encoding: .utf8),
                   let included = try? TOMLTable(string: content)
             else { continue }
@@ -144,7 +144,7 @@ extension ConfigLoader {
 
     func resolveWallpaperPath(_ wallpaper: String, configDir: String) -> String {
         guard !wallpaper.hasPrefix("/") else { return wallpaper }
-        return (configDir as NSString).appendingPathComponent(wallpaper)
+        return URL(fileURLWithPath: configDir).appendingPathComponent(wallpaper).path
     }
 
     func notifyError(path: String, error: Error) {
@@ -152,7 +152,7 @@ extension ConfigLoader {
         @Dependency(\.userNotifier) var notifier
         notifier.notify(
             title: "lyra",
-            subtitle: "Config error: \((path as NSString).lastPathComponent)",
+            subtitle: "Config error: \(URL(fileURLWithPath: path).lastPathComponent)",
             message: String(describing: error),
             fileToOpen: path
         )
