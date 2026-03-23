@@ -2,7 +2,7 @@ import Dependencies
 import Domain
 import Testing
 
-@testable import MetadataNormalization
+@testable import MetadataDataSource
 
 @Suite("LLMNormalizer")
 struct LLMNormalizerTests {

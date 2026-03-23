@@ -3,7 +3,7 @@ import CollectionKit
 import Dependencies
 import Domain
 import Foundation
-import MusicBrainzService
+import MetadataDataSource
 
 public struct RegexNormalizer {
     @Dependency(\.metadataCache) private var metadataCache

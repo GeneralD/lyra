@@ -1,5 +1,5 @@
 import AppKit
-import Config
+import ConfigDataSource
 import Dependencies
 import Domain
 

@@ -1,6 +1,6 @@
 import Testing
 @testable import Domain
-@testable import Persistence
+@testable import SQLiteDataStore
 
 @Suite("GRDBLyricsCache")
 struct GRDBLyricsCacheTests {

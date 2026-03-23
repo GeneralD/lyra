@@ -1,9 +1,9 @@
 import Domain
-import MediaRemote
+import MediaRemoteDataSource
 import Dependencies
 import Foundation
 
-public struct NowPlayingService: NowPlayingProvider {
+public struct NowPlayingRepositoryImpl: Sendable {
     private let bridge: MediaRemoteBridge
 
     public init(bridge: MediaRemoteBridge) {
@@ -11,7 +11,7 @@ public struct NowPlayingService: NowPlayingProvider {
     }
 }
 
-extension NowPlayingService {
+extension NowPlayingRepositoryImpl: NowPlayingProvider {
     public func stream() -> AsyncStream<NowPlaying?> {
         let bridge = self.bridge
         return AsyncStream { continuation in
@@ -33,7 +33,15 @@ extension NowPlayingService {
     }
 }
 
-extension NowPlaying {
+// MARK: - DependencyKey
+
+extension NowPlayingProviderKey: DependencyKey {
+    public static let liveValue: any NowPlayingProvider = NowPlayingRepositoryImpl(bridge: MediaRemoteBridge())
+}
+
+// MARK: - Mapping
+
+private extension NowPlaying {
     init(from info: MediaRemoteInfo) {
         self.init(
             title: info.title,
@@ -46,11 +54,3 @@ extension NowPlaying {
         )
     }
 }
-
-// MARK: - DependencyKey
-
-extension NowPlayingProviderKey: DependencyKey {
-    public static let liveValue: any NowPlayingProvider = NowPlayingService(bridge: MediaRemoteBridge())
-}
-
-extension NowPlayingService: Sendable {}

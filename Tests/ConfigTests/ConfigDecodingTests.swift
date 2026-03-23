@@ -3,7 +3,7 @@ import Foundation
 import Testing
 import TOMLKit
 
-@testable import Config
+@testable import ConfigDataSource
 
 // MARK: - Helper
 

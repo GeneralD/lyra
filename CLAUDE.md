@@ -15,7 +15,7 @@ make install                         # install to /usr/local/bin
 
 ## Architecture
 
-macOS desktop overlay app showing synced lyrics and video wallpaper. Clean Architecture with Swift Package targets enforcing layer boundaries at compile time.
+macOS desktop overlay app showing synced lyrics and video wallpaper. VIPER + Clean Architecture with Swift Package targets enforcing layer boundaries at compile time.
 
 ### Module Dependency Graph
 
@@ -26,81 +26,85 @@ graph TD
         CLI[CLI]
     end
 
-    subgraph UI
-        App[App]
+    subgraph View
         Views[Views]
     end
 
-    subgraph Logic
+    subgraph Interactor
+        App[App]
+    end
+
+    subgraph Presenter
         Presentation[Presentation]
     end
 
-    subgraph Use Cases
-        Lyrics[Lyrics]
-        NowPlaying[NowPlaying]
+    subgraph Entity
+        Domain[Domain]
     end
 
-    subgraph Configuration
-        Config[Config]
+    subgraph UseCase
+        LyricsUseCase[LyricsUseCase]
+        MetadataUseCase[MetadataUseCase]
     end
 
-    subgraph Infrastructure
-        LyricsSearch[LyricsSearch]
-        MetadataNormalization[MetadataNormalization]
-        Persistence[Persistence]
-        subgraph API Services
-            LRCLibService[LRCLibService]
-            MusicBrainzService[MusicBrainzService]
-            AIService[AIService]
-        end
+    subgraph Repository
+        LyricsRepository[LyricsRepository]
+        MetadataRepository[MetadataRepository]
+        NowPlayingRepository[NowPlayingRepository]
     end
 
-    subgraph Isolated
-        MediaRemote[MediaRemote]
+    subgraph DataSource
+        LyricsDataSource[LyricsDataSource]
+        MetadataDataSource[MetadataDataSource]
+        ConfigDataSource[ConfigDataSource]
+        MediaRemoteDataSource[MediaRemoteDataSource]
     end
 
-    Domain[Domain]
+    subgraph DataStore
+        SQLiteDataStore[SQLiteDataStore]
+    end
 
     lyra --> CLI
     CLI --> App
-    App --> Views & Presentation & Config
-    App -.->|healthcheck registration| LRCLibService & MusicBrainzService & AIService
+    App --> Views & Presentation & ConfigDataSource
+    App -.->|healthcheck DI| LyricsDataSource & MetadataDataSource
     Views --> Presentation & Domain
-    Presentation --> Lyrics & NowPlaying & Domain
-    Lyrics --> LyricsSearch & Persistence & MetadataNormalization & Domain
-    NowPlaying --> MediaRemote & Domain
-    LyricsSearch --> LRCLibService & Domain
-    MetadataNormalization --> AIService & MusicBrainzService & Domain
-    Persistence --> Domain
-    Config --> Domain
-    LRCLibService --> Domain
-    MusicBrainzService --> Domain
-    AIService --> Domain
+    Presentation --> LyricsUseCase & MetadataUseCase & NowPlayingRepository & Domain
+    LyricsUseCase --> LyricsRepository & Domain
+    MetadataUseCase --> MetadataRepository & Domain
+    LyricsRepository --> LyricsDataSource & SQLiteDataStore & Domain
+    MetadataRepository --> MetadataDataSource & Domain
+    NowPlayingRepository --> MediaRemoteDataSource & Domain
+    LyricsDataSource --> Domain
+    MetadataDataSource --> Domain
+    ConfigDataSource --> Domain
+    SQLiteDataStore --> Domain
 
     style Domain fill:#4a9,stroke:#333,color:#fff
-    style Lyrics fill:#59c,stroke:#333,color:#fff
-    style NowPlaying fill:#59c,stroke:#333,color:#fff
-    style MediaRemote fill:#966,stroke:#333,color:#fff
+    style LyricsUseCase fill:#59c,stroke:#333,color:#fff
+    style MetadataUseCase fill:#59c,stroke:#333,color:#fff
+    style MediaRemoteDataSource fill:#966,stroke:#333,color:#fff
     style lyra fill:#333,stroke:#fff,color:#fff
 ```
 
-### Layer Summary
+### Layer Summary (VIPER + Clean Architecture)
 
 | Layer | Modules | Responsibility |
 |---|---|---|
 | Executable | `lyra` | Entry point |
-| CLI | `CLI` | ArgumentParser commands, LaunchAgent, healthcheck |
-| App Wiring | `App` | OverlayWindow, AppStyleBuilder (font metrics → Domain types) |
-| UI | `Views` | SwiftUI views — purely declarative, no logic |
-| Presentation | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
-| Use Case | `Lyrics`, `NowPlaying` | Orchestration (cache→API→cache, MediaRemote→AsyncStream) |
-| Infrastructure | `LyricsSearch`, `MetadataNormalization`, `Persistence`, `Config`, `LRCLibService`, `MusicBrainzService`, `AIService` | API clients, DB, config loading |
-| Isolated | `MediaRemote` | Private framework access via swift interpreter subprocess |
-| Core | `Domain` | Models, protocols, DependencyKeys |
+| CLI | `CLI` | ArgumentParser commands, LaunchAgent |
+| View | `Views` | SwiftUI views — purely declarative, no logic |
+| Interactor | `App` | OverlayWindow, AppStyleBuilder, healthcheck DI |
+| Presenter | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
+| Entity | `Domain` | Protocols, models, DependencyKeys |
+| UseCase | `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
+| Repository | `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository` | DataSource + DataStore, cache strategy |
+| DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource` | API execution, file I/O, private framework access |
+| DataStore | `SQLiteDataStore` | GRDB SQLite cache |
 
 ### Key Design Decisions
 
-**MediaRemote via swift interpreter**: Compiled binaries cannot access `MediaRemote.framework` (private framework). A helper swift script (`Resources/media-remote-helper.swift`) runs as a persistent subprocess via `/usr/bin/env swift`, using `MRMediaRemoteRegisterForNowPlayingNotifications` for event-driven updates and streaming JSON over a pipe.
+**MediaRemoteDataSource via swift interpreter**: Compiled binaries cannot access `MediaRemote.framework` (private framework). A helper swift script (`Resources/media-remote-helper.swift`) runs as a persistent subprocess via `/usr/bin/env swift`, using `MRMediaRemoteRegisterForNowPlayingNotifications` for event-driven updates and streaming JSON over a pipe.
 
 **Presentation / UI separation**: `Presentation` owns all state and logic (NowPlaying observation, lyrics fetching, decode animation timing, FetchState transitions). `Views` are purely declarative — they read display-ready strings from `OverlayState` and render them. `App.OverlayWindow` handles only window management.
 

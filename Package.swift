@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "lyra",
+    name: "Lyra",
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "lyra", targets: ["lyra"]),
@@ -17,120 +17,10 @@ let package = Package(
         .package(url: "https://github.com/Alamofire/Alamofire", from: "5.10.0"),
     ],
     targets: [
-        // Core domain — zero external dependencies except swift-dependencies
-        .target(
-            name: "Domain",
-            dependencies: [
-                .product(name: "Dependencies", package: "swift-dependencies"),
-                .product(name: "DependenciesMacros", package: "swift-dependencies"),
-            ]
-        ),
-
-        // Isolated unsafe code — no domain dependency
-        .target(
-            name: "MediaRemote",
-            dependencies: [],
-            resources: [.copy("Resources/media-remote-helper.swift")]
-        ),
-
-        // Infrastructure
-        .target(
-            name: "Config",
-            dependencies: [
-                "Domain",
-                .product(name: "TOMLKit", package: "TOMLKit"),
-            ]
-        ),
-        .target(
-            name: "LRCLibService",
-            dependencies: [
-                "Domain",
-                .product(name: "Alamofire", package: "Alamofire"),
-            ]
-        ),
-        .target(
-            name: "MusicBrainzService",
-            dependencies: [
-                "Domain",
-                .product(name: "Alamofire", package: "Alamofire"),
-            ]
-        ),
-        .target(
-            name: "AIService",
-            dependencies: ["Domain"]
-        ),
-        .target(
-            name: "LyricsSearch",
-            dependencies: [
-                "Domain",
-                "LRCLibService",
-                .product(name: "Alamofire", package: "Alamofire"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
-        ),
-        .target(
-            name: "MetadataNormalization",
-            dependencies: [
-                "Domain",
-                "AIService",
-                "MusicBrainzService",
-                .product(name: "Alamofire", package: "Alamofire"),
-                .product(name: "CollectionKit", package: "CollectionKit"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
-        ),
-        .target(
-            name: "Persistence",
-            dependencies: [
-                "Domain",
-                .product(name: "GRDB", package: "GRDB.swift"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
-        ),
-
-        // Use cases
-        .target(
-            name: "NowPlaying",
-            dependencies: ["Domain", "MediaRemote"]
-        ),
-        .target(
-            name: "Lyrics",
-            dependencies: ["Domain", "LyricsSearch", "Persistence", "MetadataNormalization"]
-        ),
-
-        // Presentation logic
-        .target(
-            name: "Presentation",
-            dependencies: [
-                "Domain",
-                "Lyrics",
-                "NowPlaying",
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
-        ),
-
-        // Views
-        .target(
-            name: "Views",
-            dependencies: [
-                "Domain",
-                "Presentation",
-                .product(name: "CollectionKit", package: "CollectionKit"),
-            ]
-        ),
-
-        // App wiring
-        .target(
-            name: "App",
-            dependencies: [
-                "Views",
-                "Presentation",
-                "Config",
-                "LRCLibService",
-                "MusicBrainzService",
-                "AIService",
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
+        // Executable
+        .executableTarget(
+            name: "lyra",
+            dependencies: ["CLI"]
         ),
 
         // CLI
@@ -146,19 +36,144 @@ let package = Package(
             ]
         ),
 
-        // Executable entry point
-        .executableTarget(
-            name: "lyra",
-            dependencies: ["CLI"]
+        // View
+        .target(
+            name: "Views",
+            dependencies: [
+                "Domain",
+                "Presentation",
+                .product(name: "CollectionKit", package: "CollectionKit"),
+            ]
+        ),
+
+        // Interactor (App wiring)
+        .target(
+            name: "App",
+            dependencies: [
+                "Views",
+                "Presentation",
+                "ConfigDataSource",
+                "LyricsDataSource",
+                "MetadataDataSource",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Presenter
+        .target(
+            name: "Presentation",
+            dependencies: [
+                "Domain",
+                "LyricsUseCase",
+                "MetadataUseCase",
+                "NowPlayingRepository",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Entity
+        .target(
+            name: "Domain",
+            dependencies: [
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesMacros", package: "swift-dependencies"),
+            ]
+        ),
+
+        // UseCase
+        .target(
+            name: "LyricsUseCase",
+            dependencies: [
+                "Domain",
+                "LyricsRepository",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "MetadataUseCase",
+            dependencies: [
+                "Domain",
+                "MetadataRepository",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Repository
+        .target(
+            name: "LyricsRepository",
+            dependencies: [
+                "Domain",
+                "LyricsDataSource",
+                "SQLiteDataStore",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "MetadataRepository",
+            dependencies: [
+                "Domain",
+                "MetadataDataSource",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "NowPlayingRepository",
+            dependencies: ["Domain", "MediaRemoteDataSource"]
+        ),
+
+        // DataSource
+        .target(
+            name: "LyricsDataSource",
+            dependencies: [
+                "Domain",
+                .product(name: "Alamofire", package: "Alamofire"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "MetadataDataSource",
+            dependencies: [
+                "Domain",
+                .product(name: "Alamofire", package: "Alamofire"),
+                .product(name: "CollectionKit", package: "CollectionKit"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "ConfigDataSource",
+            dependencies: [
+                "Domain",
+                .product(name: "TOMLKit", package: "TOMLKit"),
+            ]
+        ),
+
+        // DataStore
+        .target(
+            name: "SQLiteDataStore",
+            dependencies: [
+                "Domain",
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Isolated
+        .target(
+            name: "MediaRemoteDataSource",
+            dependencies: [],
+            resources: [.copy("Resources/media-remote-helper.swift")]
         ),
 
         // Tests
         .testTarget(
             name: "LyricsTests",
             dependencies: [
-                "Lyrics",
-                "LyricsSearch",
-                "MetadataNormalization",
+                "LyricsUseCase",
+                "MetadataUseCase",
+                "LyricsRepository",
+                "MetadataRepository",
+                "LyricsDataSource",
+                "MetadataDataSource",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -178,14 +193,14 @@ let package = Package(
         .testTarget(
             name: "ConfigTests",
             dependencies: [
-                "Config",
+                "ConfigDataSource",
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ]
         ),
         .testTarget(
             name: "MetadataNormalizationTests",
             dependencies: [
-                "MetadataNormalization",
+                "MetadataDataSource",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -193,7 +208,7 @@ let package = Package(
         .testTarget(
             name: "PersistenceTests",
             dependencies: [
-                "Persistence",
+                "SQLiteDataStore",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

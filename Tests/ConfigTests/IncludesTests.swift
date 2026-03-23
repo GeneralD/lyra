@@ -2,7 +2,7 @@ import Domain
 import Foundation
 import Testing
 
-@testable import Config
+@testable import ConfigDataSource
 
 @Suite("Config includes")
 struct IncludesTests {
