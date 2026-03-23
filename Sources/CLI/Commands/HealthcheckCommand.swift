@@ -1,9 +1,6 @@
-import AIService
 import ArgumentParser
-import Config
+import Dependencies
 import Domain
-import LRCLibService
-import MusicBrainzService
 import Foundation
 import os
 
@@ -34,31 +31,13 @@ struct HealthcheckCommand: ParsableCommand {
 
 private extension HealthcheckCommand {
     func runChecks() async -> Int32 {
-        let configFailed = validateConfig()
-        let config = ConfigLoader.shared.load()
+        @Dependency(\.healthCheckers) var checkers
 
-        let services: [any HealthCheckable] = [
-            LRCLibAPI.search(query: "test"),
-            MusicBrainzAPI.searchRecording(title: "test", artist: nil, duration: nil),
-        ]
-
-        var failed = configFailed ? 1 : 0
-
-        for service in services {
-            let result = await service.healthCheck()
-            printResult(name: service.serviceName, result: result)
+        var failed = 0
+        for checker in checkers {
+            let result = await checker.healthCheck()
+            printResult(name: checker.serviceName, result: result)
             if case .fail = result.status { failed += 1 }
-        }
-
-        if let aiConfig = config.ai {
-            let aiService = OpenAICompatibleAPI(config: .init(
-                endpoint: aiConfig.endpoint, model: aiConfig.model, apiKey: aiConfig.apiKey
-            ))
-            let result = await aiService.healthCheck()
-            printResult(name: aiService.serviceName, result: result)
-            if case .fail = result.status { failed += 1 }
-        } else {
-            printResult(name: "AI endpoint", result: HealthCheckResult(status: .skip, detail: "not configured"))
         }
 
         print("")
@@ -69,23 +48,6 @@ private extension HealthcheckCommand {
         default:
             print("\(failed) check(s) failed.")
             return 1
-        }
-    }
-
-    func validateConfig() -> Bool {
-        switch ConfigLoader.shared.validate() {
-        case .loaded(let path):
-            printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "loaded (\(path))"))
-            return false
-        case .defaults:
-            printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "using defaults (no config file found)"))
-            return false
-        case .unreadable(let path):
-            printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "cannot read \(path)"))
-            return true
-        case .decodeError(let path, let error):
-            printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error)"))
-            return true
         }
     }
 

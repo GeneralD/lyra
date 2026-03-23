@@ -1,10 +1,28 @@
 import Dependencies
+import Domain
 import Foundation
 import TOMLKit
 
 public struct ConfigLoader: Sendable {
     private init() {}
     public static let shared = ConfigLoader()
+}
+
+extension ConfigLoader: HealthCheckable {
+    public var serviceName: String { "Config" }
+
+    public func healthCheck() async -> HealthCheckResult {
+        switch validate() {
+        case .loaded(let path):
+            return HealthCheckResult(status: .pass, detail: "loaded (\(path))")
+        case .defaults:
+            return HealthCheckResult(status: .pass, detail: "using defaults (no config file found)")
+        case .unreadable(let path):
+            return HealthCheckResult(status: .fail, detail: "cannot read \(path)")
+        case .decodeError(let path, let error):
+            return HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error)")
+        }
+    }
 }
 
 public enum ConfigValidationResult {

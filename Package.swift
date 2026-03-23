@@ -130,6 +130,9 @@ let package = Package(
                 "Views",
                 "Presentation",
                 "Config",
+                "LRCLibService",
+                "MusicBrainzService",
+                "AIService",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -139,10 +142,6 @@ let package = Package(
             name: "CLI",
             dependencies: [
                 "App",
-                "Config",
-                "LRCLibService",
-                "MusicBrainzService",
-                "AIService",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
