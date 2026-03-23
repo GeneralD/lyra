@@ -90,7 +90,7 @@ let package = Package(
 
         // Use cases
         .target(
-            name: "NowPlaying",
+            name: "NowPlayingRepository",
             dependencies: ["Domain", "MediaRemote"]
         ),
         .target(
@@ -104,7 +104,7 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "Lyrics",
-                "NowPlaying",
+                "NowPlayingRepository",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
