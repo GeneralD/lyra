@@ -3,13 +3,15 @@ import Domain
 import Foundation
 import LyricsDataSource
 
-public struct LyricsRepositoryImpl: LyricsRepository {
+public struct LyricsRepositoryImpl {
     @Dependency(\.lyricsCache) private var cache
 
     private let dataSource = LyricsDataSourceImpl()
 
     public init() {}
+}
 
+extension LyricsRepositoryImpl: LyricsRepository {
     public func fetchLyrics(track: Track) async -> LyricsResult? {
         if let cached = await cache.read(title: track.title, artist: track.artist) {
             return cached
@@ -58,15 +60,19 @@ public struct LyricsRepositoryImpl: LyricsRepository {
     }
 }
 
+// MARK: - DependencyKey
+
+extension LyricsRepositoryKey: DependencyKey {
+    public static let liveValue: any LyricsRepository = LyricsRepositoryImpl()
+}
+
+// MARK: - Private
+
 private extension LyricsRepositoryImpl {
     func store(_ result: LyricsResult, track: Track) async {
         guard !track.artist.isEmpty else { return }
         try? await cache.write(title: track.title, artist: track.artist, result: result)
     }
-}
-
-extension LyricsRepositoryKey: DependencyKey {
-    public static let liveValue: any LyricsRepository = LyricsRepositoryImpl()
 }
 
 private extension Array {
