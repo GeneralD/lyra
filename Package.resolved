@@ -1,5 +1,5 @@
 {
-  "originHash" : "0409a61f118021d197e83784ab82873eca19c99f81f61dd9f4a0dbe71e54f8b2",
+  "originHash" : "c4f26e6f6c6b1f44f53465a886b3d787cce1ece3f025d1f1d6c5b1700440e971",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -80,15 +80,6 @@
       "state" : {
         "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
         "version" : "602.0.0"
-      }
-    },
-    {
-      "identity" : "swifthexcolors",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/thii/SwiftHEXColors",
-      "state" : {
-        "revision" : "1f886cb20fedda14a5ac75efd09bc99c95b43a18",
-        "version" : "1.4.1"
       }
     },
     {

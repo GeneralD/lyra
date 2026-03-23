@@ -1,10 +1,32 @@
 import Domain
-import SwiftHEXColors
 import SwiftUI
 
 public func parseHexColor(_ hex: String) -> Color {
-    guard let nsColor = NSColor(hexString: hex) else { return .white }
-    return Color(nsColor: nsColor)
+    let h = hex.trimmingCharacters(in: .init(charactersIn: "#"))
+    guard let value = UInt64(h, radix: 16) else { return .white }
+    switch h.count {
+    case 3:
+        return Color(
+            red: Double((value >> 8) & 0xF) / 15,
+            green: Double((value >> 4) & 0xF) / 15,
+            blue: Double(value & 0xF) / 15
+        )
+    case 6:
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    case 8:
+        return Color(
+            red: Double((value >> 24) & 0xFF) / 255,
+            green: Double((value >> 16) & 0xFF) / 255,
+            blue: Double((value >> 8) & 0xFF) / 255,
+            opacity: Double(value & 0xFF) / 255
+        )
+    default:
+        return .white
+    }
 }
 
 extension ColorStyle {

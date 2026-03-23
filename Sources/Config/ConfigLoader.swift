@@ -34,7 +34,7 @@ public enum ConfigValidationResult {
 
 public extension ConfigLoader {
     func validate() -> ConfigValidationResult {
-        let home = NSHomeDirectory()
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
         let candidates = [
             "\(xdgConfig)/lyra/config.toml",
@@ -58,7 +58,7 @@ public extension ConfigLoader {
     }
 
     func load() -> AppConfig {
-        let home = NSHomeDirectory()
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
         let candidates = [
             "\(xdgConfig)/lyra/config.toml",

@@ -1,7 +1,6 @@
 import AppKit
 import Domain
 import Dependencies
-import SwiftHEXColors
 import SwiftUI
 
 @MainActor
@@ -26,7 +25,8 @@ public struct RippleView: View {
         let rippleConfig = config.ripple
         let baseNSColor: NSColor = {
             guard case .solid(let hex) = rippleConfig.color else { return .white }
-            return (NSColor(hexString: hex) ?? .white).usingColorSpace(.deviceRGB) ?? .white
+            let color = parseHexColor(hex)
+            return NSColor(color).usingColorSpace(.deviceRGB) ?? .white
         }()
 
         return TimelineView(.animation) { timeline in

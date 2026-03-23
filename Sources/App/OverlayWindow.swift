@@ -56,7 +56,7 @@ public final class OverlayWindow {
         self.hostingView = hostingView
 
         if let wallpaperURL = cfg.wallpaperURL {
-            let containerView = NSView(frame: NSRect(origin: .zero, size: frames.window.size))
+            let containerView = NSView(frame: CGRect(origin: .zero, size: frames.window.size))
             let player = AVPlayer(url: wallpaperURL)
             player.isMuted = true
             player.preventsDisplaySleepDuringVideoPlayback = false
@@ -151,7 +151,7 @@ public final class OverlayWindow {
         controller.state.screenOrigin = frames.origin
         hostingView.frame = frames.hosting
         if let containerView = window.contentView, containerView !== hostingView {
-            containerView.frame = NSRect(origin: .zero, size: frames.window.size)
+            containerView.frame = CGRect(origin: .zero, size: frames.window.size)
         }
     }
 
@@ -161,12 +161,12 @@ public final class OverlayWindow {
         selector: ScreenSelector,
         wallpaperURL: URL?,
         hasWallpaper: Bool
-    ) async -> (window: NSRect, hosting: NSRect, origin: CGPoint) {
+    ) async -> (window: CGRect, hosting: CGRect, origin: CGPoint) {
         let screen = await resolveScreen(selector: selector, wallpaperURL: wallpaperURL)
         let visibleFrame = screen.visibleFrame
         let fullFrame = screen.frame
         let windowRect = hasWallpaper ? fullFrame : visibleFrame
-        let hostingFrame = NSRect(
+        let hostingFrame = CGRect(
             x: visibleFrame.minX - windowRect.minX,
             y: visibleFrame.minY - windowRect.minY,
             width: visibleFrame.width,

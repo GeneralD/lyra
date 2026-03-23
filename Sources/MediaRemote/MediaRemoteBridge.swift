@@ -75,7 +75,7 @@ extension MediaRemoteBridge {
     private static func ensureScript() -> String {
         let cacheDir = URL(fileURLWithPath:
             ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
-                ?? "\(NSHomeDirectory())/.cache"
+                ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.cache"
         ).appendingPathComponent("lyra")
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
