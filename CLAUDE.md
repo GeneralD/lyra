@@ -43,6 +43,7 @@ graph TD
     end
 
     subgraph UseCase
+        PlaybackUseCase[PlaybackUseCase]
         LyricsUseCase[LyricsUseCase]
         MetadataUseCase[MetadataUseCase]
     end
@@ -67,10 +68,11 @@ graph TD
     lyra --> CLI
     CLI --> App
     App --> Views & Presentation & ConfigDataSource
-    App -.->|DI link guarantee| LyricsUseCase & MetadataUseCase & NowPlayingRepository
+    App -.->|DI link guarantee| PlaybackUseCase & LyricsUseCase & MetadataUseCase
     App -.->|healthcheck DI| LyricsDataSource & MetadataDataSource
     Views --> Presentation & Domain
     Presentation -.->|DI only| Domain
+    PlaybackUseCase --> NowPlayingRepository & Domain
     LyricsUseCase --> LyricsRepository & Domain
     MetadataUseCase --> MetadataRepository & Domain
     LyricsRepository --> SQLiteDataStore & Domain
@@ -82,6 +84,7 @@ graph TD
     SQLiteDataStore --> Domain
 
     style Domain fill:#4a9,stroke:#333,color:#fff
+    style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
     style MetadataUseCase fill:#59c,stroke:#333,color:#fff
     style MediaRemoteDataSource fill:#966,stroke:#333,color:#fff
@@ -98,7 +101,7 @@ graph TD
 | Interactor | `App` | OverlayWindow, AppStyleBuilder, healthcheck DI |
 | Presenter | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
 | Entity | `Domain` | Protocols, models, DependencyKeys |
-| UseCase | `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
+| UseCase | `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
 | Repository | `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository` | DataSource + DataStore, cache strategy |
 | DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource` | API execution, file I/O, private framework access |
 | DataStore | `SQLiteDataStore` | GRDB SQLite cache |
