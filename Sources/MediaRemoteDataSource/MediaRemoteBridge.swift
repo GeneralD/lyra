@@ -1,10 +1,6 @@
+import Domain
+import Dependencies
 import Foundation
-
-public enum PollResult {
-    case info(MediaRemoteInfo)
-    case noInfo
-    case eof
-}
 
 /// Bridges to MediaRemote.framework via a persistent swift interpreter subprocess.
 /// Compiled binaries cannot access the private framework directly.
@@ -32,8 +28,8 @@ public final class MediaRemoteBridge: @unchecked Sendable {
     }
 }
 
-extension MediaRemoteBridge {
-    public func poll() async -> PollResult {
+extension MediaRemoteBridge: MediaRemoteDataSource {
+    public func poll() async -> MediaRemotePollResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.global().async { [reader] in
                 guard let line = Self.readLine(from: reader) else {
@@ -46,7 +42,7 @@ extension MediaRemoteBridge {
                     continuation.resume(returning: .noInfo)
                     return
                 }
-                continuation.resume(returning: .info(MediaRemoteInfo(
+                continuation.resume(returning: .info(NowPlaying(
                     title: json["title"] as? String,
                     artist: json["artist"] as? String,
                     artworkData: (json["artwork_base64"] as? String).flatMap { Data(base64Encoded: $0) },
@@ -89,4 +85,8 @@ extension MediaRemoteBridge {
     }
 }
 
-extension PollResult: Sendable {}
+// MARK: - DependencyKey
+
+extension MediaRemoteDataSourceKey: DependencyKey {
+    public static let liveValue: any MediaRemoteDataSource = MediaRemoteBridge()
+}

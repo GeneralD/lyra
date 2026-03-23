@@ -1,25 +1,22 @@
 import Domain
-import MediaRemoteDataSource
 import Dependencies
 import Foundation
 
 public struct NowPlayingRepositoryImpl: Sendable {
-    private let bridge: MediaRemoteBridge
+    @Dependency(\.mediaRemoteDataSource) private var dataSource
 
-    public init(bridge: MediaRemoteBridge) {
-        self.bridge = bridge
-    }
+    public init() {}
 }
 
-extension NowPlayingRepositoryImpl: NowPlayingProvider {
+extension NowPlayingRepositoryImpl: NowPlayingRepository {
     public func stream() -> AsyncStream<NowPlaying?> {
-        let bridge = self.bridge
+        let dataSource = self.dataSource
         return AsyncStream { continuation in
             let task = Task {
                 while !Task.isCancelled {
-                    switch await bridge.poll() {
-                    case .info(let info):
-                        continuation.yield(NowPlaying(from: info))
+                    switch await dataSource.poll() {
+                    case .info(let nowPlaying):
+                        continuation.yield(nowPlaying)
                     case .noInfo:
                         continuation.yield(nil)
                     case .eof:
@@ -35,22 +32,6 @@ extension NowPlayingRepositoryImpl: NowPlayingProvider {
 
 // MARK: - DependencyKey
 
-extension NowPlayingProviderKey: DependencyKey {
-    public static let liveValue: any NowPlayingProvider = NowPlayingRepositoryImpl(bridge: MediaRemoteBridge())
-}
-
-// MARK: - Mapping
-
-private extension NowPlaying {
-    init(from info: MediaRemoteInfo) {
-        self.init(
-            title: info.title,
-            artist: info.artist,
-            artworkData: info.artworkData,
-            duration: info.duration,
-            rawElapsed: info.rawElapsed,
-            playbackRate: info.playbackRate,
-            timestamp: info.timestamp
-        )
-    }
+extension NowPlayingRepositoryKey: DependencyKey {
+    public static let liveValue: any NowPlayingRepository = NowPlayingRepositoryImpl()
 }

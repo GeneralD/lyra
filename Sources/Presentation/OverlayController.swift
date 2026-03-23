@@ -1,6 +1,4 @@
 import Domain
-import LyricsUseCase
-import MetadataUseCase
 import Dependencies
 import Foundation
 
@@ -13,13 +11,14 @@ public final class OverlayController {
     private var fetchTask: Task<Void, Never>?
     private var latestNowPlaying: NowPlaying?
 
-    private var titleEffect: DecodeEffectState
-    private var artistEffect: DecodeEffectState
+    private let titleEffect: DecodeEffectState
+    private let artistEffect: DecodeEffectState
     private var lyricEffects: [DecodeEffectState] = []
 
     @Dependency(\.appStyle) private var config
-    private let lyricsService = LyricsUseCaseImpl()
-    private let metadataService = MetadataUseCaseImpl()
+    @Dependency(\.playbackUseCase) private var playbackService
+    @Dependency(\.lyricsUseCase) private var lyricsService
+    @Dependency(\.metadataUseCase) private var metadataService
 
     public init() {
         @Dependency(\.appStyle) var cfg
@@ -32,8 +31,7 @@ public extension OverlayController {
     func start() {
         nowPlayingTask = Task { [weak self] in
             guard let self else { return }
-            @Dependency(\.nowPlayingProvider) var provider
-            for await info in provider.stream() {
+            for await info in self.playbackService.observeNowPlaying() {
                 guard !Task.isCancelled else { break }
                 guard let info else { clearIfNeeded(); continue }
                 latestNowPlaying = info

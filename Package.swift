@@ -53,8 +53,12 @@ let package = Package(
                 "Views",
                 "Presentation",
                 "ConfigDataSource",
+                "LyricsUseCase",
+                "MetadataUseCase",
+                "PlaybackUseCase",
                 "LyricsDataSource",
                 "MetadataDataSource",
+                "MediaRemoteDataSource",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -64,9 +68,6 @@ let package = Package(
             name: "Presentation",
             dependencies: [
                 "Domain",
-                "LyricsUseCase",
-                "MetadataUseCase",
-                "NowPlayingRepository",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -97,13 +98,20 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .target(
+            name: "PlaybackUseCase",
+            dependencies: [
+                "Domain",
+                "NowPlayingRepository",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
 
         // Repository
         .target(
             name: "LyricsRepository",
             dependencies: [
                 "Domain",
-                "LyricsDataSource",
                 "SQLiteDataStore",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -118,7 +126,10 @@ let package = Package(
         ),
         .target(
             name: "NowPlayingRepository",
-            dependencies: ["Domain", "MediaRemoteDataSource"]
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
         ),
 
         // DataSource
@@ -160,28 +171,100 @@ let package = Package(
         // Isolated
         .target(
             name: "MediaRemoteDataSource",
-            dependencies: [],
+            dependencies: ["Domain"],
             resources: [.copy("Resources/media-remote-helper.swift")]
         ),
 
-        // Tests
+        // Tests — UseCase
         .testTarget(
-            name: "LyricsTests",
+            name: "LyricsUseCaseTests",
             dependencies: [
                 "LyricsUseCase",
                 "MetadataUseCase",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "MetadataUseCaseTests",
+            dependencies: [
+                "MetadataUseCase",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "PlaybackUseCaseTests",
+            dependencies: [
+                "PlaybackUseCase",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Tests — Repository
+        .testTarget(
+            name: "LyricsRepositoryTests",
+            dependencies: [
                 "LyricsRepository",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "MetadataRepositoryTests",
+            dependencies: [
                 "MetadataRepository",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "NowPlayingRepositoryTests",
+            dependencies: [
+                "NowPlayingRepository",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Tests — DataSource
+        .testTarget(
+            name: "LyricsDataSourceTests",
+            dependencies: [
                 "LyricsDataSource",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "MetadataDataSourceTests",
+            dependencies: [
                 "MetadataDataSource",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
-            name: "CLITests",
-            dependencies: ["CLI"]
+            name: "ConfigDataSourceTests",
+            dependencies: [
+                "ConfigDataSource",
+                "Domain",
+                .product(name: "TOMLKit", package: "TOMLKit"),
+            ]
         ),
+
+        // Tests — DataStore
+        .testTarget(
+            name: "SQLiteDataStoreTests",
+            dependencies: [
+                "SQLiteDataStore",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // Tests — Presentation / View / CLI
         .testTarget(
             name: "PresentationTests",
             dependencies: [
@@ -191,31 +274,12 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "ConfigTests",
-            dependencies: [
-                "ConfigDataSource",
-                .product(name: "TOMLKit", package: "TOMLKit"),
-            ]
-        ),
-        .testTarget(
-            name: "MetadataNormalizationTests",
-            dependencies: [
-                "MetadataDataSource",
-                "Domain",
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
-        ),
-        .testTarget(
-            name: "PersistenceTests",
-            dependencies: [
-                "SQLiteDataStore",
-                "Domain",
-                .product(name: "Dependencies", package: "swift-dependencies"),
-            ]
-        ),
-        .testTarget(
             name: "ViewsTests",
             dependencies: ["Views"]
+        ),
+        .testTarget(
+            name: "CLITests",
+            dependencies: ["CLI"]
         ),
     ]
 )
