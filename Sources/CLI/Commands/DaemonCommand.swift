@@ -1,7 +1,6 @@
 import AppKit
 import ArgumentParser
 import App
-import Config
 import Dependencies
 
 struct DaemonCommand: ParsableCommand {
@@ -13,11 +12,8 @@ struct DaemonCommand: ParsableCommand {
 
     func run() {
         MainActor.assumeIsolated {
-            let appConfig = ConfigLoader.shared.load()
-            let resolvedConfig = appConfig.toAppStyle()
-
             withDependencies {
-                $0.appStyle = resolvedConfig
+                $0.appStyle = loadAppStyle()
             } operation: {
                 let app = NSApplication.shared
                 app.setActivationPolicy(.accessory)

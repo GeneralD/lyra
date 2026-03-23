@@ -56,10 +56,17 @@ extension AppConfig {
     }
 }
 
+// MARK: - Public API
+
+@MainActor
+public func loadAppStyle() -> AppStyle {
+    ConfigLoader.shared.load().toAppStyle()
+}
+
 // MARK: - DependencyKey registration
 
 extension AppStyleKey: DependencyKey {
     public static let liveValue: AppStyle = MainActor.assumeIsolated {
-        ConfigLoader.shared.load().toAppStyle()
+        loadAppStyle()
     }
 }

@@ -40,14 +40,19 @@ graph TD
         NowPlaying[NowPlaying]
     end
 
+    subgraph Configuration
+        Config[Config]
+    end
+
     subgraph Infrastructure
         LyricsSearch[LyricsSearch]
         MetadataNormalization[MetadataNormalization]
         Persistence[Persistence]
-        Config[Config]
-        LRCLibService[LRCLibService]
-        MusicBrainzService[MusicBrainzService]
-        AIService[AIService]
+        subgraph API Services
+            LRCLibService[LRCLibService]
+            MusicBrainzService[MusicBrainzService]
+            AIService[AIService]
+        end
     end
 
     subgraph Isolated

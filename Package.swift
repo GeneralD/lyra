@@ -144,7 +144,6 @@ let package = Package(
                 "MusicBrainzService",
                 "AIService",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "TOMLKit", package: "TOMLKit"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             resources: [

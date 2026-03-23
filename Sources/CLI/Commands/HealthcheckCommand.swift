@@ -5,7 +5,6 @@ import Domain
 import LRCLibService
 import MusicBrainzService
 import Foundation
-import TOMLKit
 import os
 
 struct HealthcheckCommand: ParsableCommand {
@@ -35,7 +34,8 @@ struct HealthcheckCommand: ParsableCommand {
 
 private extension HealthcheckCommand {
     func runChecks() async -> Int32 {
-        let (config, configFailed) = validateConfig()
+        let configFailed = validateConfig()
+        let config = ConfigLoader.shared.load()
 
         let services: [any HealthCheckable] = [
             LRCLibAPI.search(query: "test"),
@@ -72,35 +72,20 @@ private extension HealthcheckCommand {
         }
     }
 
-    func validateConfig() -> (config: AppConfig, failed: Bool) {
-        let home = NSHomeDirectory()
-        let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
-        let candidates = [
-            "\(xdgConfig)/lyra/config.toml",
-            "\(home)/.lyra/config.toml",
-            "\(xdgConfig)/lyra/config.json",
-            "\(home)/.lyra/config.json",
-        ]
-        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
-            printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "using defaults (no config file found)"))
-            return (ConfigLoader.shared.load(), false)
-        }
-        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-            printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "cannot read \(path)"))
-            return (ConfigLoader.shared.load(), true)
-        }
-        do {
-            if path.hasSuffix(".toml") {
-                let table = try TOMLTable(string: content)
-                _ = try TOMLDecoder().decode(AppConfig.self, from: table)
-            } else {
-                _ = try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
-            }
+    func validateConfig() -> Bool {
+        switch ConfigLoader.shared.validate() {
+        case .loaded(let path):
             printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "loaded (\(path))"))
-            return (ConfigLoader.shared.load(), false)
-        } catch {
-            printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error.localizedDescription)"))
-            return (ConfigLoader.shared.load(), true)
+            return false
+        case .defaults:
+            printResult(name: "Config", result: HealthCheckResult(status: .pass, detail: "using defaults (no config file found)"))
+            return false
+        case .unreadable(let path):
+            printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "cannot read \(path)"))
+            return true
+        case .decodeError(let path, let error):
+            printResult(name: "Config", result: HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error)"))
+            return true
         }
     }
 

@@ -7,7 +7,36 @@ public struct ConfigLoader: Sendable {
     public static let shared = ConfigLoader()
 }
 
+public enum ConfigValidationResult {
+    case loaded(path: String)
+    case defaults
+    case unreadable(path: String)
+    case decodeError(path: String, error: String)
+}
+
 public extension ConfigLoader {
+    func validate() -> ConfigValidationResult {
+        let home = NSHomeDirectory()
+        let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
+        let candidates = [
+            "\(xdgConfig)/lyra/config.toml",
+            "\(home)/.lyra/config.toml",
+            "\(xdgConfig)/lyra/config.json",
+            "\(home)/.lyra/config.json",
+        ]
+        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            return .defaults
+        }
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return .unreadable(path: path)
+        }
+        let configDir = (path as NSString).deletingLastPathComponent
+        guard decode(content: content, path: path, configDir: configDir) != nil else {
+            return .decodeError(path: path, error: "failed to parse config")
+        }
+        return .loaded(path: path)
+    }
+
     func load() -> AppConfig {
         let home = NSHomeDirectory()
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
