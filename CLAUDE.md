@@ -65,7 +65,7 @@ graph TD
     CLI --> App
     App --> Views & Presentation & Config
     App -.->|healthcheck registration| LRCLibService & MusicBrainzService & AIService
-    Views --> Presentation & Config & Domain
+    Views --> Presentation & Domain
     Presentation --> Lyrics & NowPlaying & Domain
     Lyrics --> LyricsSearch & Persistence & MetadataNormalization & Domain
     NowPlaying --> MediaRemote & Domain
