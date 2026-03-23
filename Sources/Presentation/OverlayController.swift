@@ -30,7 +30,7 @@ public extension OverlayController {
     func start() {
         nowPlayingTask = Task { [weak self] in
             guard let self else { return }
-            @Dependency(\.nowPlayingProvider) var provider
+            @Dependency(\.nowPlayingRepository) var provider
             for await info in provider.stream() {
                 guard !Task.isCancelled else { break }
                 guard let info else { clearIfNeeded(); continue }

@@ -11,7 +11,7 @@ public struct NowPlayingRepositoryImpl: Sendable {
     }
 }
 
-extension NowPlayingRepositoryImpl: NowPlayingProvider {
+extension NowPlayingRepositoryImpl: NowPlayingRepository {
     public func stream() -> AsyncStream<NowPlaying?> {
         let bridge = self.bridge
         return AsyncStream { continuation in
@@ -35,8 +35,8 @@ extension NowPlayingRepositoryImpl: NowPlayingProvider {
 
 // MARK: - DependencyKey
 
-extension NowPlayingProviderKey: DependencyKey {
-    public static let liveValue: any NowPlayingProvider = NowPlayingRepositoryImpl(bridge: MediaRemoteBridge())
+extension NowPlayingRepositoryKey: DependencyKey {
+    public static let liveValue: any NowPlayingRepository = NowPlayingRepositoryImpl(bridge: MediaRemoteBridge())
 }
 
 // MARK: - Mapping

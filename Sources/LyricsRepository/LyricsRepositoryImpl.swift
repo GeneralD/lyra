@@ -1,12 +1,10 @@
 import Dependencies
 import Domain
 import Foundation
-import LyricsDataSource
 
 public struct LyricsRepositoryImpl {
     @Dependency(\.lyricsCache) private var cache
-
-    private let dataSource = LyricsDataSourceImpl()
+    @Dependency(\.lyricsDataSource) private var dataSource
 
     public init() {}
 }

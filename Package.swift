@@ -103,7 +103,6 @@ let package = Package(
             name: "LyricsRepository",
             dependencies: [
                 "Domain",
-                "LyricsDataSource",
                 "SQLiteDataStore",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

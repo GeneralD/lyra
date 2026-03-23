@@ -11,7 +11,7 @@ struct OverlayControllerTests {
     @MainActor
     func trackChangeReveals() async throws {
         await withDependencies {
-            $0.nowPlayingProvider = MockNowPlayingProvider(infos: [
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [
                 makeNowPlaying(title: "Numb", artist: "Linkin Park"),
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
@@ -33,7 +33,7 @@ struct OverlayControllerTests {
     @MainActor
     func nilTitleSetsIdle() async throws {
         await withDependencies {
-            $0.nowPlayingProvider = MockNowPlayingProvider(infos: [
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [
                 makeNowPlaying(title: nil, artist: nil),
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
@@ -55,7 +55,7 @@ struct OverlayControllerTests {
     @MainActor
     func lyricsFailure() async throws {
         await withDependencies {
-            $0.nowPlayingProvider = MockNowPlayingProvider(infos: [
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [
                 makeNowPlaying(title: "Unknown", artist: "Nobody"),
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
@@ -79,7 +79,7 @@ struct OverlayControllerTests {
     @MainActor
     func streamNilClearsState() async throws {
         await withDependencies {
-            $0.nowPlayingProvider = MockNowPlayingProvider(infos: [
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [
                 makeNowPlaying(title: "Song", artist: "Artist"),
                 nil,
             ])
@@ -102,7 +102,7 @@ struct OverlayControllerTests {
     @MainActor
     func generationCancellation() async throws {
         await withDependencies {
-            $0.nowPlayingProvider = MockNowPlayingProvider(infos: [
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [
                 makeNowPlaying(title: "First", artist: "A"),
                 makeNowPlaying(title: "Second", artist: "B"),
             ])
@@ -134,7 +134,7 @@ private func makeNowPlaying(title: String?, artist: String?) -> NowPlaying {
 
 // MARK: - Mocks
 
-private struct MockNowPlayingProvider: NowPlayingProvider {
+private struct MockNowPlayingRepository: NowPlayingRepository {
     let infos: [NowPlaying?]
 
     func stream() -> AsyncStream<NowPlaying?> {
