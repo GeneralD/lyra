@@ -80,7 +80,7 @@ let package = Package(
             ]
         ),
         .target(
-            name: "Persistence",
+            name: "SQLiteDataStore",
             dependencies: [
                 "Domain",
                 .product(name: "GRDB", package: "GRDB.swift"),
@@ -95,7 +95,7 @@ let package = Package(
         ),
         .target(
             name: "Lyrics",
-            dependencies: ["Domain", "LyricsSearch", "Persistence", "MetadataNormalization"]
+            dependencies: ["Domain", "LyricsSearch", "SQLiteDataStore", "MetadataNormalization"]
         ),
 
         // Presentation logic
@@ -193,7 +193,7 @@ let package = Package(
         .testTarget(
             name: "PersistenceTests",
             dependencies: [
-                "Persistence",
+                "SQLiteDataStore",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
