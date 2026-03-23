@@ -2,7 +2,7 @@ import Alamofire
 import Domain
 import Foundation
 
-public struct LyricsSearchService: Sendable {
+public struct LyricsDataSourceImpl: Sendable {
     public init() {}
 
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
@@ -16,7 +16,7 @@ public struct LyricsSearchService: Sendable {
     }
 }
 
-private extension LyricsSearchService {
+private extension LyricsDataSourceImpl {
     func lrclib<T: Decodable & Sendable>(_ type: T.Type, from api: LRCLibAPI) async -> T? {
         await AF.request(api)
             .validate(statusCode: 200 ..< 300)

@@ -6,7 +6,7 @@ import LyricsDataSource
 public struct LyricsRepositoryImpl: LyricsRepository {
     @Dependency(\.lyricsCache) private var cache
 
-    private let dataSource = LyricsSearchService()
+    private let dataSource = LyricsDataSourceImpl()
 
     public init() {}
 

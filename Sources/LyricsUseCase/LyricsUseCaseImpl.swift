@@ -1,7 +1,7 @@
 import Domain
 import Dependencies
 
-public struct LyricsService: Sendable {
+public struct LyricsUseCaseImpl: Sendable {
     @Dependency(\.lyricsRepository) private var repository
 
     public init() {}

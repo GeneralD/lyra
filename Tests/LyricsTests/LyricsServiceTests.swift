@@ -13,7 +13,7 @@ struct LyricsServiceTests {
         await withDependencies {
             $0.lyricsRepository = MockLyricsRepository(lyrics: expected)
         } operation: {
-            let service = LyricsService()
+            let service = LyricsUseCaseImpl()
             let result = await service.fetchLyrics(
                 candidates: [Track(title: "Test", artist: "Artist")]
             )
@@ -26,7 +26,7 @@ struct LyricsServiceTests {
         await withDependencies {
             $0.lyricsRepository = MockLyricsRepository(lyrics: nil)
         } operation: {
-            let service = LyricsService()
+            let service = LyricsUseCaseImpl()
             let result = await service.fetchLyrics(
                 track: Track(title: "Unknown", artist: "Nobody")
             )
@@ -44,7 +44,7 @@ struct MetadataServiceTests {
                 Track(title: "Resolved", artist: "Artist"),
             ])
         } operation: {
-            let service = MetadataService()
+            let service = MetadataUseCaseImpl()
             let result = await service.resolve(track: Track(title: "raw", artist: "raw"))
             #expect(result?.title == "Resolved")
             #expect(result?.artist == "Artist")
@@ -56,7 +56,7 @@ struct MetadataServiceTests {
         await withDependencies {
             $0.metadataRepository = MockMetadataRepository(candidates: [])
         } operation: {
-            let service = MetadataService()
+            let service = MetadataUseCaseImpl()
             let result = await service.resolve(track: Track(title: "raw", artist: "raw"))
             #expect(result == nil)
         }

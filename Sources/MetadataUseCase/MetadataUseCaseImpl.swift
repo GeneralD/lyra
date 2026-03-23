@@ -1,7 +1,7 @@
 import Domain
 import Dependencies
 
-public struct MetadataService: Sendable {
+public struct MetadataUseCaseImpl: Sendable {
     @Dependency(\.metadataRepository) private var repository
 
     public init() {}

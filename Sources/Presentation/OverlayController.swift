@@ -18,8 +18,8 @@ public final class OverlayController {
     private var lyricEffects: [DecodeEffectState] = []
 
     @Dependency(\.appStyle) private var config
-    private let lyricsService = LyricsService()
-    private let metadataService = MetadataService()
+    private let lyricsService = LyricsUseCaseImpl()
+    private let metadataService = MetadataUseCaseImpl()
 
     public init() {
         @Dependency(\.appStyle) var cfg
