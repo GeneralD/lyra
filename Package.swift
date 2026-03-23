@@ -79,6 +79,14 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .target(
+            name: "MetadataRepository",
+            dependencies: [
+                "Domain",
+                "MetadataDataSource",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
 
         // Use cases
         .target(
@@ -87,7 +95,7 @@ let package = Package(
         ),
         .target(
             name: "Lyrics",
-            dependencies: ["Domain", "LyricsRepository", "MetadataDataSource"]
+            dependencies: ["Domain", "LyricsRepository", "MetadataRepository"]
         ),
 
         // Presentation

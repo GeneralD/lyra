@@ -15,9 +15,9 @@ struct LyricsSearchServiceTests {
         @Test("returns first candidate from first non-empty normalizer")
         func returnsFirstCandidate() async {
             await withDependencies {
-                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                $0.metadataRepository = StubMetadataRepository(candidates: [
                     Track(title: "LLM Title", artist: "LLM Artist"),
-                ])]
+                ])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
                 let service = LyricsService()
@@ -30,7 +30,7 @@ struct LyricsSearchServiceTests {
         @Test("returns nil when all normalizers return empty")
         func returnsNilWhenEmpty() async {
             await withDependencies {
-                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [])]
+                $0.metadataRepository = StubMetadataRepository(candidates: [])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
                 let service = LyricsService()
@@ -39,13 +39,13 @@ struct LyricsSearchServiceTests {
             }
         }
 
-        @Test("calls normalizers exactly once per invocation")
-        func callsNormalizersOnce() async {
+        @Test("calls repository exactly once per invocation")
+        func callsRepositoryOnce() async {
             nonisolated(unsafe) var callCount = 0
             await withDependencies {
-                $0.metadataNormalizers = [TrackingMetadataNormalizer {
+                $0.metadataRepository = TrackingMetadataRepository {
                     callCount += 1
-                }]
+                }
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
                 let service = LyricsService()
@@ -66,9 +66,9 @@ struct LyricsSearchServiceTests {
             await withDependencies {
                 $0.lyricsCache = writable
                 $0.lyricsRepository = NoopLyricsRepository()
-                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                $0.metadataRepository = StubMetadataRepository(candidates: [
                     Track(title: "LLM Title", artist: "LLM Artist"),
-                ])]
+                ])
             } operation: {
                 let service = LyricsService()
                 _ = await service.fetchLyrics(title: "zzz_unique_zzz", artist: "channel", duration: nil)
@@ -88,9 +88,9 @@ struct LyricsSearchServiceTests {
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
                 $0.lyricsRepository = NoopLyricsRepository()
-                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                $0.metadataRepository = StubMetadataRepository(candidates: [
                     Track(title: "Nonexistent XYZ999", artist: "Nobody ABC123"),
-                ])]
+                ])
             } operation: {
                 let service = LyricsService()
                 let result = await service.fetchLyrics(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz", duration: nil)
@@ -108,9 +108,9 @@ struct LyricsSearchServiceTests {
             await withDependencies {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
                 $0.lyricsRepository = NoopLyricsRepository()
-                $0.metadataNormalizers = [StubMetadataNormalizer(candidates: [
+                $0.metadataRepository = StubMetadataRepository(candidates: [
                     Track(title: "Correct Title", artist: "Correct Artist"),
-                ])]
+                ])
             } operation: {
                 let service = LyricsService()
 
@@ -124,12 +124,12 @@ struct LyricsSearchServiceTests {
 
 // MARK: - Test helpers
 
-private struct StubMetadataNormalizer: MetadataNormalizer {
+private struct StubMetadataRepository: MetadataRepository {
     let candidates: [Track]
     func resolve(track: Track) async -> [Track] { candidates }
 }
 
-private struct TrackingMetadataNormalizer: MetadataNormalizer {
+private struct TrackingMetadataRepository: MetadataRepository {
     let onResolve: @Sendable () -> Void
     func resolve(track: Track) async -> [Track] {
         onResolve()

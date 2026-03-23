@@ -6,13 +6,13 @@ import Testing
 
 @Suite("LyricsService")
 struct LyricsServiceTests {
-    @Test("resolveMetadata delegates to normalizers")
+    @Test("resolveMetadata delegates to metadataRepository")
     func resolveMetadata() async {
         await withDependencies {
             $0.lyricsRepository = MockLyricsRepository(lyrics: nil)
-            $0.metadataNormalizers = [StubNormalizer(candidates: [
+            $0.metadataRepository = MockMetadataRepository(candidates: [
                 Track(title: "Resolved", artist: "Artist"),
-            ])]
+            ])
         } operation: {
             let service = LyricsService()
             let result = await service.resolveMetadata(title: "raw", artist: "raw")
@@ -21,14 +21,14 @@ struct LyricsServiceTests {
         }
     }
 
-    @Test("fetchLyrics delegates to repository")
+    @Test("fetchLyrics uses metadataRepository then lyricsRepository")
     func fetchLyrics() async {
         let expected = LyricsResult(id: 2, syncedLyrics: "[00:01.00] World")
         await withDependencies {
             $0.lyricsRepository = MockLyricsRepository(lyrics: expected)
-            $0.metadataNormalizers = [StubNormalizer(candidates: [
+            $0.metadataRepository = MockMetadataRepository(candidates: [
                 Track(title: "Test", artist: "Artist"),
-            ])]
+            ])
         } operation: {
             let service = LyricsService()
             let result = await service.fetchLyrics(title: "Test", artist: "Artist", duration: nil)
@@ -36,11 +36,11 @@ struct LyricsServiceTests {
         }
     }
 
-    @Test("fetchLyrics returns empty when repository returns nil")
+    @Test("fetchLyrics returns empty when both return nil/empty")
     func fetchLyricsReturnsEmpty() async {
         await withDependencies {
             $0.lyricsRepository = MockLyricsRepository(lyrics: nil)
-            $0.metadataNormalizers = []
+            $0.metadataRepository = MockMetadataRepository(candidates: [])
         } operation: {
             let service = LyricsService()
             let result = await service.fetchLyrics(title: "Unknown", artist: "Nobody", duration: nil)
@@ -58,7 +58,7 @@ private struct MockLyricsRepository: LyricsRepository {
     func fetchLyrics(candidates: [Track], duration: TimeInterval?) async -> LyricsResult? { lyrics }
 }
 
-private struct StubNormalizer: MetadataNormalizer {
+private struct MockMetadataRepository: MetadataRepository {
     let candidates: [Track]
     func resolve(track: Track) async -> [Track] { candidates }
 }
