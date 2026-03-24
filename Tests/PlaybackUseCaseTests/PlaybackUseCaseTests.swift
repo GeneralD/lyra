@@ -2,6 +2,7 @@ import Dependencies
 import Domain
 import Foundation
 import Testing
+
 @testable import PlaybackUseCase
 
 @Suite("PlaybackUseCase")
@@ -51,7 +52,7 @@ private struct MockNowPlayingRepository: NowPlayingRepository {
 
     func stream() -> AsyncStream<NowPlaying?> {
         AsyncStream { continuation in
-            infos.forEach { continuation.yield($0) }
+            for info in infos { continuation.yield(info) }
             continuation.finish()
         }
     }

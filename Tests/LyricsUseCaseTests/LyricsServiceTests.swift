@@ -1,6 +1,7 @@
 import Dependencies
 import Foundation
 import Testing
+
 @testable import Domain
 @testable import LyricsUseCase
 @testable import MetadataUseCase
@@ -41,7 +42,7 @@ struct MetadataServiceTests {
     func resolveMetadata() async {
         await withDependencies {
             $0.metadataRepository = MockMetadataRepository(candidates: [
-                Track(title: "Resolved", artist: "Artist"),
+                Track(title: "Resolved", artist: "Artist")
             ])
         } operation: {
             let service = MetadataUseCaseImpl()

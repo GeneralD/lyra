@@ -1,4 +1,3 @@
-
 public struct TextAppearanceConfig: Sendable, Codable {
     public let fontName: String
     public let fontSize: Double

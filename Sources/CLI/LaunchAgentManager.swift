@@ -66,29 +66,29 @@ extension LaunchAgentManager {
     }
 }
 
-private extension LaunchAgentManager {
-    var programArguments: [String] {
+extension LaunchAgentManager {
+    fileprivate var programArguments: [String] {
         guard let mintPath = mintRunPath else {
             return [installedPath ?? currentExecutablePath, "daemon"]
         }
         return [mintPath, "run", "GeneralD/lyra", "daemon"]
     }
 
-    var mintRunPath: String? {
+    fileprivate var mintRunPath: String? {
         guard currentExecutablePath.contains("/.mint/") else { return nil }
         return whichCommand("mint")
     }
 
-    var installedPath: String? {
+    fileprivate var installedPath: String? {
         whichCommand(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
     }
 
-    var currentExecutablePath: String {
+    fileprivate var currentExecutablePath: String {
         URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL.path
     }
 
     @discardableResult
-    func runLaunchctl(_ arguments: [String]) -> Int32 {
+    fileprivate func runLaunchctl(_ arguments: [String]) -> Int32 {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = arguments
@@ -98,7 +98,7 @@ private extension LaunchAgentManager {
         return task.terminationStatus
     }
 
-    func whichCommand(_ name: String) -> String? {
+    fileprivate func whichCommand(_ name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [name]
@@ -108,9 +108,11 @@ private extension LaunchAgentManager {
         guard (try? process.run()) != nil else { return nil }
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { return nil }
-        guard let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !output.isEmpty else { return nil }
+        guard
+            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !output.isEmpty
+        else { return nil }
         let resolved = URL(fileURLWithPath: output).standardizedFileURL.path
         guard FileManager.default.isExecutableFile(atPath: resolved) else { return nil }
         return resolved

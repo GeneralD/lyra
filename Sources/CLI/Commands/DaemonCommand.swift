@@ -1,6 +1,6 @@
+import App
 import AppKit
 import ArgumentParser
-import App
 import Dependencies
 
 struct DaemonCommand: ParsableCommand {

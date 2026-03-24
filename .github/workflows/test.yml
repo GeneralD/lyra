@@ -9,6 +9,14 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint (swift-format)
+        run: swift format lint --strict --recursive Sources/ Tests/
+
   test:
     runs-on: macos-latest
     steps:

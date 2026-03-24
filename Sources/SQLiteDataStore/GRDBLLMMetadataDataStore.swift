@@ -12,9 +12,12 @@ public struct GRDBLLMMetadataDataStore: MetadataDataStore {
 extension GRDBLLMMetadataDataStore {
     public func read(title: String, artist: String) async -> Track? {
         try? await dbManager.dbQueue.read { db in
-            guard let record = try AIMetadataCacheRecord
-                .filter(Column("raw_title") == title && Column("raw_artist") == artist)
-                .fetchOne(db) else { return nil }
+            guard
+                let record =
+                    try AIMetadataCacheRecord
+                    .filter(Column("raw_title") == title && Column("raw_artist") == artist)
+                    .fetchOne(db)
+            else { return nil }
             return Track(title: record.resolvedTitle, artist: record.resolvedArtist)
         }
     }

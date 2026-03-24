@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 import SwiftUI
 
 @MainActor
@@ -30,35 +30,39 @@ public struct LyricLineView: View {
 }
 
 func makeFont(style: TextAppearance) -> Font {
-    let weight: Font.Weight = switch style.fontWeight.lowercased() {
-    case "ultralight": .ultraLight
-    case "thin": .thin
-    case "light": .light
-    case "medium": .medium
-    case "semibold": .semibold
-    case "bold": .bold
-    case "heavy": .heavy
-    case "black": .black
-    default: .regular
-    }
+    let weight: Font.Weight =
+        switch style.fontWeight.lowercased() {
+        case "ultralight": .ultraLight
+        case "thin": .thin
+        case "light": .light
+        case "medium": .medium
+        case "semibold": .semibold
+        case "bold": .bold
+        case "heavy": .heavy
+        case "black": .black
+        default: .regular
+        }
     return Font.custom(style.fontName, size: style.fontSize).weight(weight)
 }
 
-
 #if DEBUG
-#Preview("Normal") {
-    withDependencies { $0.appStyle = .init() } operation: {
-        LyricLineView(text: "It been a long day without you my friend", isActive: false)
-            .padding()
-            .background(.black)
+    #Preview("Normal") {
+        withDependencies {
+            $0.appStyle = .init()
+        } operation: {
+            LyricLineView(text: "It been a long day without you my friend", isActive: false)
+                .padding()
+                .background(.black)
+        }
     }
-}
 
-#Preview("Active") {
-    withDependencies { $0.appStyle = .init() } operation: {
-        LyricLineView(text: "It been a long day without you my friend", isActive: true)
-            .padding()
-            .background(.black)
+    #Preview("Active") {
+        withDependencies {
+            $0.appStyle = .init()
+        } operation: {
+            LyricLineView(text: "It been a long day without you my friend", isActive: true)
+                .padding()
+                .background(.black)
+        }
     }
-}
 #endif

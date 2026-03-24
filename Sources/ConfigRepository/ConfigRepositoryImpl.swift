@@ -72,8 +72,8 @@ extension ConfigRepositoryImpl: HealthCheckable {
 
 // MARK: - Private
 
-private extension ConfigRepositoryImpl {
-    func resolveWallpaperPath(_ wallpaper: String, configDir: String) -> String {
+extension ConfigRepositoryImpl {
+    fileprivate func resolveWallpaperPath(_ wallpaper: String, configDir: String) -> String {
         guard !wallpaper.hasPrefix("/") else { return wallpaper }
         return URL(fileURLWithPath: configDir).appendingPathComponent(wallpaper).path
     }

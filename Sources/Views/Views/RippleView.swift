@@ -1,6 +1,6 @@
 import AppKit
-import Domain
 import Dependencies
+import Domain
 import SwiftUI
 
 @MainActor
@@ -59,13 +59,14 @@ public struct RippleView: View {
     }
 }
 
-
 #if DEBUG
-#Preview("Ripple") {
-    withDependencies { $0.appStyle = .init() } operation: {
-        RippleView(rippleState: RippleState(), screenOrigin: .zero)
-            .frame(width: 400, height: 300)
-            .background(.black)
+    #Preview("Ripple") {
+        withDependencies {
+            $0.appStyle = .init()
+        } operation: {
+            RippleView(rippleState: RippleState(), screenOrigin: .zero)
+                .frame(width: 400, height: 300)
+                .background(.black)
+        }
     }
-}
 #endif

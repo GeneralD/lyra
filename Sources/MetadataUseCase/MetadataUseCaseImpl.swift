@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 
 public struct MetadataUseCaseImpl {
     @Dependency(\.metadataRepository) private var repository

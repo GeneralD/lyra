@@ -34,11 +34,11 @@ struct IncludesTests {
                 """,
             files: [
                 "ai.toml": """
-                    [ai]
-                    endpoint = "https://example.com/v1"
-                    model = "test-model"
-                    api_key = "test-key"
-                    """,
+                [ai]
+                endpoint = "https://example.com/v1"
+                model = "test-model"
+                api_key = "test-key"
+                """
             ]
         )
 
@@ -61,8 +61,8 @@ struct IncludesTests {
                 """,
             files: [
                 "base.toml": """
-                    screen = "main"
-                    """,
+                screen = "main"
+                """
             ]
         )
 
@@ -75,9 +75,10 @@ struct IncludesTests {
     func noIncludes() throws {
         defer { tearDown() }
 
-        let mainPath = try setUp(mainToml: """
-            screen = "main"
-            """)
+        let mainPath = try setUp(
+            mainToml: """
+                screen = "main"
+                """)
 
         let content = try String(contentsOfFile: mainPath, encoding: .utf8)
         let config = dataSource.decode(content: content, path: mainPath, configDir: tempDir)

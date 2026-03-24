@@ -25,7 +25,7 @@ extension OpenAICompatibleAPI {
         let body: [String: Any] = [
             "model": config.model,
             "messages": [
-                ["role": "user", "content": prompt(rawTitle: rawTitle, rawArtist: rawArtist)],
+                ["role": "user", "content": prompt(rawTitle: rawTitle, rawArtist: rawArtist)]
             ],
             "temperature": 0,
             "response_format": ["type": "json_object"],
@@ -41,8 +41,8 @@ extension OpenAICompatibleAPI {
     }
 }
 
-private extension OpenAICompatibleAPI {
-    func prompt(rawTitle: String, rawArtist: String) -> String {
+extension OpenAICompatibleAPI {
+    fileprivate func prompt(rawTitle: String, rawArtist: String) -> String {
         """
         Extract the canonical song title and the performing artist from the metadata below.
 

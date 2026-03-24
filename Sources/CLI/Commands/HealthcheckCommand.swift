@@ -29,8 +29,8 @@ struct HealthcheckCommand: ParsableCommand {
     }
 }
 
-private extension HealthcheckCommand {
-    func runChecks() async -> Int32 {
+extension HealthcheckCommand {
+    fileprivate func runChecks() async -> Int32 {
         @Dependency(\.healthCheckers) var checkers
 
         var failed = 0
@@ -51,7 +51,7 @@ private extension HealthcheckCommand {
         }
     }
 
-    func printResult(name: String, result: HealthCheckResult) {
+    fileprivate func printResult(name: String, result: HealthCheckResult) {
         let tag: String
         switch result.status {
         case .pass: tag = "[PASS]"

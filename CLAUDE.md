@@ -11,6 +11,8 @@ swift test                           # run all tests
 swift test --filter ConfigTests      # run single test suite
 make build                           # release build via Makefile
 make install                         # install to /usr/local/bin
+make lint                            # check formatting (swift-format)
+make format                          # auto-fix formatting
 ```
 
 ## Architecture

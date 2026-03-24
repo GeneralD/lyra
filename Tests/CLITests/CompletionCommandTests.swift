@@ -43,16 +43,18 @@ struct VersionCommandTests {
     func versionFlag() throws {
         let output = try run(arguments: ["--version"])
         let expected = try String(contentsOfFile: resourcePath("version.txt"), encoding: .utf8)
-        #expect(output.trimmingCharacters(in: .whitespacesAndNewlines)
-            == expected.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(
+            output.trimmingCharacters(in: .whitespacesAndNewlines)
+                == expected.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     @Test("version subcommand output matches version.txt")
     func versionSubcommand() throws {
         let output = try run(arguments: ["version"])
         let expected = try String(contentsOfFile: resourcePath("version.txt"), encoding: .utf8)
-        #expect(output.trimmingCharacters(in: .whitespacesAndNewlines)
-            == expected.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(
+            output.trimmingCharacters(in: .whitespacesAndNewlines)
+                == expected.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
 

@@ -2,6 +2,7 @@ import Dependencies
 import Domain
 import Foundation
 import Testing
+
 @testable import MetadataUseCase
 
 @Suite("MetadataUseCase")

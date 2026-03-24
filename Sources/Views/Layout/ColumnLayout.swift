@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 
 public struct ColumnLayout {
     public let columnWidth: Double

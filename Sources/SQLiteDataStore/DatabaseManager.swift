@@ -5,8 +5,9 @@ public final class DatabaseManager: Sendable {
     public let dbQueue: DatabaseQueue
 
     public init() throws {
-        let cacheDir = URL(fileURLWithPath:
-            ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
+        let cacheDir = URL(
+            fileURLWithPath:
+                ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
                 ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.cache"
         )
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
@@ -74,8 +75,9 @@ public final class DatabaseManager: Sendable {
         }
 
         migrator.registerMigration("v1_removeLegacyCache") { _ in
-            let cacheDir = URL(fileURLWithPath:
-                ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
+            let cacheDir = URL(
+                fileURLWithPath:
+                    ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
                     ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.cache"
             )
             try? FileManager.default.removeItem(at: cacheDir.appendingPathComponent("now-playing"))

@@ -87,7 +87,8 @@ extension RegexMetadataDataSourceImpl {
         let normalized = normalize(raw)
 
         if let match = normalized.firstMatch(of: /「([^」]+)」|『([^』]+)』/) {
-            let title = (match.output.1 ?? match.output.2)
+            let title =
+                (match.output.1 ?? match.output.2)
                 .map(String.init) ?? normalized
             let artist = normalized[..<match.range.lowerBound]
                 .trimmingCharacters(in: .whitespaces)
@@ -129,8 +130,10 @@ extension RegexMetadataDataSourceImpl {
             artistUsable ? [Track(title: normalized, artist: normalizedArtist)] : [],
             artistUsable ? [Track(title: stripped, artist: normalizedArtist)] : [],
             parts.count >= 2
-                ? [Track(title: parts[1], artist: parts[0]),
-                   Track(title: parts[0], artist: parts[1])]
+                ? [
+                    Track(title: parts[1], artist: parts[0]),
+                    Track(title: parts[0], artist: parts[1]),
+                ]
                 : [],
             artistUsable
                 ? parts.unless { $0 == stripped }.map { Track(title: $0, artist: normalizedArtist) }

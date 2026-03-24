@@ -1,6 +1,7 @@
 import Dependencies
 import Foundation
 import Testing
+
 @testable import Domain
 @testable import Presentation
 
@@ -12,7 +13,7 @@ struct OverlayControllerTests {
     func trackChangeReveals() async throws {
         await withDependencies {
             $0.playbackUseCase = MockPlaybackUseCase(infos: [
-                makeNowPlaying(title: "Numb", artist: "Linkin Park"),
+                makeNowPlaying(title: "Numb", artist: "Linkin Park")
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
@@ -34,7 +35,7 @@ struct OverlayControllerTests {
     func nilTitleSetsIdle() async throws {
         await withDependencies {
             $0.playbackUseCase = MockPlaybackUseCase(infos: [
-                makeNowPlaying(title: nil, artist: nil),
+                makeNowPlaying(title: nil, artist: nil)
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
@@ -56,7 +57,7 @@ struct OverlayControllerTests {
     func lyricsFailure() async throws {
         await withDependencies {
             $0.playbackUseCase = MockPlaybackUseCase(infos: [
-                makeNowPlaying(title: "Unknown", artist: "Nobody"),
+                makeNowPlaying(title: "Unknown", artist: "Nobody")
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
@@ -106,9 +107,10 @@ struct OverlayControllerTests {
                 makeNowPlaying(title: "First", artist: "A"),
                 makeNowPlaying(title: "Second", artist: "B"),
             ])
-            $0.lyricsRepository = MockLyricsRepository(result: LyricsResult(
-                trackName: "Second Track", artistName: "B"
-            ))
+            $0.lyricsRepository = MockLyricsRepository(
+                result: LyricsResult(
+                    trackName: "Second Track", artistName: "B"
+                ))
             $0.lyricsCache = MockLyricsCache()
             $0.musicBrainzMetadataDataStore = MockMetadataDataStore()
             $0.appStyle = .init()

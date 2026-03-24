@@ -18,10 +18,10 @@ extension LyricsDataSourceImpl: LyricsDataSource {
     }
 }
 
-private extension LyricsDataSourceImpl {
-    func lrclib<T: Decodable & Sendable>(_ type: T.Type, from api: LRCLibAPI) async -> T? {
+extension LyricsDataSourceImpl {
+    fileprivate func lrclib<T: Decodable & Sendable>(_ type: T.Type, from api: LRCLibAPI) async -> T? {
         await AF.request(api)
-            .validate(statusCode: 200 ..< 300)
+            .validate(statusCode: 200..<300)
             .serializingDecodable(type)
             .response.value
     }

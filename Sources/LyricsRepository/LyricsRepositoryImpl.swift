@@ -22,7 +22,8 @@ extension LyricsRepositoryImpl: LyricsRepository {
 
         let query = track.artist.isEmpty ? track.title : "\(track.title) \(track.artist)"
         if let results = await dataSource.search(query: query),
-           let result = results.first(where: { $0.syncedLyrics != nil }) ?? results.first(where: { $0.plainLyrics != nil }) {
+            let result = results.first(where: { $0.syncedLyrics != nil }) ?? results.first(where: { $0.plainLyrics != nil })
+        {
             await store(result, track: track)
             return result
         }
@@ -44,7 +45,8 @@ extension LyricsRepositoryImpl: LyricsRepository {
             return displayResult
         }
 
-        let matches = await candidates
+        let matches =
+            await candidates
             .map { $0.artist.isEmpty ? $0.title : "\($0.title) \($0.artist)" }
             .asyncCompactMap { await dataSource.search(query: $0) }
             .compactMap { response in
@@ -60,15 +62,15 @@ extension LyricsRepositoryImpl: LyricsRepository {
 
 // MARK: - Private
 
-private extension LyricsRepositoryImpl {
-    func store(_ result: LyricsResult, track: Track) async {
+extension LyricsRepositoryImpl {
+    fileprivate func store(_ result: LyricsResult, track: Track) async {
         guard !track.artist.isEmpty else { return }
         try? await cache.write(title: track.title, artist: track.artist, result: result)
     }
 }
 
-private extension Array {
-    func asyncCompactMap<T>(_ transform: (Element) async -> T?) async -> [T] {
+extension Array {
+    fileprivate func asyncCompactMap<T>(_ transform: (Element) async -> T?) async -> [T] {
         var results: [T] = []
         for element in self {
             guard let value = await transform(element) else { continue }

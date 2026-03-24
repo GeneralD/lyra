@@ -2,7 +2,7 @@ PREFIX ?= /usr/local
 BINARY = lyra
 BUILD_DIR = $(shell swift build --show-bin-path -c release 2>/dev/null || echo .build/release)
 
-.PHONY: build install uninstall test clean
+.PHONY: build install uninstall test clean lint format
 
 build:
 	swift build --disable-sandbox -c release
@@ -20,6 +20,12 @@ uninstall:
 
 test:
 	swift test
+
+lint:
+	swift format lint --strict --recursive Sources/ Tests/
+
+format:
+	swift format --in-place --recursive Sources/ Tests/
 
 clean:
 	swift package clean

@@ -1,7 +1,7 @@
 import Domain
 import Foundation
-import Testing
 import TOMLKit
+import Testing
 
 @testable import ConfigDataSource
 
@@ -33,7 +33,8 @@ struct DefaultValueTests {
 
     @Test("missing [text] section uses TextConfig.defaults")
     func noTextSection() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             screen = "main"
             """)
         #expect(config.text.default.fontName == "Helvetica Neue")
@@ -68,7 +69,8 @@ struct DefaultValueTests {
 struct TextStyleInheritanceTests {
     @Test("title/artist/lyric/highlight inherit from default when not specified")
     func inheritFromDefault() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             font = "Custom Font"
             size = 20
@@ -81,7 +83,8 @@ struct TextStyleInheritanceTests {
 
     @Test("title overrides size, titleDefaults override weight, rest from default")
     func titleOverridesSize() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             font = "Custom Font"
             size = 14
@@ -98,7 +101,8 @@ struct TextStyleInheritanceTests {
 
     @Test("artist overrides weight but inherits other fields from default")
     func artistOverridesWeight() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             font = "Custom Font"
             size = 14
@@ -113,7 +117,8 @@ struct TextStyleInheritanceTests {
 
     @Test("highlight inherits from lyric, not directly from default")
     func highlightInheritsFromLyric() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             font = "Default Font"
 
@@ -125,7 +130,8 @@ struct TextStyleInheritanceTests {
 
     @Test("lyric color change propagates to unspecified highlight")
     func lyricColorPropagesToHighlight() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.lyric]
             spacing = 10
             """)
@@ -141,7 +147,8 @@ struct TextStyleInheritanceTests {
 
     @Test("empty title section also applies titleDefaults")
     func emptyTitleSectionAppliesLayerDefaults() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.title]
             """)
         #expect(config.text.title.fontSize == 18)
@@ -156,7 +163,8 @@ struct TextStyleInheritanceTests {
 
     @Test("empty artist section also applies artistDefaults")
     func emptyArtistSectionAppliesLayerDefaults() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.artist]
             """)
         #expect(config.text.artist.fontWeight == "medium")
@@ -170,7 +178,8 @@ struct TextStyleInheritanceTests {
 
     @Test("empty highlight section also applies highlightDefaults")
     func emptyHighlightSectionAppliesLayerDefaults() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.highlight]
             """)
         #expect(config.text.highlight.color == .gradient(["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]))
@@ -183,7 +192,8 @@ struct TextStyleInheritanceTests {
 struct FlexibleDoubleTests {
     @Test("TOML integer decodes as FlexibleDouble")
     func integerValue() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             size = 12
             """)
@@ -192,7 +202,8 @@ struct FlexibleDoubleTests {
 
     @Test("TOML float decodes as FlexibleDouble")
     func floatValue() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.decode_effect]
             duration = 0.8
             """)
@@ -201,7 +212,8 @@ struct FlexibleDoubleTests {
 
     @Test("TOML integer spacing decodes correctly")
     func integerSpacing() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             spacing = 6
             """)
@@ -215,7 +227,8 @@ struct FlexibleDoubleTests {
 struct PartialSpecificationTests {
     @Test("ripple with only color specified fills remaining with defaults")
     func ripplePartial() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [ripple]
             color = "#FF0000FF"
             """)
@@ -228,7 +241,8 @@ struct PartialSpecificationTests {
 
     @Test("artwork with only opacity specified fills size with default")
     func artworkPartial() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [artwork]
             opacity = 0.5
             """)
@@ -238,7 +252,8 @@ struct PartialSpecificationTests {
 
     @Test("decode_effect with only duration specified fills charset with all")
     func decodeEffectPartial() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.decode_effect]
             duration = 1.5
             """)
@@ -253,7 +268,8 @@ struct PartialSpecificationTests {
 struct ColorStyleTests {
     @Test("string color decodes as solid")
     func solidColor() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             color = "#FFF"
             """)
@@ -262,7 +278,8 @@ struct ColorStyleTests {
 
     @Test("array color decodes as gradient")
     func gradientColor() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             color = ["#AAA", "#BBB"]
             """)
@@ -271,7 +288,8 @@ struct ColorStyleTests {
 
     @Test("shadow string decodes as solid ColorStyle")
     func shadowColor() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.default]
             shadow = "#000"
             """)
@@ -285,7 +303,8 @@ struct ColorStyleTests {
 struct CharsetTests {
     @Test("single string charset decodes as single-element set")
     func singleCharset() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.decode_effect]
             charset = "latin"
             """)
@@ -294,7 +313,8 @@ struct CharsetTests {
 
     @Test("array charset decodes as set")
     func arrayCharset() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.decode_effect]
             charset = ["latin", "cjk"]
             """)
@@ -328,7 +348,8 @@ struct InvariantTests {
 
     @Test("highlight inherits from lyric chain, not default directly")
     func highlightInheritancePath() throws {
-        let config = try decode("""
+        let config = try decode(
+            """
             [text.lyric]
             font = "Special Lyric Font"
             """)

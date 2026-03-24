@@ -30,7 +30,7 @@ extension OpenAICompatibleAPI: HealthCheckable {
                 return HealthCheckResult(status: .fail, detail: "no HTTP response", latency: Double(ms) / 1000)
             }
             switch http.statusCode {
-            case 200 ..< 300:
+            case 200..<300:
                 return HealthCheckResult(status: .pass, detail: "authenticated (\(ms)ms)", latency: Double(ms) / 1000)
             case 401, 403:
                 return HealthCheckResult(status: .fail, detail: "HTTP \(http.statusCode) — check api_key in [ai]", latency: Double(ms) / 1000)

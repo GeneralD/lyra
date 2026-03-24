@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 import Foundation
 
 public struct NowPlayingRepositoryImpl: Sendable {

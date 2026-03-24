@@ -1,4 +1,3 @@
-
 public struct DecodeEffectConfig: Sendable {
     public let duration: FlexibleDouble
     public let charset: Set<CharsetName>
@@ -12,10 +11,12 @@ extension DecodeEffectConfig: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         duration = try container.decodeIfPresent(FlexibleDouble.self, forKey: .duration) ?? Self.defaults.duration
-        switch (try? container.decodeIfPresent([CharsetName].self, forKey: .charset), try? container.decodeIfPresent(CharsetName.self, forKey: .charset)) {
-        case let (.some(arr), _):
+        switch (
+            try? container.decodeIfPresent([CharsetName].self, forKey: .charset), try? container.decodeIfPresent(CharsetName.self, forKey: .charset)
+        ) {
+        case (.some(let arr), _):
             charset = Set(arr)
-        case let (_, .some(single)):
+        case (_, .some(let single)):
             charset = [single]
         default:
             charset = Self.defaults.charset

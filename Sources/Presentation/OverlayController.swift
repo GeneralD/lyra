@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 import Foundation
 
 @MainActor
@@ -27,13 +27,16 @@ public final class OverlayController {
     }
 }
 
-public extension OverlayController {
-    func start() {
+extension OverlayController {
+    public func start() {
         nowPlayingTask = Task { [weak self] in
             guard let self else { return }
             for await info in self.playbackService.observeNowPlaying() {
                 guard !Task.isCancelled else { break }
-                guard let info else { clearIfNeeded(); continue }
+                guard let info else {
+                    clearIfNeeded()
+                    continue
+                }
                 latestNowPlaying = info
                 updateArtwork(from: info)
                 updateTrack(from: info)
@@ -42,40 +45,40 @@ public extension OverlayController {
         }
     }
 
-    func stop() {
+    public func stop() {
         nowPlayingTask?.cancel()
         fetchGeneration += 1
         titleEffect.stop()
         artistEffect.stop()
-        lyricEffects.forEach { $0.stop() }
+        for effect in lyricEffects { effect.stop() }
     }
 
     /// Called from DisplayLink to keep activeLineIndex in sync at frame rate
-    func updateActiveLineTick() {
+    public func updateActiveLineTick() {
         guard let info = latestNowPlaying else { return }
         updateActiveLineIndex(from: info)
     }
 }
 
-private extension OverlayController {
-    func clearIfNeeded() {
+extension OverlayController {
+    fileprivate func clearIfNeeded() {
         guard lastTrackKey != (nil, nil) else { return }
         lastTrackKey = (nil, nil)
         latestNowPlaying = nil
         fetchGeneration += 1
         titleEffect.stop()
         artistEffect.stop()
-        lyricEffects.forEach { $0.stop() }
+        for effect in lyricEffects { effect.stop() }
         lyricEffects = []
         state.reset()
     }
 
-    func updateArtwork(from info: NowPlaying) {
+    fileprivate func updateArtwork(from info: NowPlaying) {
         guard info.artworkData != state.artworkData else { return }
         state.artworkData = info.artworkData
     }
 
-    func updateTrack(from info: NowPlaying) {
+    fileprivate func updateTrack(from info: NowPlaying) {
         let trackKey = (info.title, info.artist)
         guard trackKey != lastTrackKey else { return }
 
@@ -106,7 +109,8 @@ private extension OverlayController {
             }
 
             // Step 2: Fetch lyrics (slow)
-            let result = candidates.isEmpty
+            let result =
+                candidates.isEmpty
                 ? await service.fetchLyrics(track: rawTrack)
                 : await service.fetchLyrics(candidates: candidates)
             guard generation == self.fetchGeneration else { return }
@@ -118,7 +122,7 @@ private extension OverlayController {
                 self.revealLyrics(content)
             } else {
                 self.state.lyrics = .failure
-                self.lyricEffects.forEach { $0.stop() }
+                for effect in self.lyricEffects { effect.stop() }
                 self.lyricEffects = []
                 self.state.displayLyricLines = []
             }
@@ -126,7 +130,7 @@ private extension OverlayController {
         }
     }
 
-    func updateActiveLineIndex(from info: NowPlaying) {
+    fileprivate func updateActiveLineIndex(from info: NowPlaying) {
         guard case .success(let .timed(lines)) = state.lyrics else { return }
         guard info.playbackRate != 0 else { return }
         let index = info.elapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
@@ -137,8 +141,8 @@ private extension OverlayController {
 
 // MARK: - Reveal animations
 
-private extension OverlayController {
-    func revealTitle(_ text: String?) {
+extension OverlayController {
+    fileprivate func revealTitle(_ text: String?) {
         guard let text else {
             state.title = .idle
             state.displayTitle = " "
@@ -153,7 +157,7 @@ private extension OverlayController {
         }
     }
 
-    func revealArtist(_ text: String?) {
+    fileprivate func revealArtist(_ text: String?) {
         guard let text else {
             state.artist = .idle
             state.displayArtist = " "
@@ -168,14 +172,15 @@ private extension OverlayController {
         }
     }
 
-    func revealLyrics(_ content: LyricsContent) {
+    fileprivate func revealLyrics(_ content: LyricsContent) {
         state.lyrics = .revealing(content)
-        let texts: [String] = switch content {
-        case .timed(let lines): lines.map(\.text)
-        case .plain(let lines): lines
-        }
+        let texts: [String] =
+            switch content {
+            case .timed(let lines): lines.map(\.text)
+            case .plain(let lines): lines
+            }
 
-        lyricEffects.forEach { $0.stop() }
+        for effect in lyricEffects { effect.stop() }
         lyricEffects = texts.enumerated().map { index, text in
             let effect = DecodeEffectState(config: config.text.decodeEffect)
             effect.onUpdate = { [weak self] displayText in

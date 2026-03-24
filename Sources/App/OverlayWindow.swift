@@ -1,10 +1,10 @@
-import AppKit
 @preconcurrency import AVFoundation
+import AppKit
+import Dependencies
 import Domain
 import Presentation
-import Views
-import Dependencies
 import SwiftUI
+import Views
 
 @MainActor
 public final class OverlayWindow {
@@ -48,10 +48,11 @@ public final class OverlayWindow {
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
         controller.state.screenOrigin = frames.origin
-        let hostingView = NSHostingView(rootView: OverlayContentView(
-            state: controller.state,
-            rippleState: rippleState
-        ))
+        let hostingView = NSHostingView(
+            rootView: OverlayContentView(
+                state: controller.state,
+                rippleState: rippleState
+            ))
         hostingView.frame = frames.hosting
         self.hostingView = hostingView
 

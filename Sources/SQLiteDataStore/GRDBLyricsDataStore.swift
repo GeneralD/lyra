@@ -11,8 +11,10 @@ public struct GRDBLyricsDataStore: LyricsDataStore {
     public func read(title: String, artist: String) async -> LyricsResult? {
         try? await dbManager.dbQueue.read { db in
             try LRCLibTrackRecord
-                .joining(required: LRCLibTrackRecord.lookups
-                    .filter(Column("title") == title && Column("artist") == artist))
+                .joining(
+                    required: LRCLibTrackRecord.lookups
+                        .filter(Column("title") == title && Column("artist") == artist)
+                )
                 .fetchOne(db)?
                 .toLyricsResult()
         }

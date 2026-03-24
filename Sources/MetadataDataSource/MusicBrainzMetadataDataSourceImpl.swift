@@ -29,8 +29,8 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
     }
 }
 
-private extension MusicBrainzMetadataDataSourceImpl {
-    func matchRecordings(from response: MusicBrainzResponse, regex: RegexMetadataDataSourceImpl) -> [MusicBrainzMetadata] {
+extension MusicBrainzMetadataDataSourceImpl {
+    fileprivate func matchRecordings(from response: MusicBrainzResponse, regex: RegexMetadataDataSourceImpl) -> [MusicBrainzMetadata] {
         var candidates: [MusicBrainzMetadata] = []
         for recording in response.recordings {
             guard let artistName = recording.artistName else { continue }
@@ -38,18 +38,19 @@ private extension MusicBrainzMetadataDataSourceImpl {
             let titles = [recording.title, regex.normalize(recording.title), regex.stripBrackets(recording.title)]
                 .filter { seen.insert($0).inserted }
             for t in titles {
-                candidates.append(MusicBrainzMetadata(
-                    title: t, artist: artistName,
-                    duration: recording.duration, musicbrainzId: recording.id
-                ))
+                candidates.append(
+                    MusicBrainzMetadata(
+                        title: t, artist: artistName,
+                        duration: recording.duration, musicbrainzId: recording.id
+                    ))
             }
         }
         return candidates
     }
 
-    func musicbrainz<T: Decodable & Sendable>(_ api: MusicBrainzAPI) async -> T? {
+    fileprivate func musicbrainz<T: Decodable & Sendable>(_ api: MusicBrainzAPI) async -> T? {
         await AF.request(api)
-            .validate(statusCode: 200 ..< 300)
+            .validate(statusCode: 200..<300)
             .serializingDecodable(T.self)
             .response.value
     }

@@ -17,7 +17,7 @@ struct LyricsSearchServiceTests {
         func returnsFirstCandidate() async {
             await withDependencies {
                 $0.metadataRepository = StubMetadataRepository(candidates: [
-                    Track(title: "LLM Title", artist: "LLM Artist"),
+                    Track(title: "LLM Title", artist: "LLM Artist")
                 ])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
@@ -71,7 +71,7 @@ struct LyricsSearchServiceTests {
                 $0.lyricsCache = writable
                 $0.lyricsRepository = NoopLyricsRepository()
                 $0.metadataRepository = StubMetadataRepository(candidates: [
-                    Track(title: "LLM Title", artist: "LLM Artist"),
+                    Track(title: "LLM Title", artist: "LLM Artist")
                 ])
             } operation: {
                 let lyricsService = LyricsUseCaseImpl()
@@ -94,7 +94,7 @@ struct LyricsSearchServiceTests {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
                 $0.lyricsRepository = NoopLyricsRepository()
                 $0.metadataRepository = StubMetadataRepository(candidates: [
-                    Track(title: "Nonexistent XYZ999", artist: "Nobody ABC123"),
+                    Track(title: "Nonexistent XYZ999", artist: "Nobody ABC123")
                 ])
             } operation: {
                 let lyricsService = LyricsUseCaseImpl()
@@ -115,7 +115,7 @@ struct LyricsSearchServiceTests {
                 $0.lyricsCache = StubLyricsCache(stored: nil)
                 $0.lyricsRepository = NoopLyricsRepository()
                 $0.metadataRepository = StubMetadataRepository(candidates: [
-                    Track(title: "Correct Title", artist: "Correct Artist"),
+                    Track(title: "Correct Title", artist: "Correct Artist")
                 ])
             } operation: {
                 let lyricsService = LyricsUseCaseImpl()

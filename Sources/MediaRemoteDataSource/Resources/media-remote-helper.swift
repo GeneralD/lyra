@@ -4,8 +4,8 @@ import Foundation
 
 let path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
 guard let handle = dlopen(path, RTLD_NOW),
-      let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo"),
-      let regSym = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications")
+    let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo"),
+    let regSym = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications")
 else { exit(1) }
 
 typealias GetInfoFn = @convention(c) (DispatchQueue, @escaping (CFDictionary?) -> Void) -> Void
@@ -17,7 +17,8 @@ let register = unsafeBitCast(regSym, to: RegisterFn.self)
 @Sendable func fetchAndPrint() {
     getInfo(DispatchQueue.main) { dict in
         guard let d = dict as? [String: Any],
-              d["kMRMediaRemoteNowPlayingInfoTitle"] != nil else {
+            d["kMRMediaRemoteNowPlayingInfoTitle"] != nil
+        else {
             print(#"{"has_info":false}"#)
             fflush(stdout)
             return
@@ -35,7 +36,8 @@ let register = unsafeBitCast(regSym, to: RegisterFn.self)
             r["artwork_base64"] = art.base64EncodedString()
         }
         if let json = try? JSONSerialization.data(withJSONObject: r),
-           let s = String(data: json, encoding: .utf8) {
+            let s = String(data: json, encoding: .utf8)
+        {
             print(s)
             fflush(stdout)
         }

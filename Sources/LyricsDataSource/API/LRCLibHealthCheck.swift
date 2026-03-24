@@ -18,7 +18,7 @@ extension LRCLibAPI: HealthCheckable {
             let elapsed = ContinuousClock.now - start
             let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
             guard let http = response as? HTTPURLResponse,
-                  (200 ..< 300).contains(http.statusCode)
+                (200..<300).contains(http.statusCode)
             else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 return HealthCheckResult(status: .fail, detail: "HTTP \(code)", latency: Double(ms) / 1000)

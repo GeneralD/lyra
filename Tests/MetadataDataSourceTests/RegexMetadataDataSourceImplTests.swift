@@ -1,5 +1,6 @@
 import Domain
 import Testing
+
 @testable import MetadataDataSource
 
 @Suite("RegexMetadataDataSourceImpl")

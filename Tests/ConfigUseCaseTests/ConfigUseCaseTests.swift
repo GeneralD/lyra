@@ -2,6 +2,7 @@ import Dependencies
 import Domain
 import Foundation
 import Testing
+
 @testable import ConfigUseCase
 
 @Suite("ConfigUseCase")

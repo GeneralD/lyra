@@ -13,22 +13,22 @@ struct CharacterPool {
     var random: Character { characters.randomElement() ?? "?" }
 
     func random(count: Int) -> String {
-        String((0 ..< count).map { _ in random })
+        String((0..<count).map { _ in random })
     }
 }
 
-private extension CharsetName {
-    var allCharacters: [Character] {
+extension CharsetName {
+    fileprivate var allCharacters: [Character] {
         switch self {
-        case .latin:    Array("ÄÖÜßÆØÅÐÞÀÁÂÃÈÉÊËÌÍÎÏÒÓÔÕÙÚÛÝŒàáâãäåæèéêëìíîïòóôõöùúûüý")
+        case .latin: Array("ÄÖÜßÆØÅÐÞÀÁÂÃÈÉÊËÌÍÎÏÒÓÔÕÙÚÛÝŒàáâãäåæèéêëìíîïòóôõöùúûüý")
         case .cyrillic: scalars(in: 0x0410...0x042F, 0x0430...0x044F)
-        case .greek:    scalars(in: 0x0391...0x03A9, 0x03B1...0x03C9)
-        case .symbols:  Array("†‡§¶©®™±≠≈∞∆∑∏√∫◊♠♣♥♦")
-        case .cjk:      scalars(in: 0x4E00...0x9FFF)
+        case .greek: scalars(in: 0x0391...0x03A9, 0x03B1...0x03C9)
+        case .symbols: Array("†‡§¶©®™±≠≈∞∆∑∏√∫◊♠♣♥♦")
+        case .cjk: scalars(in: 0x4E00...0x9FFF)
         }
     }
 
-    func scalars(in ranges: ClosedRange<UInt32>...) -> [Character] {
+    fileprivate func scalars(in ranges: ClosedRange<UInt32>...) -> [Character] {
         ranges.flatMap { $0.compactMap(UnicodeScalar.init).map(Character.init) }
     }
 }
@@ -95,7 +95,7 @@ extension DecodeEffectState {
                 let targetLocked = Int(easedProgress * Double(totalChars))
 
                 while self.lockedIndices.count < targetLocked {
-                    let remaining = (0 ..< totalChars).filter { !self.lockedIndices.contains($0) }
+                    let remaining = (0..<totalChars).filter { !self.lockedIndices.contains($0) }
                     guard let idx = remaining.randomElement() else { break }
                     self.lockedIndices.insert(idx)
                 }
@@ -121,22 +121,22 @@ extension DecodeEffectState {
     }
 }
 
-private extension DecodeEffectState {
-    func finish(_ onComplete: (() -> Void)?) {
+extension DecodeEffectState {
+    fileprivate func finish(_ onComplete: (() -> Void)?) {
         stop()
         onComplete?()
     }
 
-    func updateDisplay(_ text: String) {
+    fileprivate func updateDisplay(_ text: String) {
         displayText = text
         onUpdate?(text)
     }
 
-    func tickLoading() {
+    fileprivate func tickLoading() {
         updateDisplay(pool.random(count: displayText.count))
     }
 
-    func tickDecode() {
+    fileprivate func tickDecode() {
         let chars = Array(targetText)
         updateDisplay(
             chars.enumerated()

@@ -12,9 +12,12 @@ public struct GRDBMetadataDataStore: MetadataDataStore {
 extension GRDBMetadataDataStore {
     public func read(title: String, artist: String) async -> MusicBrainzMetadata? {
         try? await dbManager.dbQueue.read { db in
-            guard let record = try MusicBrainzCacheRecord
-                .filter(Column("query_title") == title && Column("query_artist") == artist)
-                .fetchOne(db) else { return nil }
+            guard
+                let record =
+                    try MusicBrainzCacheRecord
+                    .filter(Column("query_title") == title && Column("query_artist") == artist)
+                    .fetchOne(db)
+            else { return nil }
             return MusicBrainzMetadata(
                 title: record.resolvedTitle,
                 artist: record.resolvedArtist,

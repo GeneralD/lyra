@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 import Foundation
 import Observation
 
@@ -36,8 +36,9 @@ public final class RippleState {
 
     public func idle() {
         guard config.ripple.enabled,
-              config.ripple.idle > 0,
-              Date.now.timeIntervalSince(lastIdleRipple) > config.ripple.idle else { return }
+            config.ripple.idle > 0,
+            Date.now.timeIntervalSince(lastIdleRipple) > config.ripple.idle
+        else { return }
         lastIdleRipple = .now
         ripples.append(.init(position: currentPosition, startTime: .now, idle: true))
         cleanup()

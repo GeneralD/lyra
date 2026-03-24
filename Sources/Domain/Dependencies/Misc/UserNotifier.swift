@@ -33,7 +33,8 @@ private struct OSAScriptNotifier: UserNotifier {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: " ")
         let subtitleLine = subtitle.map { "\"\($0)\n\n\" & " } ?? ""
-        let buttons = fileToOpen != nil
+        let buttons =
+            fileToOpen != nil
             ? "buttons {\"Open Config\", \"Dismiss\"} default button \"Dismiss\""
             : "buttons {\"OK\"} default button \"OK\""
         let script = """
@@ -41,14 +42,15 @@ private struct OSAScriptNotifier: UserNotifier {
             message (\(subtitleLine)"\(escaped)") \
             \(buttons)
             """
-        let openScript = fileToOpen.map { path in
-            """
+        let openScript =
+            fileToOpen.map { path in
+                """
 
-            if button returned of result is "Open Config" then
-                do shell script "open '\(path)'"
-            end if
-            """
-        } ?? ""
+                if button returned of result is "Open Config" then
+                    do shell script "open '\(path)'"
+                end if
+                """
+            } ?? ""
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")

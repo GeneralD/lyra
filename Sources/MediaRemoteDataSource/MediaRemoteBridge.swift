@@ -36,40 +36,33 @@ extension MediaRemoteBridge: MediaRemoteDataSource {
                     return
                 }
                 guard let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      json["has_info"] as? Bool == true else {
+                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    json["has_info"] as? Bool == true
+                else {
                     continuation.resume(returning: .noInfo)
                     return
                 }
-                continuation.resume(returning: .info(NowPlaying(
-                    title: json["title"] as? String,
-                    artist: json["artist"] as? String,
-                    artworkData: (json["artwork_base64"] as? String).flatMap { Data(base64Encoded: $0) },
-                    duration: json["duration"] as? TimeInterval,
-                    rawElapsed: json["elapsed"] as? TimeInterval,
-                    playbackRate: json["rate"] as? Double ?? 1.0,
-                    timestamp: (json["timestamp"] as? TimeInterval).map { Date(timeIntervalSinceReferenceDate: $0) }
-                )))
+                continuation.resume(
+                    returning: .info(
+                        NowPlaying(
+                            title: json["title"] as? String,
+                            artist: json["artist"] as? String,
+                            artworkData: (json["artwork_base64"] as? String).flatMap { Data(base64Encoded: $0) },
+                            duration: json["duration"] as? TimeInterval,
+                            rawElapsed: json["elapsed"] as? TimeInterval,
+                            playbackRate: json["rate"] as? Double ?? 1.0,
+                            timestamp: (json["timestamp"] as? TimeInterval).map { Date(timeIntervalSinceReferenceDate: $0) }
+                        )))
             }
         }
-    }
-
-    private static func readLine(from handle: FileHandle) -> String? {
-        var buffer = Data()
-        while true {
-            let byte = handle.readData(ofLength: 1)
-            guard !byte.isEmpty else { return nil }
-            guard byte.first != UInt8(ascii: "\n") else { break }
-            buffer.append(byte)
-        }
-        return String(data: buffer, encoding: .utf8)
     }
 }
 
 extension MediaRemoteBridge {
-    private static func ensureScript() -> String {
-        let cacheDir = URL(fileURLWithPath:
-            ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
+    fileprivate static func ensureScript() -> String {
+        let cacheDir = URL(
+            fileURLWithPath:
+                ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
                 ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.cache"
         ).appendingPathComponent("lyra")
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
@@ -81,5 +74,16 @@ extension MediaRemoteBridge {
         try? FileManager.default.removeItem(atPath: dest)
         try? FileManager.default.copyItem(atPath: source.path, toPath: dest)
         return dest
+    }
+
+    fileprivate static func readLine(from handle: FileHandle) -> String? {
+        var buffer = Data()
+        while true {
+            let byte = handle.readData(ofLength: 1)
+            guard !byte.isEmpty else { return nil }
+            guard byte.first != UInt8(ascii: "\n") else { break }
+            buffer.append(byte)
+        }
+        return String(data: buffer, encoding: .utf8)
     }
 }

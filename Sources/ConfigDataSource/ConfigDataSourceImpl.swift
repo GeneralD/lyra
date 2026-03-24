@@ -33,21 +33,20 @@ extension ConfigDataSourceImpl {
             "\(home)/.lyra/config.json",
         ]
         guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }),
-              let content = try? String(contentsOfFile: path, encoding: .utf8)
+            let content = try? String(contentsOfFile: path, encoding: .utf8)
         else { return nil }
         return (path, content)
     }
 
     @discardableResult
     func decodeOrThrow(content: String, path: String, configDir: String) throws -> AppConfig {
-        if path.hasSuffix(".toml") {
-            let table = try TOMLTable(string: content)
-            resolveIncludes(into: table, configDir: configDir)
-            table.remove(at: "includes")
-            return try TOMLDecoder().decode(AppConfig.self, from: table)
-        } else {
+        guard path.hasSuffix(".toml") else {
             return try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
         }
+        let table = try TOMLTable(string: content)
+        resolveIncludes(into: table, configDir: configDir)
+        table.remove(at: "includes")
+        return try TOMLDecoder().decode(AppConfig.self, from: table)
     }
 
     func decode(content: String, path: String, configDir: String) -> AppConfig? {
@@ -58,11 +57,12 @@ extension ConfigDataSourceImpl {
         guard let paths = table["includes"]?.array else { return }
         for element in paths {
             guard let relativePath = element.string else { continue }
-            let absolutePath = relativePath.hasPrefix("/")
+            let absolutePath =
+                relativePath.hasPrefix("/")
                 ? relativePath
                 : URL(fileURLWithPath: configDir).appendingPathComponent(relativePath).path
             guard let content = try? String(contentsOfFile: absolutePath, encoding: .utf8),
-                  let included = try? TOMLTable(string: content)
+                let included = try? TOMLTable(string: content)
             else { continue }
             deepMerge(from: included, into: table)
         }
@@ -71,7 +71,7 @@ extension ConfigDataSourceImpl {
     func deepMerge(from source: TOMLTable, into target: TOMLTable) {
         for (key, value) in source {
             guard let sourceTable = value.table,
-                  let targetTable = target[key]?.table
+                let targetTable = target[key]?.table
             else {
                 if target[key] == nil { target[key] = value }
                 continue

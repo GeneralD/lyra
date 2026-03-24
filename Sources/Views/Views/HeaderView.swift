@@ -1,6 +1,6 @@
+import Dependencies
 import Domain
 import Presentation
-import Dependencies
 import SwiftUI
 
 @MainActor
@@ -50,20 +50,23 @@ public struct HeaderView: View {
     }
 }
 
-
 #if DEBUG
-#Preview("Header") {
-    withDependencies { $0.appStyle = .init() } operation: {
-        HeaderView(state: {
-            let s = OverlayState()
-            s.title = .success("See You Again")
-            s.artist = .success("Wiz Khalifa")
-            s.displayTitle = "See You Again"
-            s.displayArtist = "Wiz Khalifa"
-            return s
-        }())
-        .padding()
-        .background(.black)
+    #Preview("Header") {
+        withDependencies {
+            $0.appStyle = .init()
+        } operation: {
+            HeaderView(
+                state: {
+                    let s = OverlayState()
+                    s.title = .success("See You Again")
+                    s.artist = .success("Wiz Khalifa")
+                    s.displayTitle = "See You Again"
+                    s.displayArtist = "Wiz Khalifa"
+                    return s
+                }()
+            )
+            .padding()
+            .background(.black)
+        }
     }
-}
 #endif

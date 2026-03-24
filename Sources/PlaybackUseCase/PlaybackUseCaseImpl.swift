@@ -1,5 +1,5 @@
-import Domain
 import Dependencies
+import Domain
 
 public struct PlaybackUseCaseImpl {
     @Dependency(\.nowPlayingRepository) private var nowPlaying

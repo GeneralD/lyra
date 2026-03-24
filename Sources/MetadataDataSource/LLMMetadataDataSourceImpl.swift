@@ -13,14 +13,14 @@ extension LLMMetadataDataSourceImpl: MetadataDataSource {
         guard let aiConfig = config.ai else { return [] }
 
         guard let metadata = await callAPI(config: aiConfig, rawTitle: track.title, rawArtist: track.artist),
-              !metadata.title.isEmpty
+            !metadata.title.isEmpty
         else { return [] }
         return [Track(title: metadata.title, artist: metadata.artist)]
     }
 }
 
-private extension LLMMetadataDataSourceImpl {
-    func callAPI(config: AIEndpoint, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
+extension LLMMetadataDataSourceImpl {
+    fileprivate func callAPI(config: AIEndpoint, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
         let api = OpenAICompatibleAPI(config: config)
         guard let request = try? api.chatCompletion(rawTitle: rawTitle, rawArtist: rawArtist) else { return nil }
 
@@ -34,7 +34,7 @@ private extension LLMMetadataDataSourceImpl {
         }
 
         guard let httpResponse = urlResponse as? HTTPURLResponse,
-              (200 ..< 300).contains(httpResponse.statusCode)
+            (200..<300).contains(httpResponse.statusCode)
         else {
             let code = (urlResponse as? HTTPURLResponse)?.statusCode ?? -1
             fputs("lyra: AI extraction failed with HTTP \(code)\n", stderr)
@@ -42,8 +42,8 @@ private extension LLMMetadataDataSourceImpl {
         }
 
         guard let response = try? JSONDecoder().decode(ChatCompletionResponse.self, from: data),
-              let content = response.choices.first?.message.content,
-              let contentData = content.data(using: .utf8)
+            let content = response.choices.first?.message.content,
+            let contentData = content.data(using: .utf8)
         else { return nil }
 
         return try? JSONDecoder().decode(ExtractedMetadata.self, from: contentData)
