@@ -16,7 +16,7 @@ struct OverlayControllerTests {
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
-            $0.metadataCache = MockMetadataCache()
+            $0.musicBrainzMetadataDataStore = MockMetadataDataStore()
             $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
@@ -38,7 +38,7 @@ struct OverlayControllerTests {
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
-            $0.metadataCache = MockMetadataCache()
+            $0.musicBrainzMetadataDataStore = MockMetadataDataStore()
             $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
@@ -60,7 +60,7 @@ struct OverlayControllerTests {
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
-            $0.metadataCache = MockMetadataCache()
+            $0.musicBrainzMetadataDataStore = MockMetadataDataStore()
             $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
@@ -85,7 +85,7 @@ struct OverlayControllerTests {
             ])
             $0.lyricsRepository = MockLyricsRepository(result: nil)
             $0.lyricsCache = MockLyricsCache()
-            $0.metadataCache = MockMetadataCache()
+            $0.musicBrainzMetadataDataStore = MockMetadataDataStore()
             $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
@@ -110,7 +110,7 @@ struct OverlayControllerTests {
                 trackName: "Second Track", artistName: "B"
             ))
             $0.lyricsCache = MockLyricsCache()
-            $0.metadataCache = MockMetadataCache()
+            $0.musicBrainzMetadataDataStore = MockMetadataDataStore()
             $0.appStyle = .init()
         } operation: {
             let controller = OverlayController()
@@ -159,7 +159,7 @@ private struct MockLyricsCache: LyricsDataStore {
     func write(title: String, artist: String, result: LyricsResult) async throws {}
 }
 
-private struct MockMetadataCache: MetadataDataStore {
+private struct MockMetadataDataStore: MetadataDataStore {
     func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
+    func write(title: String, artist: String, value: MusicBrainzMetadata) async throws {}
 }

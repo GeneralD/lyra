@@ -17,9 +17,14 @@ extension MediaRemoteDataSourceKey: DependencyKey {
     public static let liveValue: any MediaRemoteDataSource = MediaRemoteBridge()
 }
 
-extension MetadataDataSourceKey: DependencyKey {
-    public static let liveValue: [any MetadataDataSource] = [
-        LLMMetadataDataSourceImpl(),
-        MusicBrainzMetadataDataSourceImpl(),
-    ]
+extension LLMMetadataDataSourceKey: DependencyKey {
+    public static let liveValue: any MetadataDataSource<Track> = LLMMetadataDataSourceImpl()
+}
+
+extension MusicBrainzMetadataDataSourceKey: DependencyKey {
+    public static let liveValue: any MetadataDataSource<MusicBrainzMetadata> = MusicBrainzMetadataDataSourceImpl()
+}
+
+extension RegexMetadataDataSourceKey: DependencyKey {
+    public static let liveValue: any MetadataDataSource<Track> = RegexMetadataDataSourceImpl()
 }

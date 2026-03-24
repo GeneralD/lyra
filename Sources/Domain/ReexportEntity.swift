@@ -1,1 +1,1 @@
-public import Entity
+@_exported import Entity

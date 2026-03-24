@@ -1,7 +1,7 @@
 import Domain
 import GRDB
 
-public struct GRDBLyricsCache: LyricsDataStore {
+public struct GRDBLyricsDataStore: LyricsDataStore {
     private let dbManager: DatabaseManager
 
     public init(dbManager: DatabaseManager) {
@@ -10,14 +10,10 @@ public struct GRDBLyricsCache: LyricsDataStore {
 
     public func read(title: String, artist: String) async -> LyricsResult? {
         try? await dbManager.dbQueue.read { db in
-            let sql = """
-                SELECT t.*
-                FROM lyrics_lookup l
-                JOIN lrclib_tracks t ON l.lrclib_id = t.id
-                WHERE l.title = ? AND l.artist = ?
-                """
-            return try LRCLibTrackRecord
-                .fetchOne(db, sql: sql, arguments: [title, artist])?
+            try LRCLibTrackRecord
+                .joining(required: LRCLibTrackRecord.lookups
+                    .filter(Column("title") == title && Column("artist") == artist))
+                .fetchOne(db)?
                 .toLyricsResult()
         }
     }
@@ -28,10 +24,10 @@ public struct GRDBLyricsCache: LyricsDataStore {
             let track = LRCLibTrackRecord(from: result)
             try track.save(db, onConflict: .replace)
 
-            var lookup = LyricsLookupRecord(id: nil, title: title, artist: artist, lrclibId: track.id)
+            let lookup = LyricsLookupRecord(id: nil, title: title, artist: artist, lrclibId: track.id)
             try lookup.save(db, onConflict: .replace)
         }
     }
 }
 
-extension GRDBLyricsCache: Sendable {}
+extension GRDBLyricsDataStore: Sendable {}

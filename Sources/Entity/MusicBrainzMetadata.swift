@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MusicBrainzMetadata: Sendable {
+public struct MusicBrainzMetadata: Sendable, Equatable {
     public let title: String
     public let artist: String
     public let duration: TimeInterval?
