@@ -17,9 +17,3 @@ extension MetadataRepositoryImpl: MetadataRepository {
         return []
     }
 }
-
-// MARK: - DependencyKey
-
-extension MetadataRepositoryKey: DependencyKey {
-    public static let liveValue: any MetadataRepository = MetadataRepositoryImpl()
-}

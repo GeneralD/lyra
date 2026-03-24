@@ -21,7 +21,7 @@ extension FontMetricsProviderKey: DependencyKey {
     public static let liveValue: any FontMetricsProvider = AppKitFontMetrics()
 }
 
-// MARK: - AppStyle DI registration
+// MARK: - AppStyle
 
 extension AppStyleKey: DependencyKey {
     public static let liveValue: AppStyle = MainActor.assumeIsolated {

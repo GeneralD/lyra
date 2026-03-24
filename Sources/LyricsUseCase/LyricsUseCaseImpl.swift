@@ -16,7 +16,3 @@ extension LyricsUseCaseImpl: LyricsUseCase {
         await repository.fetchLyrics(candidates: candidates) ?? .empty
     }
 }
-
-extension LyricsUseCaseKey: DependencyKey {
-    public static let liveValue: any LyricsUseCase = LyricsUseCaseImpl()
-}

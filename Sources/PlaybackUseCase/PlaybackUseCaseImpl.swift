@@ -12,7 +12,3 @@ extension PlaybackUseCaseImpl: PlaybackUseCase {
         nowPlaying.stream()
     }
 }
-
-extension PlaybackUseCaseKey: DependencyKey {
-    public static let liveValue: any PlaybackUseCase = PlaybackUseCaseImpl()
-}

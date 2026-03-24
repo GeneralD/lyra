@@ -46,21 +46,34 @@ let package = Package(
             ]
         ),
 
+        // DI Wiring (all liveValue registrations)
+        .target(
+            name: "DependencyInjection",
+            dependencies: [
+                "ConfigUseCase",
+                "ConfigRepository",
+                "ConfigDataSource",
+                "LyricsUseCase",
+                "LyricsRepository",
+                "LyricsDataSource",
+                "MetadataUseCase",
+                "MetadataRepository",
+                "MetadataDataSource",
+                "PlaybackUseCase",
+                "NowPlayingRepository",
+                "MediaRemoteDataSource",
+                "SQLiteDataStore",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // Interactor (App wiring)
         .target(
             name: "App",
             dependencies: [
                 "Views",
                 "Presentation",
-                "ConfigUseCase",
-                "ConfigRepository",
-                "ConfigDataSource",
-                "LyricsUseCase",
-                "MetadataUseCase",
-                "PlaybackUseCase",
-                "LyricsDataSource",
-                "MetadataDataSource",
-                "MediaRemoteDataSource",
+                "DependencyInjection",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -153,7 +166,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "Alamofire", package: "Alamofire"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .target(
@@ -170,7 +182,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "TOMLKit", package: "TOMLKit"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
@@ -180,7 +191,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "GRDB", package: "GRDB.swift"),
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
@@ -189,7 +199,6 @@ let package = Package(
             name: "MediaRemoteDataSource",
             dependencies: [
                 "Domain",
-                .product(name: "Dependencies", package: "swift-dependencies"),
             ],
             resources: [.copy("Resources/media-remote-helper.swift")]
         ),

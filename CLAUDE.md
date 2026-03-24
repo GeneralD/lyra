@@ -34,6 +34,10 @@ graph TD
         App[App]
     end
 
+    subgraph DI Wiring
+        DependencyInjection[DependencyInjection]
+    end
+
     subgraph Presenter
         Presentation[Presentation]
     end
@@ -69,9 +73,12 @@ graph TD
 
     lyra --> CLI
     CLI --> App
-    App --> Views & Presentation & ConfigDataSource & ConfigRepository
-    App -.->|DI link guarantee| ConfigUseCase & PlaybackUseCase & LyricsUseCase & MetadataUseCase
-    App -.->|healthcheck DI| LyricsDataSource & MetadataDataSource
+    App --> Views & Presentation & DependencyInjection
+    DependencyInjection --> ConfigUseCase & ConfigRepository & ConfigDataSource
+    DependencyInjection --> PlaybackUseCase & LyricsUseCase & MetadataUseCase
+    DependencyInjection --> LyricsRepository & MetadataRepository & NowPlayingRepository
+    DependencyInjection --> LyricsDataSource & MetadataDataSource & MediaRemoteDataSource
+    DependencyInjection --> SQLiteDataStore
     Views --> Presentation & Domain
     Presentation -.->|DI only| Domain
     ConfigUseCase --> Domain
@@ -89,6 +96,7 @@ graph TD
     SQLiteDataStore --> Domain
 
     style Domain fill:#4a9,stroke:#333,color:#fff
+    style DependencyInjection fill:#e74,stroke:#333,color:#fff
     style ConfigUseCase fill:#59c,stroke:#333,color:#fff
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
@@ -103,7 +111,8 @@ graph TD
 | Executable | `lyra` | Entry point |
 | CLI | `CLI` | ArgumentParser commands, LaunchAgent |
 | View | `Views` | SwiftUI views — purely declarative, no logic |
-| Interactor | `App` | OverlayWindow, AppStyleBuilder, healthcheck DI |
+| DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
+| Interactor | `App` | OverlayWindow management only |
 | Presenter | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
 | Entity | `Domain` | Protocols, models, DependencyKeys |
 | UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |

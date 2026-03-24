@@ -1,4 +1,3 @@
-import Dependencies
 import Domain
 import Foundation
 import TOMLKit
@@ -21,10 +20,6 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         try decodeOrThrow(content: content, path: path, configDir: configDir)
         return path
     }
-}
-
-extension ConfigDataSourceKey: DependencyKey {
-    public static let liveValue: any ConfigDataSource = ConfigDataSourceImpl()
 }
 
 extension ConfigDataSourceImpl {

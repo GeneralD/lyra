@@ -17,7 +17,3 @@ extension MetadataUseCaseImpl: MetadataUseCase {
         await repository.resolve(track: track)
     }
 }
-
-extension MetadataUseCaseKey: DependencyKey {
-    public static let liveValue: any MetadataUseCase = MetadataUseCaseImpl()
-}
