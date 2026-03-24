@@ -1,5 +1,4 @@
 import Domain
-import Dependencies
 import GRDB
 
 public struct GRDBAIMetadataCache: AIMetadataDataStore {
@@ -34,17 +33,3 @@ extension GRDBAIMetadataCache {
 }
 
 extension GRDBAIMetadataCache: Sendable {}
-
-// MARK: - DependencyKey
-
-extension AIMetadataDataStoreKey: DependencyKey {
-    public static let liveValue: any AIMetadataDataStore = {
-        guard let db = try? DatabaseManager() else { return NoopAIMetadataCacheLive() }
-        return GRDBAIMetadataCache(dbManager: db)
-    }()
-}
-
-private struct NoopAIMetadataCacheLive: AIMetadataDataStore {
-    func read(rawTitle: String, rawArtist: String) async -> Track? { nil }
-    func write(rawTitle: String, rawArtist: String, candidate: Track) async throws {}
-}

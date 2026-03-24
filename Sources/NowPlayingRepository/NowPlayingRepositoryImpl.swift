@@ -29,9 +29,3 @@ extension NowPlayingRepositoryImpl: NowPlayingRepository {
         }
     }
 }
-
-// MARK: - DependencyKey
-
-extension NowPlayingRepositoryKey: DependencyKey {
-    public static let liveValue: any NowPlayingRepository = NowPlayingRepositoryImpl()
-}

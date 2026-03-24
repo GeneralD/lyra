@@ -56,12 +56,3 @@ private extension LLMMetadataDataSourceImpl {
         return try? JSONDecoder().decode(ExtractedMetadata.self, from: contentData)
     }
 }
-
-// MARK: - DependencyKey
-
-extension MetadataDataSourceKey: DependencyKey {
-    public static let liveValue: [any MetadataDataSource] = [
-        LLMMetadataDataSourceImpl(),
-        MusicBrainzMetadataDataSourceImpl(),
-    ]
-}

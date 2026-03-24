@@ -70,12 +70,6 @@ extension ConfigRepositoryImpl: HealthCheckable {
     }
 }
 
-// MARK: - DependencyKey
-
-extension ConfigRepositoryKey: DependencyKey {
-    public static let liveValue: any ConfigRepository = ConfigRepositoryImpl()
-}
-
 // MARK: - Private
 
 private extension ConfigRepositoryImpl {

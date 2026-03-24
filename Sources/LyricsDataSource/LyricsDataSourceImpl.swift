@@ -1,6 +1,5 @@
 import Alamofire
 import Domain
-import Dependencies
 import Foundation
 
 public struct LyricsDataSourceImpl {
@@ -17,10 +16,6 @@ extension LyricsDataSourceImpl: LyricsDataSource {
     public func search(query: String) async -> [LyricsResult]? {
         await lrclib([LyricsResult].self, from: .search(query: query))
     }
-}
-
-extension LyricsDataSourceKey: DependencyKey {
-    public static let liveValue: any LyricsDataSource = LyricsDataSourceImpl()
 }
 
 private extension LyricsDataSourceImpl {

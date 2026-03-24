@@ -13,7 +13,3 @@ extension ConfigUseCaseImpl: ConfigUseCase {
         repository.loadAppStyle()
     }
 }
-
-extension ConfigUseCaseKey: DependencyKey {
-    public static let liveValue: any ConfigUseCase = ConfigUseCaseImpl()
-}

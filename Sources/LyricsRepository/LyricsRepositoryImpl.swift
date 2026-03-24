@@ -58,12 +58,6 @@ extension LyricsRepositoryImpl: LyricsRepository {
     }
 }
 
-// MARK: - DependencyKey
-
-extension LyricsRepositoryKey: DependencyKey {
-    public static let liveValue: any LyricsRepository = LyricsRepositoryImpl()
-}
-
 // MARK: - Private
 
 private extension LyricsRepositoryImpl {

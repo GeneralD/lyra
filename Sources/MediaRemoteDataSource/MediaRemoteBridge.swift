@@ -1,5 +1,4 @@
 import Domain
-import Dependencies
 import Foundation
 
 /// Bridges to MediaRemote.framework via a persistent swift interpreter subprocess.
@@ -83,10 +82,4 @@ extension MediaRemoteBridge {
         try? FileManager.default.copyItem(atPath: source.path, toPath: dest)
         return dest
     }
-}
-
-// MARK: - DependencyKey
-
-extension MediaRemoteDataSourceKey: DependencyKey {
-    public static let liveValue: any MediaRemoteDataSource = MediaRemoteBridge()
 }
