@@ -6,8 +6,8 @@ import Testing
 
 // MARK: - Cache behavior
 
-@Suite("AI cache")
-struct AICacheTests {
+@Suite("LLM cache")
+struct LLMCacheTests {
     @Test("returns cached Track without calling any DataSource")
     func cacheHitSkipsDataSources() async {
         let cached = Track(title: "Cached", artist: "Artist")
