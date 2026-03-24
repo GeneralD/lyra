@@ -46,62 +46,65 @@ graph TD
         Domain[Domain]
     end
 
-    subgraph UseCase
-        ConfigUseCase[ConfigUseCase]
-        PlaybackUseCase[PlaybackUseCase]
-        LyricsUseCase[LyricsUseCase]
-        MetadataUseCase[MetadataUseCase]
-    end
+    subgraph Implementations
+        subgraph UseCase
+            ConfigUseCase[ConfigUseCase]
+            PlaybackUseCase[PlaybackUseCase]
+            LyricsUseCase[LyricsUseCase]
+            MetadataUseCase[MetadataUseCase]
+        end
 
-    subgraph Repository
-        ConfigRepository[ConfigRepository]
-        LyricsRepository[LyricsRepository]
-        MetadataRepository[MetadataRepository]
-        NowPlayingRepository[NowPlayingRepository]
-    end
+        subgraph Repository
+            ConfigRepository[ConfigRepository]
+            LyricsRepository[LyricsRepository]
+            MetadataRepository[MetadataRepository]
+            NowPlayingRepository[NowPlayingRepository]
+        end
 
-    subgraph DataSource
-        LyricsDataSource[LyricsDataSource]
-        MetadataDataSource[MetadataDataSource]
-        ConfigDataSource[ConfigDataSource]
-        MediaRemoteDataSource[MediaRemoteDataSource]
-    end
+        subgraph DataSource
+            LyricsDataSource[LyricsDataSource]
+            MetadataDataSource[MetadataDataSource]
+            ConfigDataSource[ConfigDataSource]
+            MediaRemoteDataSource[MediaRemoteDataSource]
+        end
 
-    subgraph DataStore
-        SQLiteDataStore[SQLiteDataStore]
+        subgraph DataStore
+            SQLiteDataStore[SQLiteDataStore]
+        end
     end
 
     lyra --> CLI
     CLI --> App
     App --> Views & Presentation & DependencyInjection
-    DependencyInjection --> ConfigUseCase & ConfigRepository & ConfigDataSource
-    DependencyInjection --> PlaybackUseCase & LyricsUseCase & MetadataUseCase
-    DependencyInjection --> LyricsRepository & MetadataRepository & NowPlayingRepository
-    DependencyInjection --> LyricsDataSource & MetadataDataSource & MediaRemoteDataSource
-    DependencyInjection --> SQLiteDataStore
+    DependencyInjection --> Implementations
     Views --> Presentation & Domain
-    Presentation -.->|DI only| Domain
-    ConfigUseCase --> Domain
-    PlaybackUseCase --> NowPlayingRepository & Domain
-    LyricsUseCase --> LyricsRepository & Domain
-    MetadataUseCase --> MetadataRepository & Domain
-    ConfigRepository --> Domain
-    LyricsRepository --> SQLiteDataStore & Domain
-    MetadataRepository --> Domain
-    NowPlayingRepository --> Domain
-    LyricsDataSource --> Domain
-    MetadataDataSource --> Domain
-    MediaRemoteDataSource --> Domain
-    ConfigDataSource --> Domain
-    SQLiteDataStore --> Domain
+    Presentation --> Domain
+    Implementations --> Domain
+    PlaybackUseCase --> NowPlayingRepository
+    LyricsUseCase --> LyricsRepository
+    MetadataUseCase --> MetadataRepository
+    LyricsRepository --> SQLiteDataStore
 
-    style Domain fill:#4a9,stroke:#333,color:#fff
-    style DependencyInjection fill:#e74,stroke:#333,color:#fff
+    style lyra fill:#333,stroke:#333,color:#fff
+    style CLI fill:#555,stroke:#333,color:#fff
+    style App fill:#6a5,stroke:#333,color:#fff
+    style Views fill:#6a5,stroke:#333,color:#fff
+    style Presentation fill:#6a5,stroke:#333,color:#fff
+    style DependencyInjection fill:#c44,stroke:#333,color:#fff
+    style Domain fill:#38b,stroke:#333,color:#fff
     style ConfigUseCase fill:#59c,stroke:#333,color:#fff
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
     style MetadataUseCase fill:#59c,stroke:#333,color:#fff
-    style lyra fill:#333,stroke:#fff,color:#fff
+    style ConfigRepository fill:#86c,stroke:#333,color:#fff
+    style LyricsRepository fill:#86c,stroke:#333,color:#fff
+    style MetadataRepository fill:#86c,stroke:#333,color:#fff
+    style NowPlayingRepository fill:#86c,stroke:#333,color:#fff
+    style LyricsDataSource fill:#c84,stroke:#333,color:#fff
+    style MetadataDataSource fill:#c84,stroke:#333,color:#fff
+    style ConfigDataSource fill:#c84,stroke:#333,color:#fff
+    style MediaRemoteDataSource fill:#c84,stroke:#333,color:#fff
+    style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
 ### Layer Summary (VIPER + Clean Architecture)

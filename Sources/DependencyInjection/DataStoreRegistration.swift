@@ -2,23 +2,27 @@ import Dependencies
 import Domain
 import SQLiteDataStore
 
+private enum SharedDatabaseManager {
+    static let instance: DatabaseManager? = try? DatabaseManager()
+}
+
 extension AIMetadataDataStoreKey: DependencyKey {
     public static let liveValue: any AIMetadataDataStore = {
-        guard let db = try? DatabaseManager() else { return NoopAIMetadataDataStore() }
+        guard let db = SharedDatabaseManager.instance else { return NoopAIMetadataDataStore() }
         return GRDBAIMetadataCache(dbManager: db)
     }()
 }
 
 extension LyricsDataStoreKey: DependencyKey {
     public static let liveValue: any LyricsDataStore = {
-        guard let dbManager = try? DatabaseManager() else { return NoopLyricsDataStore() }
-        return GRDBLyricsCache(dbManager: dbManager)
+        guard let db = SharedDatabaseManager.instance else { return NoopLyricsDataStore() }
+        return GRDBLyricsCache(dbManager: db)
     }()
 }
 
 extension MetadataDataStoreKey: DependencyKey {
     public static let liveValue: any MetadataDataStore = {
-        guard let db = try? DatabaseManager() else { return NoopMetadataDataStore() }
+        guard let db = SharedDatabaseManager.instance else { return NoopMetadataDataStore() }
         return GRDBMetadataCache(dbManager: db)
     }()
 }

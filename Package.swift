@@ -50,6 +50,7 @@ let package = Package(
         .target(
             name: "DependencyInjection",
             dependencies: [
+                "Domain",
                 "ConfigUseCase",
                 "ConfigRepository",
                 "ConfigDataSource",
