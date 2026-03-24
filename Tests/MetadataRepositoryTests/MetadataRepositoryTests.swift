@@ -50,7 +50,7 @@ struct MusicBrainzCacheTests {
         } operation: {
             let repo = MetadataRepositoryImpl()
             let result = await repo.resolve(track: Track(title: "raw", artist: "raw"))
-            #expect(result == [Track(title: "MB Title", artist: "MB Artist")])
+            #expect(result == [Track(title: "MB Title", artist: "MB Artist", duration: 240)])
         }
     }
 }
@@ -212,7 +212,7 @@ struct TypeConversionTests {
         } operation: {
             let repo = MetadataRepositoryImpl()
             let result = await repo.resolve(track: Track(title: "raw", artist: "raw"))
-            #expect(result == [Track(title: "Song", artist: "Artist")])
+            #expect(result == [Track(title: "Song", artist: "Artist", duration: 300)])
         }
     }
 }
