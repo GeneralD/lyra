@@ -88,10 +88,17 @@ let package = Package(
             ]
         ),
 
-        // Entity
+        // Entity (pure data types, zero external dependencies)
+        .target(
+            name: "Entity",
+            dependencies: []
+        ),
+
+        // Domain (protocols + DI keys)
         .target(
             name: "Domain",
             dependencies: [
+                "Entity",
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "DependenciesMacros", package: "swift-dependencies"),
             ]
@@ -109,7 +116,6 @@ let package = Package(
             name: "LyricsUseCase",
             dependencies: [
                 "Domain",
-                "LyricsRepository",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -117,7 +123,6 @@ let package = Package(
             name: "MetadataUseCase",
             dependencies: [
                 "Domain",
-                "MetadataRepository",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -125,7 +130,6 @@ let package = Package(
             name: "PlaybackUseCase",
             dependencies: [
                 "Domain",
-                "NowPlayingRepository",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -142,7 +146,6 @@ let package = Package(
             name: "LyricsRepository",
             dependencies: [
                 "Domain",
-                "SQLiteDataStore",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),

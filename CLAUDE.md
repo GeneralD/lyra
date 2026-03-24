@@ -42,8 +42,12 @@ graph TD
         Presentation[Presentation]
     end
 
-    subgraph Entity
+    subgraph DI Contract
         Domain[Domain]
+    end
+
+    subgraph Pure Model
+        Entity[Entity]
     end
 
     subgraph Implementations
@@ -80,10 +84,16 @@ graph TD
     Views --> Presentation & Domain
     Presentation --> Domain
     Implementations --> Domain
-    PlaybackUseCase --> NowPlayingRepository
-    LyricsUseCase --> LyricsRepository
-    MetadataUseCase --> MetadataRepository
-    LyricsRepository --> SQLiteDataStore
+    Domain --> Entity
+    ConfigUseCase -.-> ConfigRepository
+    ConfigRepository -.-> ConfigDataSource
+    PlaybackUseCase -.-> NowPlayingRepository
+    NowPlayingRepository -.-> MediaRemoteDataSource
+    LyricsUseCase -.-> LyricsRepository
+    LyricsRepository -.-> LyricsDataSource
+    LyricsRepository -.-> SQLiteDataStore
+    MetadataUseCase -.-> MetadataRepository
+    MetadataRepository -.-> MetadataDataSource
 
     style lyra fill:#333,stroke:#333,color:#fff
     style CLI fill:#555,stroke:#333,color:#fff
@@ -91,6 +101,7 @@ graph TD
     style Views fill:#6a5,stroke:#333,color:#fff
     style Presentation fill:#6a5,stroke:#333,color:#fff
     style DependencyInjection fill:#c44,stroke:#333,color:#fff
+    style Entity fill:#4a9,stroke:#333,color:#fff
     style Domain fill:#38b,stroke:#333,color:#fff
     style ConfigUseCase fill:#59c,stroke:#333,color:#fff
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
@@ -117,7 +128,8 @@ graph TD
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Interactor | `App` | OverlayWindow management only |
 | Presenter | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
-| Entity | `Domain` | Protocols, models, DependencyKeys |
+| Entity | `Entity` | Pure data types, zero external dependencies |
+| Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
 | UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
 | Repository | `ConfigRepository`, `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository` | DataSource + DataStore orchestration, cache strategy |
 | DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource` | API execution, file I/O, private framework access |
