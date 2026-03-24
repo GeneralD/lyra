@@ -1,16 +1,15 @@
-import MetadataDataSource
 import Dependencies
 import Domain
 import Foundation
 
-public struct LLMNormalizer {
+public struct LLMMetadataDataSourceImpl {
     @Dependency(\.appStyle) private var config
     @Dependency(\.aiMetadataCache) private var cache
 
     public init() {}
 }
 
-extension LLMNormalizer: MetadataNormalizer {
+extension LLMMetadataDataSourceImpl: MetadataDataSource {
     public func resolve(track: Track) async -> [Track] {
         guard let aiConfig = config.ai else { return [] }
 
@@ -27,7 +26,7 @@ extension LLMNormalizer: MetadataNormalizer {
     }
 }
 
-private extension LLMNormalizer {
+private extension LLMMetadataDataSourceImpl {
     func callAPI(config: AIEndpoint, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
         let api = OpenAICompatibleAPI(config: config)
         guard let request = try? api.chatCompletion(rawTitle: rawTitle, rawArtist: rawArtist) else { return nil }
@@ -60,9 +59,9 @@ private extension LLMNormalizer {
 
 // MARK: - DependencyKey
 
-extension MetadataNormalizerKey: DependencyKey {
-    public static let liveValue: [any MetadataNormalizer] = [
-        LLMNormalizer(),
-        RegexNormalizer(),
+extension MetadataDataSourceKey: DependencyKey {
+    public static let liveValue: [any MetadataDataSource] = [
+        LLMMetadataDataSourceImpl(),
+        MusicBrainzMetadataDataSourceImpl(),
     ]
 }

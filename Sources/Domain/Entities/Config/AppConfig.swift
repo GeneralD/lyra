@@ -1,4 +1,3 @@
-import Domain
 import Foundation
 
 public struct AppConfig: Sendable {

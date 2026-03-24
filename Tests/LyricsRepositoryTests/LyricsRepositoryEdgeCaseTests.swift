@@ -159,7 +159,7 @@ private struct MockLyricsDataSource: LyricsDataSource {
     func search(query: String) async -> [LyricsResult]? { searchResults }
 }
 
-private actor TrackingLyricsCache: LyricsCacheRepository {
+private actor TrackingLyricsCache: LyricsDataStore {
     var stored: LyricsResult?
     private(set) var writeCallCount = 0
 

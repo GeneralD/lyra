@@ -2,7 +2,7 @@ import Domain
 import Dependencies
 import GRDB
 
-public struct GRDBLyricsCache: LyricsCacheRepository {
+public struct GRDBLyricsCache: LyricsDataStore {
     private let dbManager: DatabaseManager
 
     public init(dbManager: DatabaseManager) {
@@ -37,8 +37,8 @@ public struct GRDBLyricsCache: LyricsCacheRepository {
 
 // MARK: - DependencyKey
 
-extension LyricsCacheRepositoryKey: DependencyKey {
-    public static let liveValue: any LyricsCacheRepository = {
+extension LyricsDataStoreKey: DependencyKey {
+    public static let liveValue: any LyricsDataStore = {
         guard let dbManager = try? DatabaseManager() else {
             return NoopLyricsCache()
         }
@@ -46,7 +46,7 @@ extension LyricsCacheRepositoryKey: DependencyKey {
     }()
 }
 
-private struct NoopLyricsCache: LyricsCacheRepository {
+private struct NoopLyricsCache: LyricsDataStore {
     func read(title: String, artist: String) async -> LyricsResult? { nil }
     func write(title: String, artist: String, result: LyricsResult) async throws {}
 }

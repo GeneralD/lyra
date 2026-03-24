@@ -3,17 +3,16 @@ import CollectionKit
 import Dependencies
 import Domain
 import Foundation
-import MetadataDataSource
 
-public struct RegexNormalizer {
+public struct MusicBrainzMetadataDataSourceImpl {
     @Dependency(\.metadataCache) private var metadataCache
 
     public init() {}
 }
 
-extension RegexNormalizer: Sendable {}
+extension MusicBrainzMetadataDataSourceImpl: Sendable {}
 
-extension RegexNormalizer: MetadataNormalizer {
+extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
     public func resolve(track: Track) async -> [Track] {
         let regexCandidates = generateCandidates(title: track.title, artist: track.artist)
         let musicBrainzCandidates = await fetchMusicBrainzCandidates(title: track.title, artist: track.artist, duration: nil)
@@ -26,7 +25,7 @@ extension RegexNormalizer: MetadataNormalizer {
 
 // MARK: - MusicBrainz refinement
 
-private extension RegexNormalizer {
+private extension MusicBrainzMetadataDataSourceImpl {
     func fetchMusicBrainzCandidates(title: String, artist: String, duration: TimeInterval?) async -> [Track] {
         let parsed = parseArtistTitle(title)
         let normalized = parsed.title
@@ -124,7 +123,7 @@ private let artistSuffixPatterns = [
 
 // MARK: - Public API
 
-extension RegexNormalizer {
+extension MusicBrainzMetadataDataSourceImpl {
     /// Normalize a title by removing noise brackets, suffixes, and series markers
     public func normalize(_ title: String) -> String {
         var s = title

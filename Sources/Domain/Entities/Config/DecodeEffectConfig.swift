@@ -1,4 +1,3 @@
-import Domain
 
 public struct DecodeEffectConfig: Sendable {
     public let duration: FlexibleDouble

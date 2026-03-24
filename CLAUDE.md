@@ -43,12 +43,14 @@ graph TD
     end
 
     subgraph UseCase
+        ConfigUseCase[ConfigUseCase]
         PlaybackUseCase[PlaybackUseCase]
         LyricsUseCase[LyricsUseCase]
         MetadataUseCase[MetadataUseCase]
     end
 
     subgraph Repository
+        ConfigRepository[ConfigRepository]
         LyricsRepository[LyricsRepository]
         MetadataRepository[MetadataRepository]
         NowPlayingRepository[NowPlayingRepository]
@@ -67,17 +69,19 @@ graph TD
 
     lyra --> CLI
     CLI --> App
-    App --> Views & Presentation & ConfigDataSource
-    App -.->|DI link guarantee| PlaybackUseCase & LyricsUseCase & MetadataUseCase
+    App --> Views & Presentation & ConfigDataSource & ConfigRepository
+    App -.->|DI link guarantee| ConfigUseCase & PlaybackUseCase & LyricsUseCase & MetadataUseCase
     App -.->|healthcheck DI| LyricsDataSource & MetadataDataSource
     Views --> Presentation & Domain
     Presentation -.->|DI only| Domain
+    ConfigUseCase --> Domain
     PlaybackUseCase --> NowPlayingRepository & Domain
     LyricsUseCase --> LyricsRepository & Domain
     MetadataUseCase --> MetadataRepository & Domain
+    ConfigRepository --> Domain
     LyricsRepository --> SQLiteDataStore & Domain
-    MetadataRepository --> MetadataDataSource & Domain
-    NowPlayingRepository --> MediaRemoteDataSource & Domain
+    MetadataRepository --> Domain
+    NowPlayingRepository --> Domain
     LyricsDataSource --> Domain
     MetadataDataSource --> Domain
     MediaRemoteDataSource --> Domain
@@ -85,6 +89,7 @@ graph TD
     SQLiteDataStore --> Domain
 
     style Domain fill:#4a9,stroke:#333,color:#fff
+    style ConfigUseCase fill:#59c,stroke:#333,color:#fff
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
     style MetadataUseCase fill:#59c,stroke:#333,color:#fff
@@ -101,8 +106,8 @@ graph TD
 | Interactor | `App` | OverlayWindow, AppStyleBuilder, healthcheck DI |
 | Presenter | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
 | Entity | `Domain` | Protocols, models, DependencyKeys |
-| UseCase | `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
-| Repository | `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository` | DataSource + DataStore, cache strategy |
+| UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
+| Repository | `ConfigRepository`, `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository` | DataSource + DataStore orchestration, cache strategy |
 | DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource` | API execution, file I/O, private framework access |
 | DataStore | `SQLiteDataStore` | GRDB SQLite cache |
 
@@ -114,21 +119,23 @@ graph TD
 
 **FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by `OverlayController` using `DecodeEffectState`.
 
-**Domain types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`. DI via `AppStyleKey` / `\.appStyle`.
+**Domain types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`. DI via `AppStyleKey` / `\.appStyle`.
 
-**Config layer**: Pure data — no AppKit imports. `Config/Models/` contains `AppConfig`, `TextConfig`, `TextAppearanceConfig`, `UnresolvedTextAppearance`, `ArtworkConfig`, `RippleConfig`, `DecodeEffectConfig`, `AIConfig`. Font metrics resolution lives in `App/AppStyleBuilder.swift`.
+**Domain Dependencies organization**: `Dependencies/` is organized by layer subdirectories (`UseCase/`, `Repository/`, `DataSource/`, `DataStore/`, `Misc/`) matching the architecture. Each file contains a protocol + `TestDependencyKey` + `DependencyValues` extension.
 
-**Text style resolution**: `UnresolvedTextAppearance` (all-optional fields from TOML) → variadic `resolve(defaults:filled:)` chain → `TextAppearanceConfig` (all non-optional). Layer defaults (title: bold/18pt, artist: medium, highlight: gold gradient) are applied via `Optional<UnresolvedTextAppearance>.resolve()`, ensuring defaults apply even when the TOML section is absent.
+**Config layer**: Pure data — no AppKit imports. `Entities/Config/` contains `AppConfig`, `TextConfig`, `TextAppearanceConfig`, `ArtworkConfig`, `RippleConfig`, `DecodeEffectConfig`, `AIConfig`. Font metrics resolution lives in `App/AppStyleBuilder.swift`.
+
+**Text style resolution**: `UnresolvedTextAppearance` (all-optional, private to `TextConfig.swift`) → variadic `resolve(defaults:filled:)` chain → `TextAppearanceConfig` (all non-optional). Layer defaults (title: bold/18pt, artist: medium, highlight: gold gradient) are applied via `Optional<UnresolvedTextAppearance>.resolve()`, ensuring defaults apply even when the TOML section is absent.
 
 **FlexibleDouble**: `Codable` wrapper that decodes both TOML Int and Double via `singleValueContainer`. Used for all numeric config fields.
 
-**ConfigLoader**: Singleton (`ConfigLoader.shared`) handling file discovery, TOML/JSON parsing, includes resolution, and error notification.
-
-**MetadataNormalizer**: Protocol for song metadata resolution. `LLMNormalizer` (AI-based) and `RegexNormalizer` (regex + MusicBrainz) are tried in order. When LLM succeeds, MusicBrainz never runs.
+**MetadataDataSource protocol**: Defines `resolve(track:) -> [Track]` for song metadata resolution. `LLMMetadataDataSourceImpl` (AI-based) and `MusicBrainzMetadataDataSourceImpl` (regex + MusicBrainz) are injected as `[any MetadataDataSource]` into `MetadataRepository`, which tries them in order. When LLM succeeds, MusicBrainz never runs.
 
 **ColorStyle**: Domain-level enum (`.solid(hex)`, `.gradient([hex])`) enabling any text style to use either solid colors or gradients. Polymorphic TOML decoding supports both `color = "#FFF"` and `color = ["#AAA", "#BBB"]`.
 
-**DI with swift-dependencies**: Protocol definitions + `DependencyKey` in `Domain`, `liveValue` registered in infrastructure modules. App style is resolved once at startup via `AppStyleKey.liveValue` in `App/AppStyleBuilder.swift`.
+**DI with swift-dependencies**: Protocol definitions + `TestDependencyKey` in `Domain`, `liveValue` registered in infrastructure modules via `DependencyKey` conformance. App style is resolved once at startup via `AppStyleKey.liveValue` in `App/AppStyleBuilder.swift`. No direct instantiation — everything through `@Dependency`.
+
+**DataStore naming**: Cache protocols use `*DataStore` suffix (`AIMetadataDataStore`, `LyricsDataStore`, `MetadataDataStore`) to align with the architecture layer name, not `*CacheRepository`.
 
 **HealthCheckable**: Protocol in Domain with `serviceName` + `healthCheck()`. Implemented by `LRCLibAPI`, `MusicBrainzAPI`, `OpenAICompatibleAPI`. `lyra healthcheck` validates config, API connectivity, and AI token validity.
 

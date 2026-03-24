@@ -338,3 +338,23 @@ struct InvariantTests {
         #expect(config.text.default.fontName == "Helvetica Neue")
     }
 }
+
+// MARK: - Silent fallback design
+
+@Suite("Silent fallback on decode error")
+struct SilentFallbackTests {
+    @Test("load() returns nil for invalid TOML content")
+    func decodeReturnsNilForGarbage() {
+        let ds = ConfigDataSourceImpl()
+        let result = ds.decode(content: "{{{{not valid TOML at all!!", path: "test.toml", configDir: "/tmp")
+        #expect(result == nil)
+    }
+
+    @Test("tryDecode throws for invalid config content")
+    func decodeOrThrowThrowsForGarbage() {
+        let ds = ConfigDataSourceImpl()
+        #expect(throws: (any Error).self) {
+            try ds.decodeOrThrow(content: "{{{{not valid TOML at all!!", path: "test.toml", configDir: "/tmp")
+        }
+    }
+}

@@ -1,4 +1,3 @@
-import Domain
 
 public struct TextAppearanceConfig: Sendable, Codable {
     public let fontName: String

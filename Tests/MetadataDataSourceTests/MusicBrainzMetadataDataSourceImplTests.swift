@@ -2,9 +2,9 @@ import Domain
 import Testing
 @testable import MetadataDataSource
 
-@Suite("RegexNormalizer")
-struct RegexNormalizerTests {
-    let parser = RegexNormalizer()
+@Suite("MusicBrainzMetadataDataSourceImpl")
+struct MusicBrainzMetadataDataSourceImplTests {
+    let parser = MusicBrainzMetadataDataSourceImpl()
 
     @Test("strips brackets of all types")
     func stripBrackets() {

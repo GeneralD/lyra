@@ -7,7 +7,7 @@ import Testing
 @Suite("Config includes")
 struct IncludesTests {
     private let tempDir: String = NSTemporaryDirectory() + "lyra-config-test-\(UUID().uuidString)"
-    private let loader = ConfigLoader.shared
+    private let dataSource = ConfigDataSourceImpl()
 
     private func setUp(mainToml: String, files: [String: String] = [:]) throws -> String {
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
@@ -43,7 +43,7 @@ struct IncludesTests {
         )
 
         let content = try String(contentsOfFile: mainPath, encoding: .utf8)
-        let config = loader.decode(content: content, path: mainPath, configDir: tempDir)
+        let config = dataSource.decode(content: content, path: mainPath, configDir: tempDir)
         #expect(config?.ai != nil)
         #expect(config?.ai?.endpoint == "https://example.com/v1")
         #expect(config?.ai?.model == "test-model")
@@ -67,7 +67,7 @@ struct IncludesTests {
         )
 
         let content = try String(contentsOfFile: mainPath, encoding: .utf8)
-        let config = loader.decode(content: content, path: mainPath, configDir: tempDir)
+        let config = dataSource.decode(content: content, path: mainPath, configDir: tempDir)
         #expect(config?.screen == ScreenSelector.match)
     }
 
@@ -80,7 +80,7 @@ struct IncludesTests {
             """)
 
         let content = try String(contentsOfFile: mainPath, encoding: .utf8)
-        let config = loader.decode(content: content, path: mainPath, configDir: tempDir)
+        let config = dataSource.decode(content: content, path: mainPath, configDir: tempDir)
         #expect(config?.screen == ScreenSelector.main)
         #expect(config?.ai == nil)
     }

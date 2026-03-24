@@ -10,7 +10,7 @@ struct MetadataRepositoryTests {
     func returnsFirstNonEmpty() async {
         let expected = [Track(title: "Resolved", artist: "Artist")]
         await withDependencies {
-            $0.metadataNormalizers = [
+            $0.metadataDataSources = [
                 StubNormalizer(candidates: expected),
                 StubNormalizer(candidates: [Track(title: "Other", artist: "Other")]),
             ]
@@ -25,7 +25,7 @@ struct MetadataRepositoryTests {
     func skipsEmptyUsesSecond() async {
         let expected = [Track(title: "Fallback", artist: "B")]
         await withDependencies {
-            $0.metadataNormalizers = [
+            $0.metadataDataSources = [
                 StubNormalizer(candidates: []),
                 StubNormalizer(candidates: expected),
             ]
@@ -39,7 +39,7 @@ struct MetadataRepositoryTests {
     @Test("returns empty when all normalizers return empty")
     func allEmpty() async {
         await withDependencies {
-            $0.metadataNormalizers = [
+            $0.metadataDataSources = [
                 StubNormalizer(candidates: []),
                 StubNormalizer(candidates: []),
             ]
@@ -53,7 +53,7 @@ struct MetadataRepositoryTests {
     @Test("returns empty when no normalizers configured")
     func noNormalizers() async {
         await withDependencies {
-            $0.metadataNormalizers = []
+            $0.metadataDataSources = []
         } operation: {
             let repo = MetadataRepositoryImpl()
             let result = await repo.resolve(track: Track(title: "raw", artist: "raw"))
@@ -65,7 +65,7 @@ struct MetadataRepositoryTests {
     func shortCircuits() async {
         let tracker = CallTracker()
         await withDependencies {
-            $0.metadataNormalizers = [
+            $0.metadataDataSources = [
                 StubNormalizer(candidates: [Track(title: "Hit", artist: "A")]),
                 TrackingNormalizer(tracker: tracker),
             ]
@@ -80,7 +80,7 @@ struct MetadataRepositoryTests {
 
 // MARK: - Mocks
 
-private struct StubNormalizer: MetadataNormalizer {
+private struct StubNormalizer: MetadataDataSource {
     let candidates: [Track]
     func resolve(track: Track) async -> [Track] { candidates }
 }
@@ -90,7 +90,7 @@ private actor CallTracker {
     func markCalled() { called = true }
 }
 
-private struct TrackingNormalizer: MetadataNormalizer {
+private struct TrackingNormalizer: MetadataDataSource {
     let tracker: CallTracker
     func resolve(track: Track) async -> [Track] {
         await tracker.markCalled()

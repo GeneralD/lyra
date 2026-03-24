@@ -52,6 +52,8 @@ let package = Package(
             dependencies: [
                 "Views",
                 "Presentation",
+                "ConfigUseCase",
+                "ConfigRepository",
                 "ConfigDataSource",
                 "LyricsUseCase",
                 "MetadataUseCase",
@@ -83,6 +85,13 @@ let package = Package(
 
         // UseCase
         .target(
+            name: "ConfigUseCase",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
             name: "LyricsUseCase",
             dependencies: [
                 "Domain",
@@ -109,6 +118,13 @@ let package = Package(
 
         // Repository
         .target(
+            name: "ConfigRepository",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
             name: "LyricsRepository",
             dependencies: [
                 "Domain",
@@ -120,7 +136,6 @@ let package = Package(
             name: "MetadataRepository",
             dependencies: [
                 "Domain",
-                "MetadataDataSource",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -155,6 +170,7 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "TOMLKit", package: "TOMLKit"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
@@ -204,6 +220,14 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .testTarget(
+            name: "ConfigUseCaseTests",
+            dependencies: [
+                "ConfigUseCase",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
 
         // Tests — Repository
         .testTarget(
@@ -226,6 +250,14 @@ let package = Package(
             name: "NowPlayingRepositoryTests",
             dependencies: [
                 "NowPlayingRepository",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "ConfigRepositoryTests",
+            dependencies: [
+                "ConfigRepository",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

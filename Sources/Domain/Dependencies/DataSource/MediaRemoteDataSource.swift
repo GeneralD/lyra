@@ -1,11 +1,4 @@
 import Dependencies
-import Foundation
-
-public enum MediaRemotePollResult: Sendable {
-    case info(NowPlaying)
-    case noInfo
-    case eof
-}
 
 public protocol MediaRemoteDataSource: Sendable {
     func poll() async -> MediaRemotePollResult

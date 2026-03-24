@@ -2,7 +2,7 @@ import Domain
 import Dependencies
 import GRDB
 
-public struct GRDBMetadataCache: MetadataCacheRepository {
+public struct GRDBMetadataCache: MetadataDataStore {
     private let dbManager: DatabaseManager
 
     public init(dbManager: DatabaseManager) {
@@ -44,14 +44,14 @@ extension GRDBMetadataCache: Sendable {}
 
 // MARK: - DependencyKey
 
-extension MetadataCacheRepositoryKey: DependencyKey {
-    public static let liveValue: any MetadataCacheRepository = {
+extension MetadataDataStoreKey: DependencyKey {
+    public static let liveValue: any MetadataDataStore = {
         guard let db = try? DatabaseManager() else { return NoopMetadataCacheLive() }
         return GRDBMetadataCache(dbManager: db)
     }()
 }
 
-private struct NoopMetadataCacheLive: MetadataCacheRepository {
+private struct NoopMetadataCacheLive: MetadataDataStore {
     func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
     func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
 }

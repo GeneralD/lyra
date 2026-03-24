@@ -144,13 +144,13 @@ private struct TrackingMetadataRepository: MetadataRepository {
     }
 }
 
-private struct StubLyricsCache: LyricsCacheRepository {
+private struct StubLyricsCache: LyricsDataStore {
     let stored: LyricsResult?
     func read(title: String, artist: String) async -> LyricsResult? { stored }
     func write(title: String, artist: String, result: LyricsResult) async throws {}
 }
 
-private final class WritableLyricsCache: LyricsCacheRepository, @unchecked Sendable {
+private final class WritableLyricsCache: LyricsDataStore, @unchecked Sendable {
     private var storage: [String: LyricsResult] = [:]
     func read(title: String, artist: String) async -> LyricsResult? { storage["\(title)|\(artist)"] }
     func write(title: String, artist: String, result: LyricsResult) async throws { storage["\(title)|\(artist)"] = result }

@@ -12,17 +12,13 @@ struct DaemonCommand: ParsableCommand {
 
     func run() {
         MainActor.assumeIsolated {
-            withDependencies {
-                $0.appStyle = loadAppStyle()
-            } operation: {
-                let app = NSApplication.shared
-                app.setActivationPolicy(.accessory)
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
 
-                let delegate = AppDelegate()
-                app.delegate = delegate
+            let delegate = AppDelegate()
+            app.delegate = delegate
 
-                app.run()
-            }
+            app.run()
         }
     }
 }

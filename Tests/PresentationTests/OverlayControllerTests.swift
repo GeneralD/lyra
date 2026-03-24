@@ -154,12 +154,12 @@ private struct MockLyricsRepository: LyricsRepository {
     func fetchLyrics(candidates: [Track]) async -> LyricsResult? { result }
 }
 
-private struct MockLyricsCache: LyricsCacheRepository {
+private struct MockLyricsCache: LyricsDataStore {
     func read(title: String, artist: String) async -> LyricsResult? { nil }
     func write(title: String, artist: String, result: LyricsResult) async throws {}
 }
 
-private struct MockMetadataCache: MetadataCacheRepository {
+private struct MockMetadataCache: MetadataDataStore {
     func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
     func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
 }

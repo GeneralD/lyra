@@ -71,7 +71,7 @@ struct LyricsRepositoryTests {
 
 // MARK: - Test helpers
 
-private struct StubLyricsCache: LyricsCacheRepository {
+private struct StubLyricsCache: LyricsDataStore {
     let stored: LyricsResult?
     func read(title: String, artist: String) async -> LyricsResult? { stored }
     func write(title: String, artist: String, result: LyricsResult) async throws {}
