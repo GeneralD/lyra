@@ -131,7 +131,7 @@ extension OverlayController {
     }
 
     fileprivate func updateActiveLineIndex(from info: NowPlaying) {
-        guard case .success(let .timed(lines)) = state.lyrics else { return }
+        guard case .success(.timed(let lines)) = state.lyrics else { return }
         guard info.playbackRate != 0 else { return }
         let index = info.elapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
         guard index != state.activeLineIndex else { return }
