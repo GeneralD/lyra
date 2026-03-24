@@ -143,23 +143,34 @@ graph TD
 
 **FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by `OverlayController` using `DecodeEffectState`.
 
-**Domain types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`. DI via `AppStyleKey` / `\.appStyle`.
+**Entity types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`. DI via `AppStyleKey` / `\.appStyle`.
 
 **Domain Dependencies organization**: `Dependencies/` is organized by layer subdirectories (`UseCase/`, `Repository/`, `DataSource/`, `DataStore/`, `Misc/`) matching the architecture. Each file contains a protocol + `TestDependencyKey` + `DependencyValues` extension.
 
-**Config layer**: Pure data — no AppKit imports. `Entities/Config/` contains `AppConfig`, `TextConfig`, `TextAppearanceConfig`, `ArtworkConfig`, `RippleConfig`, `DecodeEffectConfig`, `AIConfig`. Font metrics resolution lives in `App/AppStyleBuilder.swift`.
+**Config layer**: Pure data — no AppKit imports. `Entity/Config/` contains `AppConfig`, `TextConfig`, `TextAppearanceConfig`, `ArtworkConfig`, `RippleConfig`, `DecodeEffectConfig`, `AIConfig`. Font metrics resolution lives in `DependencyInjection/AppStyleRegistration.swift`.
 
 **Text style resolution**: `UnresolvedTextAppearance` (all-optional, private to `TextConfig.swift`) → variadic `resolve(defaults:filled:)` chain → `TextAppearanceConfig` (all non-optional). Layer defaults (title: bold/18pt, artist: medium, highlight: gold gradient) are applied via `Optional<UnresolvedTextAppearance>.resolve()`, ensuring defaults apply even when the TOML section is absent.
 
 **FlexibleDouble**: `Codable` wrapper that decodes both TOML Int and Double via `singleValueContainer`. Used for all numeric config fields.
 
-**MetadataDataSource protocol**: Defines `resolve(track:) -> [Track]` for song metadata resolution. `LLMMetadataDataSourceImpl` (AI-based) and `MusicBrainzMetadataDataSourceImpl` (regex + MusicBrainz) are injected as `[any MetadataDataSource]` into `MetadataRepository`, which tries them in order. When LLM succeeds, MusicBrainz never runs.
+**MetadataDataSource\<Value\>**: Generic protocol defining `resolve(track:) -> [Value]`. Three implementations with distinct value types:
+- `LLMMetadataDataSourceImpl: MetadataDataSource<Track>` — AI-based title/artist extraction
+- `MusicBrainzMetadataDataSourceImpl: MetadataDataSource<MusicBrainzMetadata>` — MusicBrainz API lookup
+- `RegexMetadataDataSourceImpl: MetadataDataSource<Track>` — regex-based title parsing and candidate generation
+
+Each is injected individually into `MetadataRepository` (not as an array). Repository manages cache strategy and type conversion (`MusicBrainzMetadata → Track`).
+
+**MetadataDataStore\<Value\>**: Generic cache protocol with `read(title:artist:) -> Value?` and `write(title:artist:value:)`. Two parameterizations:
+- `MetadataDataStore<Track>` — LLM result cache (`GRDBLLMMetadataDataStore`)
+- `MetadataDataStore<MusicBrainzMetadata>` — MusicBrainz result cache (`GRDBMetadataDataStore`)
+
+Cache is Repository's responsibility, not DataSource's. DataSources are pure API/computation with no cache access.
+
+**MetadataRepository cache strategy**: Priority order: LLM cache → LLM DataSource → MusicBrainz cache → MusicBrainz DataSource → Regex DataSource. LLM/MusicBrainz results are cached on success. Regex results are not cached.
 
 **ColorStyle**: Domain-level enum (`.solid(hex)`, `.gradient([hex])`) enabling any text style to use either solid colors or gradients. Polymorphic TOML decoding supports both `color = "#FFF"` and `color = ["#AAA", "#BBB"]`.
 
-**DI with swift-dependencies**: Protocol definitions + `TestDependencyKey` in `Domain`, `liveValue` registered in infrastructure modules via `DependencyKey` conformance. App style is resolved once at startup via `AppStyleKey.liveValue` in `App/AppStyleBuilder.swift`. No direct instantiation — everything through `@Dependency`.
-
-**DataStore naming**: Cache protocols use `*DataStore` suffix (`AIMetadataDataStore`, `LyricsDataStore`, `MetadataDataStore`) to align with the architecture layer name, not `*CacheRepository`.
+**DI with swift-dependencies**: Protocol definitions + `TestDependencyKey` in `Domain`, all `liveValue` registrations centralized in `DependencyInjection` module. App style is resolved once at startup via `AppStyleKey.liveValue` in `DependencyInjection/AppStyleRegistration.swift`. No direct instantiation — everything through `@Dependency`.
 
 **HealthCheckable**: Protocol in Domain with `serviceName` + `healthCheck()`. Implemented by `LRCLibAPI`, `MusicBrainzAPI`, `OpenAICompatibleAPI`. `lyra healthcheck` validates config, API connectivity, and AI token validity.
 

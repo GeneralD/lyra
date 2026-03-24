@@ -2,12 +2,12 @@ import Testing
 @testable import Domain
 @testable import SQLiteDataStore
 
-@Suite("GRDBLyricsCache")
-struct GRDBLyricsCacheTests {
+@Suite("GRDBLyricsDataStore")
+struct GRDBLyricsDataStoreTests {
     @Test("round-trip write and read")
     func writeAndRead() async throws {
         let db = try DatabaseManager(inMemory: true)
-        let cache = GRDBLyricsCache(dbManager: db)
+        let cache = GRDBLyricsDataStore(dbManager: db)
 
         let result = LyricsResult(
             id: 42,
@@ -32,7 +32,7 @@ struct GRDBLyricsCacheTests {
     @Test("returns nil for missing entry")
     func readMissing() async throws {
         let db = try DatabaseManager(inMemory: true)
-        let cache = GRDBLyricsCache(dbManager: db)
+        let cache = GRDBLyricsDataStore(dbManager: db)
 
         let result = await cache.read(title: "nonexistent", artist: "nobody")
         #expect(result == nil)
@@ -41,7 +41,7 @@ struct GRDBLyricsCacheTests {
     @Test("ignores write with nil id")
     func writeWithNilId() async throws {
         let db = try DatabaseManager(inMemory: true)
-        let cache = GRDBLyricsCache(dbManager: db)
+        let cache = GRDBLyricsDataStore(dbManager: db)
 
         try await cache.write(title: "test", artist: "test", result: .empty)
         let result = await cache.read(title: "test", artist: "test")

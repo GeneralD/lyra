@@ -1,7 +1,7 @@
 import Domain
 import GRDB
 
-public struct GRDBMetadataCache: MetadataDataStore {
+public struct GRDBMetadataDataStore: MetadataDataStore {
     private let dbManager: DatabaseManager
 
     public init(dbManager: DatabaseManager) {
@@ -9,7 +9,7 @@ public struct GRDBMetadataCache: MetadataDataStore {
     }
 }
 
-extension GRDBMetadataCache {
+extension GRDBMetadataDataStore {
     public func read(title: String, artist: String) async -> MusicBrainzMetadata? {
         try? await dbManager.dbQueue.read { db in
             guard let record = try MusicBrainzCacheRecord
@@ -24,19 +24,19 @@ extension GRDBMetadataCache {
         }
     }
 
-    public func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {
+    public func write(title: String, artist: String, value: MusicBrainzMetadata) async throws {
         try await dbManager.dbQueue.write { db in
-            var record = MusicBrainzCacheRecord(
-                queryTitle: queryTitle,
-                queryArtist: queryArtist,
-                resolvedTitle: metadata.title,
-                resolvedArtist: metadata.artist,
-                duration: metadata.duration,
-                musicbrainzId: metadata.musicbrainzId
+            let record = MusicBrainzCacheRecord(
+                queryTitle: title,
+                queryArtist: artist,
+                resolvedTitle: value.title,
+                resolvedArtist: value.artist,
+                duration: value.duration,
+                musicbrainzId: value.musicbrainzId
             )
             try record.save(db, onConflict: .replace)
         }
     }
 }
 
-extension GRDBMetadataCache: Sendable {}
+extension GRDBMetadataDataStore: Sendable {}

@@ -4,7 +4,6 @@ import Foundation
 
 public struct LLMMetadataDataSourceImpl {
     @Dependency(\.appStyle) private var config
-    @Dependency(\.aiMetadataCache) private var cache
 
     public init() {}
 }
@@ -13,16 +12,10 @@ extension LLMMetadataDataSourceImpl: MetadataDataSource {
     public func resolve(track: Track) async -> [Track] {
         guard let aiConfig = config.ai else { return [] }
 
-        if let cached = await cache.read(rawTitle: track.title, rawArtist: track.artist) {
-            return [cached]
-        }
-
         guard let metadata = await callAPI(config: aiConfig, rawTitle: track.title, rawArtist: track.artist),
               !metadata.title.isEmpty
         else { return [] }
-        let candidate = Track(title: metadata.title, artist: metadata.artist)
-        try? await cache.write(rawTitle: track.title, rawArtist: track.artist, candidate: candidate)
-        return [candidate]
+        return [Track(title: metadata.title, artist: metadata.artist)]
     }
 }
 

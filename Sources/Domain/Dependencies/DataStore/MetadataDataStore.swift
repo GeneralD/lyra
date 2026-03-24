@@ -1,23 +1,40 @@
 import Dependencies
-import Foundation
 
-public protocol MetadataDataStore: Sendable {
-    func read(title: String, artist: String) async -> MusicBrainzMetadata?
-    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws
+public protocol MetadataDataStore<Value>: Sendable {
+    associatedtype Value: Sendable
+    func read(title: String, artist: String) async -> Value?
+    func write(title: String, artist: String, value: Value) async throws
 }
 
-public enum MetadataDataStoreKey: TestDependencyKey {
-    public static let testValue: any MetadataDataStore = NoopMetadataCache()
+// MARK: - LLM Metadata Cache (Track)
+
+public enum LLMMetadataDataStoreKey: TestDependencyKey {
+    public static let testValue: any MetadataDataStore<Track> = NoopMetadataDataStore()
 }
 
 extension DependencyValues {
-    public var metadataCache: any MetadataDataStore {
-        get { self[MetadataDataStoreKey.self] }
-        set { self[MetadataDataStoreKey.self] = newValue }
+    public var llmMetadataDataStore: any MetadataDataStore<Track> {
+        get { self[LLMMetadataDataStoreKey.self] }
+        set { self[LLMMetadataDataStoreKey.self] = newValue }
     }
 }
 
-private struct NoopMetadataCache: MetadataDataStore {
-    func read(title: String, artist: String) async -> MusicBrainzMetadata? { nil }
-    func write(queryTitle: String, queryArtist: String, metadata: MusicBrainzMetadata) async throws {}
+// MARK: - MusicBrainz Metadata Cache (MusicBrainzMetadata)
+
+public enum MusicBrainzMetadataDataStoreKey: TestDependencyKey {
+    public static let testValue: any MetadataDataStore<MusicBrainzMetadata> = NoopMetadataDataStore()
+}
+
+extension DependencyValues {
+    public var musicBrainzMetadataDataStore: any MetadataDataStore<MusicBrainzMetadata> {
+        get { self[MusicBrainzMetadataDataStoreKey.self] }
+        set { self[MusicBrainzMetadataDataStoreKey.self] = newValue }
+    }
+}
+
+// MARK: - Noop
+
+private struct NoopMetadataDataStore<Value: Sendable>: MetadataDataStore {
+    func read(title: String, artist: String) async -> Value? { nil }
+    func write(title: String, artist: String, value: Value) async throws {}
 }

@@ -24,7 +24,9 @@ struct LRCLibTrackRecord {
     }
 }
 
-extension LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {}
+extension LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {
+    static let lookups = hasMany(LyricsLookupRecord.self, using: ForeignKey(["lrclib_id"]))
+}
 
 extension LRCLibTrackRecord {
     init(from result: LyricsResult) {
@@ -68,6 +70,7 @@ struct LyricsLookupRecord {
 
 extension LyricsLookupRecord: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "lyrics_lookup"
+    static let track = belongsTo(LRCLibTrackRecord.self, using: ForeignKey(["lrclib_id"]))
 }
 
 struct MusicBrainzCacheRecord {

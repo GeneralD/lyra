@@ -1,7 +1,7 @@
 import Domain
 import GRDB
 
-public struct GRDBAIMetadataCache: AIMetadataDataStore {
+public struct GRDBLLMMetadataDataStore: MetadataDataStore {
     private let dbManager: DatabaseManager
 
     public init(dbManager: DatabaseManager) {
@@ -9,27 +9,27 @@ public struct GRDBAIMetadataCache: AIMetadataDataStore {
     }
 }
 
-extension GRDBAIMetadataCache {
-    public func read(rawTitle: String, rawArtist: String) async -> Track? {
+extension GRDBLLMMetadataDataStore {
+    public func read(title: String, artist: String) async -> Track? {
         try? await dbManager.dbQueue.read { db in
             guard let record = try AIMetadataCacheRecord
-                .filter(Column("raw_title") == rawTitle && Column("raw_artist") == rawArtist)
+                .filter(Column("raw_title") == title && Column("raw_artist") == artist)
                 .fetchOne(db) else { return nil }
             return Track(title: record.resolvedTitle, artist: record.resolvedArtist)
         }
     }
 
-    public func write(rawTitle: String, rawArtist: String, candidate: Track) async throws {
+    public func write(title: String, artist: String, value: Track) async throws {
         try await dbManager.dbQueue.write { db in
             let record = AIMetadataCacheRecord(
-                rawTitle: rawTitle,
-                rawArtist: rawArtist,
-                resolvedTitle: candidate.title,
-                resolvedArtist: candidate.artist
+                rawTitle: title,
+                rawArtist: artist,
+                resolvedTitle: value.title,
+                resolvedArtist: value.artist
             )
             try record.save(db, onConflict: .replace)
         }
     }
 }
 
-extension GRDBAIMetadataCache: Sendable {}
+extension GRDBLLMMetadataDataStore: Sendable {}
