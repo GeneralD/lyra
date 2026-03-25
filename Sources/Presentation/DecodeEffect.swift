@@ -43,6 +43,7 @@ final class DecodeEffectState {
     private var targetText: String = ""
     private var lockedIndices: Set<Int> = []
     private var timer: Timer?
+    private var completionHandler: (() -> Void)?
     private let duration: Double
     private let pool: CharacterPool
 
@@ -74,19 +75,19 @@ extension DecodeEffectState {
         isAnimating = true
         targetText = text
         lockedIndices = []
+        completionHandler = onComplete
         updateDisplay(pool.random(count: text.count))
 
         let totalChars = text.count
         guard totalChars > 0 else {
             updateDisplay(text)
-            finish(onComplete)
+            finish()
             return
         }
 
         var elapsed: Double = 0
         let interval: Double = 0.03
         let animationDuration = duration
-        nonisolated(unsafe) let onComplete = onComplete
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -105,7 +106,7 @@ extension DecodeEffectState {
 
                 guard self.lockedIndices.count >= totalChars else { return }
                 self.updateDisplay(self.targetText)
-                self.finish(onComplete)
+                self.finish()
             }
         }
     }
@@ -123,9 +124,11 @@ extension DecodeEffectState {
 }
 
 extension DecodeEffectState {
-    fileprivate func finish(_ onComplete: (() -> Void)?) {
+    fileprivate func finish() {
+        let handler = completionHandler
+        completionHandler = nil
         stop()
-        onComplete?()
+        handler?()
     }
 
     fileprivate func updateDisplay(_ text: String) {
