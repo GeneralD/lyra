@@ -1,5 +1,5 @@
 {
-  "originHash" : "c4f26e6f6c6b1f44f53465a886b3d787cce1ece3f025d1f1d6c5b1700440e971",
+  "originHash" : "e098cdb413ed8b56df3f6e3999528eb4d60d940346301b979cec02c2c5a796a9",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "fd16d76fd8b9a976d88bfb6cacc05ca8d19c91b6",
         "version" : "1.1.0"
+      }
+    },
+    {
+      "identity" : "files",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/JohnSundell/Files",
+      "state" : {
+        "revision" : "e85f2b4a8dfa0f242889f45236f3867d16e40480",
+        "version" : "4.3.0"
       }
     },
     {
