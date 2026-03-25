@@ -1,4 +1,4 @@
-public struct ArtworkStyle: Sendable {
+public struct ArtworkStyle {
     public let size: Double
     public let opacity: Double
 
@@ -7,3 +7,5 @@ public struct ArtworkStyle: Sendable {
         self.opacity = opacity
     }
 }
+
+extension ArtworkStyle: Sendable {}

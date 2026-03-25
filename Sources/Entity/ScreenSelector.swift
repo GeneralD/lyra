@@ -7,7 +7,8 @@ public enum ScreenSelector {
     case match
 }
 
-extension ScreenSelector: Sendable, Equatable {}
+extension ScreenSelector: Sendable {}
+extension ScreenSelector: Equatable {}
 
 extension ScreenSelector: Decodable {
     public init(from decoder: Decoder) throws {

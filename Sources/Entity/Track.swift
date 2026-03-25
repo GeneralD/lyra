@@ -12,4 +12,5 @@ public struct Track {
     }
 }
 
-extension Track: Sendable, Equatable {}
+extension Track: Sendable {}
+extension Track: Equatable {}

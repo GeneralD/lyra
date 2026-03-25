@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ConfigLoadResult: Sendable {
+public struct ConfigLoadResult {
     public let config: AppConfig
     public let configDir: String
     public let path: String
@@ -11,3 +11,5 @@ public struct ConfigLoadResult: Sendable {
         self.path = path
     }
 }
+
+extension ConfigLoadResult: Sendable {}

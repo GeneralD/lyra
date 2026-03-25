@@ -1,4 +1,4 @@
-public struct AIEndpoint: Sendable {
+public struct AIEndpoint {
     public let endpoint: String
     public let model: String
     public let apiKey: String
@@ -9,3 +9,5 @@ public struct AIEndpoint: Sendable {
         self.apiKey = apiKey
     }
 }
+
+extension AIEndpoint: Sendable {}

@@ -28,7 +28,8 @@ public struct NowPlaying {
     }
 }
 
-extension NowPlaying: Sendable, Equatable {}
+extension NowPlaying: Sendable {}
+extension NowPlaying: Equatable {}
 
 extension NowPlaying {
     public var elapsed: TimeInterval? {

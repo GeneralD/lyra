@@ -208,6 +208,17 @@ Remote and YouTube videos are downloaded once and cached in `~/.cache/lyra/wallp
 
 If neither `yt-dlp` nor `uvx` is found, lyra will show an error. If `ffmpeg` is not found, the video plays but may not loop automatically.
 
+**Trim playback range** (optional):
+
+```toml
+[wallpaper]
+location = "https://www.youtube.com/watch?v=XXXXX"
+start = "0:30"     # skip intro
+end = "3:45"       # stop before outro
+```
+
+Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` and `end` are optional. The bare string format (`wallpaper = "file.mp4"`) still works for simple cases.
+
 ### Full example
 
 ```toml

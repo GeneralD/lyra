@@ -1,11 +1,14 @@
 /// A Double that decodes from both Int and Double in TOML/JSON.
-public struct FlexibleDouble: Sendable, Hashable {
+public struct FlexibleDouble {
     public let value: Double
 
     public init(_ value: Double) {
         self.value = value
     }
 }
+
+extension FlexibleDouble: Sendable {}
+extension FlexibleDouble: Hashable {}
 
 extension FlexibleDouble: Codable {
     public init(from decoder: Decoder) throws {

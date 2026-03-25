@@ -1,10 +1,12 @@
-public struct RippleConfig: Sendable {
+public struct RippleConfig {
     public let enabled: Bool
     public let color: String
     public let radius: FlexibleDouble
     public let duration: FlexibleDouble
     public let idle: FlexibleDouble
 }
+
+extension RippleConfig: Sendable {}
 
 extension RippleConfig {
     static let defaults = RippleConfig(enabled: true, color: "#AAAAFFFF", radius: 60, duration: 0.6, idle: 1)

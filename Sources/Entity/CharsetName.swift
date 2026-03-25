@@ -6,4 +6,7 @@ public enum CharsetName: String {
     case cjk
 }
 
-extension CharsetName: Sendable, Codable, Hashable, CaseIterable {}
+extension CharsetName: Sendable {}
+extension CharsetName: Codable {}
+extension CharsetName: Hashable {}
+extension CharsetName: CaseIterable {}

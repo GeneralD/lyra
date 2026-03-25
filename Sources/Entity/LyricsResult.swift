@@ -39,4 +39,6 @@ public struct LyricsResult {
     }
 }
 
-extension LyricsResult: Codable, Sendable, Equatable {}
+extension LyricsResult: Sendable {}
+extension LyricsResult: Equatable {}
+extension LyricsResult: Codable {}

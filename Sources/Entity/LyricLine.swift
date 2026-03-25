@@ -10,4 +10,5 @@ public struct LyricLine {
     }
 }
 
-extension LyricLine: Sendable, Equatable {}
+extension LyricLine: Sendable {}
+extension LyricLine: Equatable {}

@@ -1,4 +1,4 @@
-public struct RippleStyle: Sendable {
+public struct RippleStyle {
     public let enabled: Bool
     public let color: ColorStyle
     public let radius: Double
@@ -19,3 +19,5 @@ public struct RippleStyle: Sendable {
         self.idle = idle
     }
 }
+
+extension RippleStyle: Sendable {}

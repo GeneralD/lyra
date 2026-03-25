@@ -20,6 +20,7 @@ public final class OverlayWindow {
     private let hostingView: NSHostingView<OverlayContentView>
     private let hasWallpaper: Bool
     private var queuePlayer: AVPlayer?
+    private var endTimeObserver: Any?
 
     @Dependency(\.appStyle) private var resolvedConfig
 
@@ -30,7 +31,7 @@ public final class OverlayWindow {
         controller = OverlayController()
 
         let wallpaperURL = try? await wallpaperUseCase.resolveWallpaper(
-            value: cfg.wallpaper, configDir: cfg.configDir ?? FileManager.default.homeDirectoryForCurrentUser.path
+            value: cfg.wallpaper?.location, configDir: cfg.configDir ?? FileManager.default.homeDirectoryForCurrentUser.path
         )
         hasWallpaper = wallpaperURL != nil
 
@@ -69,11 +70,32 @@ public final class OverlayWindow {
             player.actionAtItemEnd = .none
             queuePlayer = player
 
+            let startTime = cfg.wallpaper?.start.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
+            let endTime = cfg.wallpaper?.end.map { CMTime(seconds: $0, preferredTimescale: 600) }
+
+            // Seek to start position
+            if startTime != .zero {
+                await player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+
+            // Loop: seek back to start when reaching end boundary
+            if let endTime {
+                var seeking = false
+                let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+                endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak player] time in
+                    guard !seeking, time >= endTime else { return }
+                    seeking = true
+                    player?.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                        seeking = false
+                    }
+                }
+            }
+
             loopObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: player.currentItem, queue: .main
             ) { [weak player] _ in
-                player?.seek(to: .zero)
+                player?.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
                 player?.play()
             }
 
@@ -136,6 +158,7 @@ public final class OverlayWindow {
         controller.stop()
         displayLinkDriver?.stop()
         queuePlayer?.pause()
+        endTimeObserver.map { queuePlayer?.removeTimeObserver($0) }
         loopObserver.map(NotificationCenter.default.removeObserver)
         mouseMonitor.map(NSEvent.removeMonitor)
         screenObserver.map(NotificationCenter.default.removeObserver)
@@ -150,7 +173,7 @@ public final class OverlayWindow {
         @Dependency(\.wallpaperUseCase) var wallpaperUseCase
         let cfg = resolvedConfig
         let wallpaperURL = try? await wallpaperUseCase.resolveWallpaper(
-            value: cfg.wallpaper, configDir: cfg.configDir ?? FileManager.default.homeDirectoryForCurrentUser.path
+            value: cfg.wallpaper?.location, configDir: cfg.configDir ?? FileManager.default.homeDirectoryForCurrentUser.path
         )
         let frames = await Self.resolveFrames(
             selector: cfg.screen,

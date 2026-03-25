@@ -1,6 +1,6 @@
 import Foundation
 
-public struct YouTubeWallpaper: Sendable {
+public struct YouTubeWallpaper {
     public let url: URL
     public let maxHeight: Int
     public let format: String
@@ -11,3 +11,5 @@ public struct YouTubeWallpaper: Sendable {
         self.format = format
     }
 }
+
+extension YouTubeWallpaper: Sendable {}

@@ -5,7 +5,8 @@ public enum LyricsContent {
     case plain([String])
 }
 
-extension LyricsContent: Sendable, Equatable {}
+extension LyricsContent: Sendable {}
+extension LyricsContent: Equatable {}
 
 extension LyricsContent {
     public init?(from result: LyricsResult?) {

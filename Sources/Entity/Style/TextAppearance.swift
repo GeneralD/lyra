@@ -1,4 +1,4 @@
-public struct TextAppearance: Sendable {
+public struct TextAppearance {
     public let spacing: Double
     public let fontName: String
     public let fontSize: Double
@@ -25,3 +25,5 @@ public struct TextAppearance: Sendable {
         self.lineHeight = lineHeight
     }
 }
+
+extension TextAppearance: Sendable {}

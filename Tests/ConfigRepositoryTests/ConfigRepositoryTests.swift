@@ -36,7 +36,7 @@ struct ConfigRepositoryTests {
             } operation: {
                 let repo = ConfigRepositoryImpl()
                 let style = repo.loadAppStyle()
-                #expect(style.wallpaper == "bg.mp4")
+                #expect(style.wallpaper?.location == "bg.mp4")
                 #expect(style.configDir == "/Users/test/.config/lyra")
             }
         }

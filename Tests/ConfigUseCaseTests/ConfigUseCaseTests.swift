@@ -10,13 +10,13 @@ struct ConfigUseCaseTests {
     @Test("loadAppStyle delegates to repository")
     @MainActor
     func loadAppStyleDelegatesToRepository() {
-        let expected = AppStyle(wallpaper: "bg.mp4", configDir: "/tmp")
+        let expected = AppStyle(wallpaper: WallpaperStyle(location: "bg.mp4"), configDir: "/tmp")
         withDependencies {
             $0.configRepository = MockConfigRepository(style: expected)
         } operation: {
             let useCase = ConfigUseCaseImpl()
             let result = useCase.loadAppStyle()
-            #expect(result.wallpaper == expected.wallpaper)
+            #expect(result.wallpaper?.location == expected.wallpaper?.location)
             #expect(result.configDir == expected.configDir)
         }
     }
@@ -24,15 +24,15 @@ struct ConfigUseCaseTests {
     @Test("loadAppStyle returns exact AppStyle from repository, not default")
     @MainActor
     func loadAppStyleReturnsRepositoryValue() {
-        let style = AppStyle(wallpaper: "custom.mp4", configDir: "/custom")
+        let style = AppStyle(wallpaper: WallpaperStyle(location: "custom.mp4"), configDir: "/custom")
         withDependencies {
             $0.configRepository = MockConfigRepository(style: style)
         } operation: {
             let useCase = ConfigUseCaseImpl()
             let result = useCase.loadAppStyle()
             let defaultStyle = AppStyle()
-            #expect(result.wallpaper != defaultStyle.wallpaper)
-            #expect(result.wallpaper == "custom.mp4")
+            #expect(result.wallpaper?.location != defaultStyle.wallpaper?.location)
+            #expect(result.wallpaper?.location == "custom.mp4")
         }
     }
 }

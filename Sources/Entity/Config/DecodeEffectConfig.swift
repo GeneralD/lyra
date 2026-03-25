@@ -1,7 +1,9 @@
-public struct DecodeEffectConfig: Sendable {
+public struct DecodeEffectConfig {
     public let duration: FlexibleDouble
     public let charset: Set<CharsetName>
 }
+
+extension DecodeEffectConfig: Sendable {}
 
 extension DecodeEffectConfig {
     static let defaults = DecodeEffectConfig(duration: 0.8, charset: Set(CharsetName.allCases))

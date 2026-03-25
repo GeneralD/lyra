@@ -1,4 +1,4 @@
-public struct DecodeEffect: Sendable {
+public struct DecodeEffect {
     public let duration: Double
     public let charsets: Set<CharsetName>
 
@@ -10,3 +10,5 @@ public struct DecodeEffect: Sendable {
         self.charsets = charsets
     }
 }
+
+extension DecodeEffect: Sendable {}

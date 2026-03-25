@@ -1,4 +1,4 @@
-public struct TextLayout: Sendable {
+public struct TextLayout {
     public let title: TextAppearance
     public let artist: TextAppearance
     public let lyric: TextAppearance
@@ -19,3 +19,5 @@ public struct TextLayout: Sendable {
         self.decodeEffect = decodeEffect
     }
 }
+
+extension TextLayout: Sendable {}

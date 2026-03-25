@@ -3,7 +3,8 @@ public enum ColorStyle {
     case gradient([String])
 }
 
-extension ColorStyle: Sendable, Equatable {}
+extension ColorStyle: Sendable {}
+extension ColorStyle: Equatable {}
 
 extension ColorStyle: Decodable {
     public init(from decoder: Decoder) throws {

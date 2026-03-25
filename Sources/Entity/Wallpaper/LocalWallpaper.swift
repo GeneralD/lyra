@@ -1,4 +1,4 @@
-public struct LocalWallpaper: Sendable {
+public struct LocalWallpaper {
     public let path: String
     public let configDir: String
 
@@ -7,3 +7,5 @@ public struct LocalWallpaper: Sendable {
         self.configDir = configDir
     }
 }
+
+extension LocalWallpaper: Sendable {}

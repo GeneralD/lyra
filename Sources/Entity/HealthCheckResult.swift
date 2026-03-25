@@ -1,7 +1,7 @@
 import Foundation
 
-public struct HealthCheckResult: Sendable {
-    public enum Status: Sendable {
+public struct HealthCheckResult {
+    public enum Status {
         case pass
         case fail
         case skip
@@ -17,3 +17,6 @@ public struct HealthCheckResult: Sendable {
         self.latency = latency
     }
 }
+
+extension HealthCheckResult: Sendable {}
+extension HealthCheckResult.Status: Sendable {}

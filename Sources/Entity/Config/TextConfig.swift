@@ -1,6 +1,6 @@
 import Foundation
 
-public struct TextConfig: Sendable {
+public struct TextConfig {
     public let `default`: TextAppearanceConfig
     public let title: TextAppearanceConfig
     public let artist: TextAppearanceConfig
@@ -8,6 +8,8 @@ public struct TextConfig: Sendable {
     public let highlight: TextAppearanceConfig
     public let decodeEffect: DecodeEffectConfig
 }
+
+extension TextConfig: Sendable {}
 
 extension TextConfig {
     static let defaults = resolve()
