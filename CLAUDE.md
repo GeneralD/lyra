@@ -201,3 +201,8 @@ Cache is Repository's responsibility, not DataSource's. DataSources are pure API
 ### Version Management
 
 Version is defined in `Sources/CLI/Resources/version.txt` (single source of truth). CI reads this file to auto-create/update git tags on push to main.
+
+**PR version bump rule**: When creating a PR, always include a version bump commit. Determine the level from the changes in the PR:
+- `feat:` → minor bump
+- `fix:` / `refactor:` / `chore:` → patch bump
+- Breaking changes → major bump
