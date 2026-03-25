@@ -37,6 +37,6 @@ struct VersionCommand: ParsableCommand {
     )
 
     func run() {
-        print(RootCommand.configuration.version ?? "unknown")
+        print(RootCommand.configuration.version)
     }
 }
