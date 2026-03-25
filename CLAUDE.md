@@ -58,6 +58,7 @@ graph TD
             PlaybackUseCase[PlaybackUseCase]
             LyricsUseCase[LyricsUseCase]
             MetadataUseCase[MetadataUseCase]
+            WallpaperUseCase[WallpaperUseCase]
         end
 
         subgraph Repository
@@ -65,6 +66,7 @@ graph TD
             LyricsRepository[LyricsRepository]
             MetadataRepository[MetadataRepository]
             NowPlayingRepository[NowPlayingRepository]
+            WallpaperRepository[WallpaperRepository]
         end
 
         subgraph DataSource
@@ -72,6 +74,7 @@ graph TD
             MetadataDataSource[MetadataDataSource]
             ConfigDataSource[ConfigDataSource]
             MediaRemoteDataSource[MediaRemoteDataSource]
+            WallpaperDataSource[WallpaperDataSource]
         end
 
         subgraph DataStore
@@ -97,6 +100,8 @@ graph TD
     MetadataUseCase -.-> MetadataRepository
     MetadataRepository -.-> MetadataDataSource
     MetadataRepository -.-> SQLiteDataStore
+    WallpaperUseCase -.-> WallpaperRepository
+    WallpaperRepository -.-> WallpaperDataSource
 
     style lyra fill:#333,stroke:#333,color:#fff
     style CLI fill:#555,stroke:#333,color:#fff
@@ -110,14 +115,17 @@ graph TD
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
     style MetadataUseCase fill:#59c,stroke:#333,color:#fff
+    style WallpaperUseCase fill:#59c,stroke:#333,color:#fff
     style ConfigRepository fill:#86c,stroke:#333,color:#fff
     style LyricsRepository fill:#86c,stroke:#333,color:#fff
     style MetadataRepository fill:#86c,stroke:#333,color:#fff
     style NowPlayingRepository fill:#86c,stroke:#333,color:#fff
+    style WallpaperRepository fill:#86c,stroke:#333,color:#fff
     style LyricsDataSource fill:#c84,stroke:#333,color:#fff
     style MetadataDataSource fill:#c84,stroke:#333,color:#fff
     style ConfigDataSource fill:#c84,stroke:#333,color:#fff
     style MediaRemoteDataSource fill:#c84,stroke:#333,color:#fff
+    style WallpaperDataSource fill:#c84,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
@@ -133,9 +141,9 @@ graph TD
 | Presenter | `Presentation` | OverlayController, OverlayState, DecodeEffect, CharacterPool |
 | Entity | `Entity` | Pure data types, zero external dependencies |
 | Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
-| UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase` | Business logic only, no cross-UseCase deps |
-| Repository | `ConfigRepository`, `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository` | DataSource + DataStore orchestration, cache strategy |
-| DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource` | API execution, file I/O, private framework access |
+| UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase`, `WallpaperUseCase` | Business logic only, no cross-UseCase deps |
+| Repository | `ConfigRepository`, `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository`, `WallpaperRepository` | DataSource + DataStore orchestration, cache strategy |
+| DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource`, `WallpaperDataSource` | API execution, file I/O, private framework access |
 | DataStore | `SQLiteDataStore` | GRDB SQLite cache |
 
 ### Key Design Decisions
@@ -146,7 +154,18 @@ graph TD
 
 **FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by `OverlayController` using `DecodeEffectState`.
 
-**Entity types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`. DI via `AppStyleKey` / `\.appStyle`.
+**Entity types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`, `LocalWallpaper`, `RemoteWallpaper`, `YouTubeWallpaper`. DI via `AppStyleKey` / `\.appStyle`.
+
+**WallpaperDataSource\<LocationType\>**: Generic protocol defining `resolve(_ location: LocationType) async throws -> String`. Three implementations with distinct location types:
+- `LocalWallpaperDataSourceImpl: WallpaperDataSource<LocalWallpaper>` — relative/absolute path resolution via Files library
+- `RemoteWallpaperDataSourceImpl: WallpaperDataSource<RemoteWallpaper>` — HTTP(S) download with SHA256-keyed cache
+- `YouTubeWallpaperDataSourceImpl: WallpaperDataSource<YouTubeWallpaper>` — yt-dlp/uvx download with H.264/AVC codec, SHA256-keyed cache
+
+**WallpaperRepository URL classification**: Repository classifies wallpaper config string and dispatches to the appropriate DataSource. Priority: local path (no scheme) → YouTube URL (host contains youtube.com/youtu.be) → remote HTTP(S) URL. All paths converge to a local file path string.
+
+**Wallpaper cache**: `~/.cache/lyra/wallpapers/SHA256(url).{ext}`. Cache is permanent (wallpapers are reused). `WallpaperCache` helper shared by Remote and YouTube DataSources.
+
+**Wallpaper async resolution**: `OverlayWindow.init()` (already async) resolves wallpaper via `WallpaperUseCase` before creating AVPlayer. Config loads synchronously; only wallpaper download is async. Cached videos resolve instantly on subsequent launches.
 
 **Domain Dependencies organization**: `Dependencies/` is organized by layer subdirectories (`UseCase/`, `Repository/`, `DataSource/`, `DataStore/`, `Misc/`) matching the architecture. Each file contains a protocol + `TestDependencyKey` + `DependencyValues` extension.
 
