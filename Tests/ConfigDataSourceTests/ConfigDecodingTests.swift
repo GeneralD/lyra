@@ -63,6 +63,74 @@ struct DefaultValueTests {
     }
 }
 
+// MARK: - Wallpaper config (TOML)
+
+@Suite("Wallpaper TOML decoding")
+struct WallpaperTomlDecodingTests {
+    @Test("bare string wallpaper decodes location only")
+    func bareString() throws {
+        let config = try decode("""
+            wallpaper = "loop.mp4"
+            """)
+        #expect(config.wallpaper?.location == "loop.mp4")
+        #expect(config.wallpaper?.start == nil)
+        #expect(config.wallpaper?.end == nil)
+    }
+
+    @Test("[wallpaper] table with location only")
+    func tableLocationOnly() throws {
+        let config = try decode("""
+            [wallpaper]
+            location = "bg.mp4"
+            """)
+        #expect(config.wallpaper?.location == "bg.mp4")
+        #expect(config.wallpaper?.start == nil)
+        #expect(config.wallpaper?.end == nil)
+    }
+
+    @Test("[wallpaper] table with start and end")
+    func tableWithTrim() throws {
+        let config = try decode("""
+            [wallpaper]
+            location = "https://www.youtube.com/watch?v=XXXXX"
+            start = "0:30"
+            end = "3:45"
+            """)
+        #expect(config.wallpaper?.location == "https://www.youtube.com/watch?v=XXXXX")
+        #expect(config.wallpaper?.start == 30.0)
+        #expect(config.wallpaper?.end == 225.0)
+    }
+
+    @Test("[wallpaper] table with start only")
+    func tableStartOnly() throws {
+        let config = try decode("""
+            [wallpaper]
+            location = "video.mp4"
+            start = "1:00"
+            """)
+        #expect(config.wallpaper?.start == 60.0)
+        #expect(config.wallpaper?.end == nil)
+    }
+
+    @Test("missing wallpaper produces nil")
+    func missingWallpaper() throws {
+        let config = try decode("")
+        #expect(config.wallpaper == nil)
+    }
+
+    @Test("[wallpaper] start >= end discards end")
+    func startGteEnd() throws {
+        let config = try decode("""
+            [wallpaper]
+            location = "v.mp4"
+            start = "2:00"
+            end = "1:00"
+            """)
+        #expect(config.wallpaper?.start == 120.0)
+        #expect(config.wallpaper?.end == nil)
+    }
+}
+
 // MARK: - Text style inheritance chain
 
 @Suite("Text style inheritance")
