@@ -7,7 +7,7 @@ import WallpaperDataSource
 
 extension HealthCheckersKey: DependencyKey {
     public static let liveValue: [any HealthCheckable] = {
-        @Dependency(\.appStyle) var appStyle
+        @Dependency(\.configDataSource) var configDataSource
 
         var checkers: [any HealthCheckable] = [
             ConfigRepositoryImpl(),
@@ -15,8 +15,8 @@ extension HealthCheckersKey: DependencyKey {
             MusicBrainzAPI.searchRecording(title: "test", artist: nil, duration: nil),
         ]
 
-        if let ai = appStyle.ai {
-            checkers.append(OpenAICompatibleAPI(config: ai))
+        if let ai = configDataSource.load()?.config.ai {
+            checkers.append(OpenAICompatibleAPI(config: AIEndpoint(endpoint: ai.endpoint, model: ai.model, apiKey: ai.apiKey)))
         } else {
             checkers.append(SkippedHealthCheck(serviceName: "AI endpoint", reason: "not configured"))
         }
