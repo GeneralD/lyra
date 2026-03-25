@@ -1,4 +1,4 @@
-name: Auto Tag & Update Homebrew
+name: Auto Tag, Release & Update Homebrew
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  tag-and-update:
+  tag-and-release:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +41,30 @@ jobs:
             git push origin "$TAG"
             echo "created=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Build release binary
+        if: steps.tag.outputs.created == 'true'
+        run: swift build --disable-sandbox -c release
+
+      - name: Package binary
+        if: steps.tag.outputs.created == 'true'
+        run: |
+          BUILD_DIR=$(swift build --disable-sandbox --show-bin-path -c release)
+          STAGING="lyra-${VERSION}-macos-arm64"
+          mkdir -p "$STAGING"
+          cp "$BUILD_DIR/lyra" "$STAGING/"
+          find "$BUILD_DIR" -name '*.bundle' -exec cp -R {} "$STAGING/" \;
+          tar czf "${STAGING}.tar.gz" "$STAGING"
+          echo "ARCHIVE=${STAGING}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        if: steps.tag.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" "$ARCHIVE" \
+            --title "lyra $VERSION" \
+            --generate-notes
 
       - name: Update Homebrew formula
         if: steps.tag.outputs.created == 'true'
