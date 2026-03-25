@@ -27,6 +27,8 @@ extension YouTubeWallpaperDataSourceImpl: WallpaperDataSource {
             throw YouTubeDownloadError.outputNotFound
         }
 
+        try await remuxToStandardMP4(at: destPath)
+
         return destPath
     }
 }
@@ -88,6 +90,26 @@ extension YouTubeWallpaperDataSourceImpl {
     }
 }
 
+// MARK: - Remux
+
+extension YouTubeWallpaperDataSourceImpl {
+    /// Remux DASH container to standard MP4 for AVPlayer compatibility (loop support).
+    private func remuxToStandardMP4(at path: String) async throws {
+        guard let ffmpeg = findExecutable("ffmpeg") else { return }
+        let tmpPath = path + ".remux.mp4"
+        let (status, stderr) = try await runProcess(
+            executablePath: ffmpeg,
+            arguments: ["-i", path, "-c", "copy", "-movflags", "+faststart", tmpPath]
+        )
+        guard status == 0 else {
+            try? FileManager.default.removeItem(atPath: tmpPath)
+            throw YouTubeDownloadError.remuxFailed(stderr: stderr)
+        }
+        try? FileManager.default.removeItem(atPath: path)
+        try FileManager.default.moveItem(atPath: tmpPath, toPath: path)
+    }
+}
+
 // MARK: - Async Process
 
 extension YouTubeWallpaperDataSourceImpl {
@@ -120,6 +142,7 @@ public enum YouTubeDownloadError: Error, CustomStringConvertible {
     case toolNotFound
     case downloadFailed(status: Int32, stderr: String)
     case outputNotFound
+    case remuxFailed(stderr: String)
 
     public var description: String {
         switch self {
@@ -129,6 +152,8 @@ public enum YouTubeDownloadError: Error, CustomStringConvertible {
             "yt-dlp exited with status \(status)" + (stderr.isEmpty ? "" : "\n\(stderr)")
         case .outputNotFound:
             "yt-dlp completed but output file not found"
+        case .remuxFailed(let stderr):
+            "ffmpeg remux failed" + (stderr.isEmpty ? "" : "\n\(stderr)")
         }
     }
 }
