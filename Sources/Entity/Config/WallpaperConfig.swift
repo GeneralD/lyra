@@ -31,8 +31,11 @@ extension WallpaperConfig: Codable {
         // Table format
         let c = try decoder.container(keyedBy: CodingKeys.self)
         location = try c.decode(String.self, forKey: .location)
-        start = try c.decodeIfPresent(String.self, forKey: .start).flatMap(Self.parseTime)
-        end = try c.decodeIfPresent(String.self, forKey: .end).flatMap(Self.parseTime)
+        let rawStart = try c.decodeIfPresent(String.self, forKey: .start).flatMap(Self.parseTime)
+        let rawEnd = try c.decodeIfPresent(String.self, forKey: .end).flatMap(Self.parseTime)
+        let (validatedStart, validatedEnd) = Self.validate(start: rawStart, end: rawEnd)
+        start = validatedStart
+        end = validatedEnd
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -49,6 +52,17 @@ extension WallpaperConfig: Codable {
 }
 
 extension WallpaperConfig {
+    /// Clamp negative values to 0, discard end if start >= end
+    static func validate(start: TimeInterval?, end: TimeInterval?) -> (TimeInterval?, TimeInterval?) {
+        let clampedStart = start.map { max(0, $0) }
+        let clampedEnd = end.map { max(0, $0) }
+        guard let s = clampedStart, let e = clampedEnd, s >= e else {
+            return (clampedStart, clampedEnd)
+        }
+        // start >= end: discard end
+        return (clampedStart, nil)
+    }
+
     /// Parse time string in M:SS, H:MM:SS, or fractional seconds format
     static func parseTime(_ string: String) -> TimeInterval? {
         let parts = string.split(separator: ":")
