@@ -1,7 +1,6 @@
 import ConfigRepository
 import Dependencies
 import Domain
-import Foundation
 import LyricsDataSource
 import MetadataDataSource
 import WallpaperDataSource
@@ -22,15 +21,8 @@ extension HealthCheckersKey: DependencyKey {
             checkers.append(SkippedHealthCheck(serviceName: "AI endpoint", reason: "not configured"))
         }
 
-        // YouTube wallpaper tool checks
-        if let wallpaper = appStyle.wallpaper,
-            let url = URL(string: wallpaper),
-            url.scheme?.lowercased().hasPrefix("http") == true
-        {
-            checkers.append(contentsOf: WallpaperToolChecker.youtubeCheckers())
-        } else {
-            checkers.append(SkippedHealthCheck(serviceName: "Wallpaper tools", reason: "no remote wallpaper configured"))
-        }
+        // YouTube wallpaper tool availability (always check regardless of config)
+        checkers.append(contentsOf: WallpaperToolChecker.youtubeCheckers())
 
         return checkers
     }()
