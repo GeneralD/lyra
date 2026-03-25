@@ -32,7 +32,7 @@ struct RestartCommand: ParsableCommand {
 
     func run() throws {
         ProcessManager.stopExisting()
-        var start = StartCommand()
+        let start = StartCommand()
         try start.run()
     }
 }
