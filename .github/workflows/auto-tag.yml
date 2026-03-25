@@ -121,6 +121,7 @@ jobs:
             const content = Buffer.from(file.content, 'base64').toString('utf8');
             const updated = content
               .replace(/url ".*"/, `url "${url}"`)
+              .replace(/version ".*"/, `version "${version}"`)
               .replace(/sha256 ".*"/, `sha256 "${sha256}"`);
 
             await github.rest.repos.createOrUpdateFileContents({
