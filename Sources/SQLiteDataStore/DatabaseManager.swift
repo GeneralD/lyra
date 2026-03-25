@@ -6,9 +6,9 @@ public final class DatabaseManager: Sendable {
     public let dbQueue: DatabaseQueue
 
     public init() throws {
-        let cacheFolder = try Self.lyraCacheFolder()
-        let dbFile = try cacheFolder.createFileIfNeeded(withName: "lyrics.db")
-        dbQueue = try DatabaseQueue(path: dbFile.path)
+        let lyraCache = try Self.lyraCacheFolder()
+        let dbPath = lyraCache.path + "database"
+        dbQueue = try DatabaseQueue(path: dbPath)
         try migrator.migrate(dbQueue)
     }
 
@@ -23,7 +23,9 @@ public final class DatabaseManager: Sendable {
             in: .whitespacesAndNewlines)
         let cachePath =
             (envCache?.isEmpty == false) ? envCache! : "\(Folder.home.path).cache"
-        return try Folder.createIfNeeded(at: cachePath)
+        let lyraPath = "\(cachePath)/lyra"
+        try FileManager.default.createDirectory(atPath: lyraPath, withIntermediateDirectories: true)
+        return try Folder(path: lyraPath)
     }
 
     private var migrator: DatabaseMigrator {
@@ -87,16 +89,5 @@ public final class DatabaseManager: Sendable {
         }
 
         return migrator
-    }
-}
-
-extension Folder {
-    fileprivate static func createIfNeeded(at path: String) throws -> Folder {
-        do {
-            return try Folder(path: path)
-        } catch {
-            try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
-            return try Folder(path: path)
-        }
     }
 }
