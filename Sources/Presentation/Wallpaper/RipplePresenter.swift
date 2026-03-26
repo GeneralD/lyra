@@ -16,6 +16,7 @@ public final class RipplePresenter: ObservableObject {
     public init() {}
 
     public var isEnabled: Bool { interactor.rippleConfig.enabled }
+    public var interactorRippleConfig: RippleStyle { interactor.rippleConfig }
 
     public func start() {
         idleThreshold = interactor.rippleConfig.idle

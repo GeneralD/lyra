@@ -3,6 +3,8 @@ import Dependencies
 public protocol TrackInteractor: Sendable {
     func observeTrack() -> AsyncStream<TrackUpdate>
     var decodeEffectConfig: DecodeEffect { get }
+    var textLayout: TextLayout { get }
+    var artworkStyle: ArtworkStyle { get }
 }
 
 public enum TrackInteractorKey: TestDependencyKey {
@@ -21,4 +23,6 @@ private struct UnimplementedTrackInteractor: TrackInteractor {
         AsyncStream { $0.finish() }
     }
     var decodeEffectConfig: DecodeEffect { .init() }
+    var textLayout: TextLayout { .init() }
+    var artworkStyle: ArtworkStyle { .init() }
 }

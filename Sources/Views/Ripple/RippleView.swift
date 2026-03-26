@@ -1,5 +1,4 @@
 import AppKit
-import Dependencies
 import Domain
 import SwiftUI
 
@@ -7,22 +6,21 @@ import SwiftUI
 public struct RippleView: View {
     let rippleState: RippleState
     let screenOrigin: CGPoint
+    let rippleConfig: RippleStyle
 
-    @Dependency(\.appStyle) private var config
-
-    public init(rippleState: RippleState, screenOrigin: CGPoint) {
+    public init(rippleState: RippleState, screenOrigin: CGPoint, rippleConfig: RippleStyle) {
         self.rippleState = rippleState
         self.screenOrigin = screenOrigin
+        self.rippleConfig = rippleConfig
     }
 
     public var body: some View {
-        if config.ripple.enabled {
+        if rippleConfig.enabled {
             rippleCanvas
         }
     }
 
     private var rippleCanvas: some View {
-        let rippleConfig = config.ripple
         let baseNSColor: NSColor = {
             guard case .solid(let hex) = rippleConfig.color else { return .white }
             let color = parseHexColor(hex)
@@ -61,12 +59,8 @@ public struct RippleView: View {
 
 #if DEBUG
     #Preview("Ripple") {
-        withDependencies {
-            $0.appStyle = .init()
-        } operation: {
-            RippleView(rippleState: RippleState(), screenOrigin: .zero)
-                .frame(width: 400, height: 300)
-                .background(.black)
-        }
+        RippleView(rippleState: RippleState(), screenOrigin: .zero, rippleConfig: .init())
+            .frame(width: 400, height: 300)
+            .background(.black)
     }
 #endif

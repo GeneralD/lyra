@@ -10,6 +10,11 @@ public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var titleState: FetchState<String> = .idle
     @Published public private(set) var artistState: FetchState<String> = .idle
 
+    public private(set) var titleStyle: TextAppearance = .init()
+    public private(set) var artistStyle: TextAppearance = .init()
+    public private(set) var artworkSize: Double = 96
+    public private(set) var artworkOpacity: Double = 1.0
+
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
 
@@ -19,6 +24,11 @@ public final class HeaderPresenter: ObservableObject {
 
     public func start() {
         let config = interactor.decodeEffectConfig
+        let style = interactor.textLayout
+        titleStyle = style.title
+        artistStyle = style.artist
+        artworkSize = interactor.artworkStyle.size
+        artworkOpacity = interactor.artworkStyle.opacity
         titleEffect = DecodeEffectState(config: config)
         artistEffect = DecodeEffectState(config: config)
     }

@@ -119,4 +119,12 @@ extension TrackInteractorImpl: TrackInteractor {
     public var decodeEffectConfig: DecodeEffect {
         configService.loadAppStyle().text.decodeEffect
     }
+
+    public var textLayout: TextLayout {
+        configService.loadAppStyle().text
+    }
+
+    public var artworkStyle: ArtworkStyle {
+        configService.loadAppStyle().artwork
+    }
 }

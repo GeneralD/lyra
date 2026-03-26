@@ -54,6 +54,7 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "TrackInteractor",
+                "ScreenInteractor",
                 "WallpaperInteractor",
                 "ConfigUseCase",
                 "ConfigRepository",
@@ -114,6 +115,13 @@ let package = Package(
         // Interactor
         .target(
             name: "TrackInteractor",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "ScreenInteractor",
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),

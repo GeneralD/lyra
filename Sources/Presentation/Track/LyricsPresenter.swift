@@ -8,6 +8,9 @@ public final class LyricsPresenter: ObservableObject {
     @Published public private(set) var displayLyricLines: [String] = []
     @Published public private(set) var activeLineIndex: Int?
 
+    public private(set) var lyricStyle: TextAppearance = .init()
+    public private(set) var highlightStyle: TextAppearance = .init()
+
     private var lyricEffects: [DecodeEffectState] = []
     private var decodeConfig: DecodeEffect?
     private var latestElapsed: TimeInterval?
@@ -18,7 +21,10 @@ public final class LyricsPresenter: ObservableObject {
     public init() {}
 
     public func start() {
-        decodeConfig = interactor.decodeEffectConfig
+        let layout = interactor.textLayout
+        decodeConfig = layout.decodeEffect
+        lyricStyle = layout.lyric
+        highlightStyle = layout.highlight
     }
 
     public func stop() {

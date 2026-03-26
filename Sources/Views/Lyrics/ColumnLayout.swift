@@ -8,11 +8,11 @@ public struct ColumnLayout {
     public let linesPerColumn: Int
 
     @MainActor
-    public init(width: Double, lyricsHeight: Double) {
-        @Dependency(\.appStyle) var config
+    public init(width: Double, lyricsHeight: Double, lyricStyle: TextAppearance) {
         @Dependency(\.fontMetrics) var fontMetrics
-        let lyric = config.text.lyric
-        let lineHeight = fontMetrics.lineHeight(fontName: lyric.fontName, fontSize: lyric.fontSize, spacing: lyric.spacing)
+        let lineHeight = fontMetrics.lineHeight(
+            fontName: lyricStyle.fontName, fontSize: lyricStyle.fontSize, spacing: lyricStyle.spacing
+        )
 
         columnGap = (width * 0.03).rounded()
         columnWidth = (width * 0.28).rounded()

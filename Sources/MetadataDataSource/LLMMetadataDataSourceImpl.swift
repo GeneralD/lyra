@@ -3,14 +3,15 @@ import Domain
 import Foundation
 
 public struct LLMMetadataDataSourceImpl {
-    @Dependency(\.appStyle) private var config
+    @Dependency(\.configDataSource) private var configDataSource
 
     public init() {}
 }
 
 extension LLMMetadataDataSourceImpl: MetadataDataSource {
     public func resolve(track: Track) async -> [Track] {
-        guard let aiConfig = config.ai else { return [] }
+        guard let ai = configDataSource.load()?.config.ai else { return [] }
+        let aiConfig = AIEndpoint(endpoint: ai.endpoint, model: ai.model, apiKey: ai.apiKey)
 
         guard let metadata = await callAPI(config: aiConfig, rawTitle: track.title, rawArtist: track.artist),
             !metadata.title.isEmpty

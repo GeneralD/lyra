@@ -1,4 +1,3 @@
-import Dependencies
 import Domain
 import SwiftUI
 
@@ -6,16 +5,18 @@ import SwiftUI
 public struct LyricLineView: View {
     let text: String
     let isActive: Bool
+    let lyricStyle: TextAppearance
+    let highlightStyle: TextAppearance
 
-    @Dependency(\.appStyle) private var config
-
-    public init(text: String, isActive: Bool) {
+    public init(text: String, isActive: Bool, lyricStyle: TextAppearance, highlightStyle: TextAppearance) {
         self.text = text
         self.isActive = isActive
+        self.lyricStyle = lyricStyle
+        self.highlightStyle = highlightStyle
     }
 
     public var body: some View {
-        let style = isActive ? config.text.highlight : config.text.lyric
+        let style = isActive ? highlightStyle : lyricStyle
 
         Text(text.isEmpty ? " " : text)
             .font(makeFont(style: style))
@@ -47,22 +48,20 @@ func makeFont(style: TextAppearance) -> Font {
 
 #if DEBUG
     #Preview("Normal") {
-        withDependencies {
-            $0.appStyle = .init()
-        } operation: {
-            LyricLineView(text: "It been a long day without you my friend", isActive: false)
-                .padding()
-                .background(.black)
-        }
+        LyricLineView(
+            text: "It been a long day without you my friend",
+            isActive: false, lyricStyle: .init(), highlightStyle: .init()
+        )
+        .padding()
+        .background(.black)
     }
 
     #Preview("Active") {
-        withDependencies {
-            $0.appStyle = .init()
-        } operation: {
-            LyricLineView(text: "It been a long day without you my friend", isActive: true)
-                .padding()
-                .background(.black)
-        }
+        LyricLineView(
+            text: "It been a long day without you my friend",
+            isActive: true, lyricStyle: .init(), highlightStyle: .init()
+        )
+        .padding()
+        .background(.black)
     }
 #endif

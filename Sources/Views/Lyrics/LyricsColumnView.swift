@@ -20,7 +20,7 @@ public struct LyricsColumnView: View {
 
     public var body: some View {
         GeometryReader { geo in
-            let layout = ColumnLayout(width: geo.size.width, lyricsHeight: geo.size.height)
+            let layout = ColumnLayout(width: geo.size.width, lyricsHeight: geo.size.height, lyricStyle: presenter.lyricStyle)
             if let content = presenter.lyricsState.value {
                 let cols = columns(from: content, layout: layout)
                 HStack(alignment: .top, spacing: layout.columnGap) {
@@ -29,7 +29,9 @@ public struct LyricsColumnView: View {
                             ForEach(column.entries, id: \.index) { entry in
                                 LyricLineView(
                                     text: entry.displayText,
-                                    isActive: entry.index == column.highlightIndex
+                                    isActive: entry.index == column.highlightIndex,
+                                    lyricStyle: presenter.lyricStyle,
+                                    highlightStyle: presenter.highlightStyle
                                 )
                             }
                             Spacer()
@@ -68,12 +70,8 @@ public struct LyricsColumnView: View {
 
 #if DEBUG
     #Preview("Lyrics") {
-        withDependencies {
-            $0.appStyle = .init()
-        } operation: {
-            LyricsColumnView(presenter: LyricsPresenter())
-                .frame(width: 600, height: 300)
-                .background(.black)
-        }
+        LyricsColumnView(presenter: LyricsPresenter())
+            .frame(width: 600, height: 300)
+            .background(.black)
     }
 #endif

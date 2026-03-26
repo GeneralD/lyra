@@ -1,4 +1,3 @@
-import Dependencies
 import Domain
 import Foundation
 import Observation
@@ -17,14 +16,14 @@ public final class RippleState {
     private var currentPosition: CGPoint = .zero
     private var lastRipplePosition: CGPoint = .zero
     private var lastIdleRipple: Date = .now
+    private let rippleConfig: RippleStyle
 
-    @ObservationIgnored
-    @Dependency(\.appStyle) private var config
-
-    public init() {}
+    public init(config: RippleStyle = .init()) {
+        rippleConfig = config
+    }
 
     public func update(screenPoint: CGPoint) {
-        guard config.ripple.enabled else { return }
+        guard rippleConfig.enabled else { return }
         currentPosition = screenPoint
         let distance = hypot(screenPoint.x - lastRipplePosition.x, screenPoint.y - lastRipplePosition.y)
         guard distance > 40 else { return }
@@ -35,9 +34,9 @@ public final class RippleState {
     }
 
     public func idle() {
-        guard config.ripple.enabled,
-            config.ripple.idle > 0,
-            Date.now.timeIntervalSince(lastIdleRipple) > config.ripple.idle
+        guard rippleConfig.enabled,
+            rippleConfig.idle > 0,
+            Date.now.timeIntervalSince(lastIdleRipple) > rippleConfig.idle
         else { return }
         lastIdleRipple = .now
         ripples.append(.init(position: currentPosition, startTime: .now, idle: true))
@@ -45,6 +44,6 @@ public final class RippleState {
     }
 
     private func cleanup() {
-        ripples.removeAll { Date.now.timeIntervalSince($0.startTime) > config.ripple.duration * 3 }
+        ripples.removeAll { Date.now.timeIntervalSince($0.startTime) > rippleConfig.duration * 3 }
     }
 }
