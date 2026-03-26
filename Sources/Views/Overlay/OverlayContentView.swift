@@ -3,8 +3,8 @@ import SwiftUI
 
 @MainActor
 public struct OverlayContentView: View {
-    @ObservedObject var headerPresenter: HeaderPresenter
-    @ObservedObject var lyricsPresenter: LyricsPresenter
+    let headerPresenter: HeaderPresenter
+    let lyricsPresenter: LyricsPresenter
     let ripplePresenter: RipplePresenter
     let screenOrigin: CGPoint
 
