@@ -9,7 +9,6 @@ import Views
 @MainActor
 final class AppWindow: NSWindow {
     private let hostingView: NSHostingView<OverlayContentView>
-    private let hasWallpaper: Bool
     private var screenObserver: NSObjectProtocol?
 
     @Dependency(\.screenInteractor) private var screenInteractor
@@ -19,9 +18,9 @@ final class AppWindow: NSWindow {
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
         ripplePresenter: RipplePresenter
-    ) async {
-        hasWallpaper = wallpaperPresenter.wallpaperURL != nil
-        let layout = await Self.resolveLayout(hasWallpaper: hasWallpaper)
+    ) {
+        @Dependency(\.screenInteractor) var screen
+        let layout = screen.resolveLayout()
 
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
@@ -42,7 +41,7 @@ final class AppWindow: NSWindow {
         )
 
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
-        backgroundColor = hasWallpaper ? .black : .clear
+        backgroundColor = wallpaperPresenter.player != nil ? .black : .clear
         isOpaque = false
         ignoresMouseEvents = true
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
@@ -67,7 +66,7 @@ final class AppWindow: NSWindow {
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.recalculateLayout() }
+            self?.recalculateLayout()
         }
     }
 
@@ -75,17 +74,12 @@ final class AppWindow: NSWindow {
         screenObserver.map(NotificationCenter.default.removeObserver)
     }
 
-    private func recalculateLayout() async {
-        let layout = await Self.resolveLayout(hasWallpaper: hasWallpaper)
+    private func recalculateLayout() {
+        let layout = screenInteractor.resolveLayout()
         setFrame(layout.windowFrame, display: false)
         hostingView.frame = layout.hostingFrame
         if let containerView = contentView, containerView !== hostingView {
             containerView.frame = CGRect(origin: .zero, size: layout.windowFrame.size)
         }
-    }
-
-    private static func resolveLayout(hasWallpaper: Bool) async -> ScreenLayout {
-        @Dependency(\.screenInteractor) var screenInteractor
-        return await screenInteractor.resolveLayout(hasWallpaper: hasWallpaper)
     }
 }

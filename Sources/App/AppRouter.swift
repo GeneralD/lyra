@@ -21,7 +21,7 @@ public final class AppRouter {
         await wallpaperPresenter.resolve()
         await wallpaperPresenter.setupPlayer()
 
-        appWindow = await AppWindow(
+        appWindow = AppWindow(
             wallpaperPresenter: wallpaperPresenter,
             headerPresenter: headerPresenter,
             lyricsPresenter: lyricsPresenter,

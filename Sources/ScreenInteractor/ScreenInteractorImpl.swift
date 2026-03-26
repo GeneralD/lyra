@@ -13,19 +13,19 @@ extension ScreenInteractorImpl: ScreenInteractor {
         configService.loadAppStyle().screen
     }
 
-    public func resolveLayout(hasWallpaper: Bool) async -> ScreenLayout {
+    public func resolveLayout() -> ScreenLayout {
         let screen = resolveScreen()
-        let visibleFrame = screen.visibleFrame
+        
         let fullFrame = screen.frame
-        let windowRect = hasWallpaper ? fullFrame : visibleFrame
+        let visibleFrame = screen.visibleFrame
         let hostingFrame = CGRect(
-            x: visibleFrame.minX - windowRect.minX,
-            y: visibleFrame.minY - windowRect.minY,
+            x: visibleFrame.minX - fullFrame.minX,
+            y: visibleFrame.minY - fullFrame.minY,
             width: visibleFrame.width,
             height: visibleFrame.height
         )
         return ScreenLayout(
-            windowFrame: windowRect,
+            windowFrame: fullFrame,
             hostingFrame: hostingFrame,
             screenOrigin: CGPoint(x: visibleFrame.minX, y: visibleFrame.minY)
         )
