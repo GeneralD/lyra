@@ -1,4 +1,3 @@
-@preconcurrency import AVFoundation
 import AppKit
 import Dependencies
 import Domain
@@ -14,8 +13,8 @@ extension ScreenInteractorImpl: ScreenInteractor {
         configService.loadAppStyle().screen
     }
 
-    public func resolveLayout(wallpaperURL: URL?, hasWallpaper: Bool) async -> ScreenLayout {
-        let screen = await resolveScreen(wallpaperURL: wallpaperURL)
+    public func resolveLayout(hasWallpaper: Bool) async -> ScreenLayout {
+        let screen = resolveScreen()
         let visibleFrame = screen.visibleFrame
         let fullFrame = screen.frame
         let windowRect = hasWallpaper ? fullFrame : visibleFrame
@@ -32,7 +31,7 @@ extension ScreenInteractorImpl: ScreenInteractor {
         )
     }
 
-    private func resolveScreen(wallpaperURL: URL?) async -> NSScreen {
+    private func resolveScreen() -> NSScreen {
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return .fallback }
         switch screenSelector {
@@ -48,21 +47,6 @@ extension ScreenInteractorImpl: ScreenInteractor {
         case .largest:
             return screens.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
                 ?? .fallback
-        case .match:
-            guard let url = wallpaperURL else { return .main ?? .fallback }
-            let asset = AVURLAsset(url: url)
-            guard let track = try? await asset.loadTracks(withMediaType: .video).first
-            else { return .main ?? .fallback }
-            let naturalSize = try? await track.load(.naturalSize)
-            let transform = try? await track.load(.preferredTransform)
-            guard let naturalSize, let transform else { return .main ?? .fallback }
-            let size = naturalSize.applying(transform)
-            let videoAspect = abs(size.width) / abs(size.height)
-            return screens.min { a, b in
-                let aa = a.frame.width / a.frame.height
-                let ba = b.frame.width / b.frame.height
-                return abs(aa - videoAspect) < abs(ba - videoAspect)
-            } ?? .fallback
         }
     }
 }

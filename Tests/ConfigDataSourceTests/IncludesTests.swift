@@ -68,7 +68,7 @@ struct IncludesTests {
 
         let content = try String(contentsOfFile: mainPath, encoding: .utf8)
         let config = dataSource.decode(content: content, path: mainPath, configDir: tempDir)
-        #expect(config?.screen == ScreenSelector.match)
+        #expect(config?.screen == ScreenSelector.main)
     }
 
     @Test("no includes section works fine")

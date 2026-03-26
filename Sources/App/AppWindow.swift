@@ -9,7 +9,6 @@ import Views
 final class AppWindow: NSWindow {
     private let hostingView: NSHostingView<OverlayContentView>
     private let appPresenter: AppPresenter
-    private let wallpaperURL: URL?
     private var screenObserver: NSObjectProtocol?
 
     init(
@@ -20,7 +19,6 @@ final class AppWindow: NSWindow {
         ripplePresenter: RipplePresenter
     ) {
         self.appPresenter = appPresenter
-        self.wallpaperURL = wallpaperPresenter.wallpaperURL
 
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
@@ -75,7 +73,7 @@ final class AppWindow: NSWindow {
     }
 
     private func recalculateLayout() async {
-        await appPresenter.resolveFrames(wallpaperURL: wallpaperURL)
+        await appPresenter.resolveFrames()
         let layout = appPresenter.layout
         setFrame(layout.windowFrame, display: false)
         hostingView.frame = layout.hostingFrame

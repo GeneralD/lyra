@@ -20,7 +20,8 @@ public final class AppRouter {
         lyricsPresenter.start()
         ripplePresenter.start()
         await wallpaperPresenter.resolve()
-        await appPresenter.resolveFrames(wallpaperURL: wallpaperPresenter.wallpaperURL)
+        appPresenter.hasWallpaper = wallpaperPresenter.wallpaperURL != nil
+        await appPresenter.resolveFrames()
         await wallpaperPresenter.setupPlayer()
 
         appWindow = AppWindow(

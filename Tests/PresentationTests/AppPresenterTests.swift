@@ -12,7 +12,7 @@ private struct StubScreenInteractor: ScreenInteractor {
     var screenSelector: ScreenSelector = .main
     var layoutResult: ScreenLayout = .init()
 
-    func resolveLayout(wallpaperURL: URL?, hasWallpaper: Bool) async -> ScreenLayout { layoutResult }
+    func resolveLayout(hasWallpaper: Bool) async -> ScreenLayout { layoutResult }
 }
 
 // MARK: - Tests
@@ -23,7 +23,7 @@ struct AppPresenterTests {
     @Suite("resolveFrames")
     struct ResolveFrames {
         @MainActor
-        @Test("sets layout and hasWallpaper=true when wallpaperURL is provided")
+        @Test("sets layout when hasWallpaper is true")
         func setsLayoutWithWallpaper() async {
             let expectedLayout = ScreenLayout(
                 windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
@@ -35,41 +35,25 @@ struct AppPresenterTests {
                 $0.screenInteractor = StubScreenInteractor(layoutResult: expectedLayout)
             } operation: {
                 let presenter = AppPresenter()
-                let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-                await presenter.resolveFrames(wallpaperURL: url)
+                presenter.hasWallpaper = true
+                await presenter.resolveFrames()
 
                 #expect(presenter.hasWallpaper == true)
                 #expect(presenter.layout.windowFrame == expectedLayout.windowFrame)
-                #expect(presenter.layout.hostingFrame == expectedLayout.hostingFrame)
-                #expect(presenter.layout.screenOrigin == expectedLayout.screenOrigin)
             }
         }
 
         @MainActor
-        @Test("sets hasWallpaper=false when wallpaperURL is nil")
-        func setsNoWallpaper() async {
+        @Test("sets layout when hasWallpaper is false")
+        func setsLayoutWithoutWallpaper() async {
             await withDependencies {
                 $0.screenInteractor = StubScreenInteractor()
             } operation: {
                 let presenter = AppPresenter()
-                await presenter.resolveFrames(wallpaperURL: nil)
+                await presenter.resolveFrames()
 
                 #expect(presenter.hasWallpaper == false)
-            }
-        }
-
-        @MainActor
-        @Test("uses default layout when interactor returns default")
-        func usesDefaultLayout() async {
-            await withDependencies {
-                $0.screenInteractor = StubScreenInteractor()
-            } operation: {
-                let presenter = AppPresenter()
-                await presenter.resolveFrames(wallpaperURL: nil)
-
                 #expect(presenter.layout.windowFrame == .zero)
-                #expect(presenter.layout.hostingFrame == .zero)
-                #expect(presenter.layout.screenOrigin == .zero)
             }
         }
     }

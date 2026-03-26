@@ -176,7 +176,6 @@ Optional LLM-based song title and artist extraction via any OpenAI-compatible AP
 | `"primary"` | Primary display (menu bar screen) |
 | `"smallest"` | Smallest display by area |
 | `"largest"` | Largest display by area |
-| `"match"` | Best aspect-ratio match for the wallpaper video |
 | `0`, `1`, … | Display by index |
 
 ### Wallpaper

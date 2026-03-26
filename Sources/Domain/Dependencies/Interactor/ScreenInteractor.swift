@@ -1,9 +1,8 @@
 import Dependencies
-import Foundation
 
 public protocol ScreenInteractor: Sendable {
     var screenSelector: ScreenSelector { get }
-    func resolveLayout(wallpaperURL: URL?, hasWallpaper: Bool) async -> ScreenLayout
+    func resolveLayout(hasWallpaper: Bool) async -> ScreenLayout
 }
 
 public enum ScreenInteractorKey: TestDependencyKey {
@@ -19,5 +18,5 @@ extension DependencyValues {
 
 private struct UnimplementedScreenInteractor: ScreenInteractor {
     var screenSelector: ScreenSelector { .main }
-    func resolveLayout(wallpaperURL: URL?, hasWallpaper: Bool) async -> ScreenLayout { .init() }
+    func resolveLayout(hasWallpaper: Bool) async -> ScreenLayout { .init() }
 }
