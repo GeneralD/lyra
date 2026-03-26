@@ -33,6 +33,20 @@ struct ConfigUseCaseTests {
             #expect(result.wallpaper?.location == "custom.mp4")
         }
     }
+
+    @Test("appStyle is cached — repository.loadAppStyle() called only once")
+    func appStyleCachedSingleRead() {
+        let counter = CountingConfigRepository()
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            _ = useCase.appStyle
+            _ = useCase.appStyle
+            #expect(counter.callCount == 1)
+        }
+    }
 }
 
 // MARK: - Mocks
@@ -41,6 +55,19 @@ private struct MockConfigRepository: ConfigRepository {
     let style: AppStyle
 
     func loadAppStyle() -> AppStyle { style }
+
+    func validate() -> ConfigValidationResult { .defaults }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+}
+
+private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {
+    var callCount = 0
+
+    func loadAppStyle() -> AppStyle {
+        callCount += 1
+        return .init()
+    }
 
     func validate() -> ConfigValidationResult { .defaults }
     func template(format: ConfigFormat) -> String? { nil }
