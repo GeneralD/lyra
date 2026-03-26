@@ -1,6 +1,6 @@
 import Dependencies
 import Domain
-import Presentation
+import Presenters
 import SwiftUI
 
 private struct Column: Identifiable {

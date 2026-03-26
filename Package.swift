@@ -42,7 +42,7 @@ let package = Package(
             name: "App",
             dependencies: [
                 "Views",
-                "Presentation",
+                "Presenters",
                 "DependencyInjection",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -53,13 +53,13 @@ let package = Package(
             name: "Views",
             dependencies: [
                 "Domain",
-                "Presentation",
+                "Presenters",
             ]
         ),
 
         // ── Presenter ──
         .target(
-            name: "Presentation",
+            name: "Presenters",
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -278,9 +278,9 @@ let package = Package(
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
         .testTarget(name: "ViewsTests", dependencies: ["Views"]),
         .testTarget(
-            name: "PresentationTests",
+            name: "PresentersTests",
             dependencies: [
-                "Presentation",
+                "Presenters",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

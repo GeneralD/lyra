@@ -37,7 +37,7 @@ graph TD
     end
 
     subgraph Presenter
-        Presentation[Presentation]
+        Presenters[Presenters]
     end
 
     subgraph DI Wiring
@@ -90,10 +90,10 @@ graph TD
 
     Main --> CLI
     CLI --> App
-    App --> Views & Presentation & DependencyInjection
+    App --> Views & Presenters & DependencyInjection
     DependencyInjection --> Implementations
-    Views --> Presentation
-    Presentation --> Domain
+    Views --> Presenters
+    Presenters --> Domain
     Implementations --> Domain
     Domain --> Entity
     TrackInteractor -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase & ConfigUseCase
@@ -116,7 +116,7 @@ graph TD
     style CLI fill:#555,stroke:#333,color:#fff
     style App fill:#6a5,stroke:#333,color:#fff
     style Views fill:#6a5,stroke:#333,color:#fff
-    style Presentation fill:#6a5,stroke:#333,color:#fff
+    style Presenters fill:#6a5,stroke:#333,color:#fff
     style TrackInteractor fill:#7b5,stroke:#333,color:#fff
     style ScreenInteractor fill:#7b5,stroke:#333,color:#fff
     style WallpaperInteractor fill:#7b5,stroke:#333,color:#fff
@@ -168,7 +168,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | CLI | `CLI` | ArgumentParser commands, LaunchAgent |
 | Router | `App` | `AppRouter` (pure wireframe), `AppDelegate` |
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
-| Presenter | `Presentation` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
+| Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor` | Combine-based reactive pipelines over UseCases |
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Entity | `Entity` | Pure data types, zero external dependencies |

@@ -4,7 +4,7 @@ import Domain
 import Foundation
 import Testing
 
-@testable import Presentation
+@testable import Presenters
 
 // MARK: - Stub
 

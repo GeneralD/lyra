@@ -3,7 +3,7 @@ import Dependencies
 import Domain
 import Testing
 
-@testable import Presentation
+@testable import Presenters
 
 // MARK: - Stub
 

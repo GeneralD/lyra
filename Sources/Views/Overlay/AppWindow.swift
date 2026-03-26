@@ -2,7 +2,7 @@
 import AppKit
 import Combine
 import Domain
-import Presentation
+import Presenters
 import SwiftUI
 
 @MainActor
