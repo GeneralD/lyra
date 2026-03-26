@@ -262,6 +262,14 @@ let package = Package(
 
         // ══ Tests ══
 
+        .testTarget(
+            name: "TrackInteractorTests",
+            dependencies: [
+                "TrackInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
         .testTarget(name: "ViewsTests", dependencies: ["Views"]),
         .testTarget(
