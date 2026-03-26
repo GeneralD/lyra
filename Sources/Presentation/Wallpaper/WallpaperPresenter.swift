@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AppKit
 import Dependencies
 import Domain
 import Foundation
@@ -13,6 +14,8 @@ public final class WallpaperPresenter: ObservableObject {
     public private(set) var player: AVPlayer?
     private var loopObserver: NSObjectProtocol?
     private var endTimeObserver: Any?
+    private var sleepObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
@@ -64,15 +67,34 @@ public final class WallpaperPresenter: ObservableObject {
         }
 
         player.play()
+        observeSleepWake()
     }
-
-    public func pause() { player?.pause() }
-    public func play() { player?.play() }
 
     public func stop() {
         player?.pause()
         endTimeObserver.map { player?.removeTimeObserver($0) }
         loopObserver.map(NotificationCenter.default.removeObserver)
+        let ws = NSWorkspace.shared.notificationCenter
+        sleepObserver.map(ws.removeObserver)
+        wakeObserver.map(ws.removeObserver)
         player = nil
+    }
+}
+
+extension WallpaperPresenter {
+    private func observeSleepWake() {
+        let ws = NSWorkspace.shared.notificationCenter
+        sleepObserver = ws.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.player?.pause() }
+        }
+        wakeObserver = ws.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.player?.play() }
+        }
     }
 }
