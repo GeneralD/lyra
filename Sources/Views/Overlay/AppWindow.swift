@@ -3,7 +3,6 @@ import AppKit
 import Domain
 import Presentation
 import SwiftUI
-import Views
 
 @MainActor
 public final class AppWindow: NSWindow {
@@ -63,7 +62,7 @@ public final class AppWindow: NSWindow {
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.recalculateLayout()
+            MainActor.assumeIsolated { self?.recalculateLayout() }
         }
     }
 
