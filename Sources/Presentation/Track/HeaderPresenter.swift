@@ -59,9 +59,6 @@ public final class HeaderPresenter: ObservableObject {
 
 extension HeaderPresenter {
     private func receive(_ update: TrackUpdate) {
-        if update.lyricsState == .loading {
-            artworkData = nil
-        }
         revealTitle(update.title)
         revealArtist(update.artist)
     }
