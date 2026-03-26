@@ -9,8 +9,9 @@ public final class LyricsPresenter: ObservableObject {
     @Published public private(set) var activeLineIndex: Int?
 
     private var lyricEffects: [DecodeEffectState] = []
-    private var observeTask: Task<Void, Never>?
     private var decodeConfig: DecodeEffect?
+    private var latestElapsed: TimeInterval?
+    private var latestPlaybackRate: Double = 1.0
 
     @Dependency(\.trackInteractor) private var interactor
 
@@ -18,33 +19,16 @@ public final class LyricsPresenter: ObservableObject {
 
     public func start() {
         decodeConfig = interactor.decodeEffectConfig
-
-        observeTask = Task { [weak self] in
-            guard let self else { return }
-            for await update in interactor.observeTrack() {
-                guard !Task.isCancelled else { break }
-                handleUpdate(update)
-            }
-        }
     }
 
     public func stop() {
-        observeTask?.cancel()
         stopEffects()
     }
 
-    /// Called from DisplayLink to keep activeLineIndex in sync at frame rate.
-    public func updateActiveLineTick(elapsed: TimeInterval?, playbackRate: Double) {
-        guard case .success(.timed(let lines)) = lyricsState else { return }
-        guard playbackRate != 0 else { return }
-        let index = elapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
-        guard index != activeLineIndex else { return }
-        activeLineIndex = index
-    }
-}
+    public func receive(_ update: TrackUpdate) {
+        latestElapsed = update.elapsed
+        latestPlaybackRate = update.playbackRate
 
-extension LyricsPresenter {
-    private func handleUpdate(_ update: TrackUpdate) {
         switch update.lyricsState {
         case .idle:
             reset()
@@ -61,6 +45,17 @@ extension LyricsPresenter {
         activeLineIndex = nil
     }
 
+    /// Called from DisplayLink to keep activeLineIndex in sync at frame rate.
+    public func updateActiveLineTick() {
+        guard case .success(.timed(let lines)) = lyricsState else { return }
+        guard latestPlaybackRate != 0 else { return }
+        let index = latestElapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
+        guard index != activeLineIndex else { return }
+        activeLineIndex = index
+    }
+}
+
+extension LyricsPresenter {
     private func reset() {
         lyricsState = .idle
         activeLineIndex = nil

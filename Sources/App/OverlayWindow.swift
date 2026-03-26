@@ -9,37 +9,36 @@ import Views
 @MainActor
 public final class OverlayWindow {
     private let window: NSWindow
-    private let controller: OverlayController
-    private let headerPresenter = HeaderPresenter()
-    private let lyricsPresenter = LyricsPresenter()
-    private let rippleState = RippleState()
-    private var screenOrigin: CGPoint = .zero
+    private let hostingView: NSHostingView<OverlayContentView>
+    private let hasWallpaper: Bool
+    private let lyricsPresenter: LyricsPresenter
+    private let ripplePresenter: RipplePresenter
     private var displayLinkDriver: DisplayLinkDriver?
     private var loopObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var screenObserver: NSObjectProtocol?
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
-    private let hostingView: NSHostingView<OverlayContentView>
-    private let hasWallpaper: Bool
     private var queuePlayer: AVPlayer?
     private var endTimeObserver: Any?
 
-    @Dependency(\.appStyle) private var resolvedConfig
+    public init(
+        headerPresenter: HeaderPresenter,
+        lyricsPresenter: LyricsPresenter,
+        ripplePresenter: RipplePresenter,
+        wallpaperPresenter: WallpaperPresenter
+    ) async {
+        self.lyricsPresenter = lyricsPresenter
+        self.ripplePresenter = ripplePresenter
 
-    public init() async {
-        @Dependency(\.appStyle) var cfg
-        @Dependency(\.wallpaperUseCase) var wallpaperUseCase
-
-        controller = OverlayController()
-
-        let wallpaperURL = try? await wallpaperUseCase.resolveWallpaper(
-            value: cfg.wallpaper?.location, configDir: cfg.configDir ?? FileManager.default.homeDirectoryForCurrentUser.path
-        )
+        let wallpaperURL = wallpaperPresenter.wallpaperURL
         hasWallpaper = wallpaperURL != nil
 
+        @Dependency(\.configUseCase) var configService
+        let appStyle = configService.loadAppStyle()
+
         let frames = await Self.resolveFrames(
-            selector: cfg.screen,
+            selector: appStyle.screen,
             wallpaperURL: wallpaperURL,
             hasWallpaper: hasWallpaper
         )
@@ -56,8 +55,7 @@ public final class OverlayWindow {
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
-        screenOrigin = frames.origin
-        controller.state.screenOrigin = frames.origin
+        let rippleState = RippleState()
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
                 headerPresenter: headerPresenter,
@@ -76,15 +74,13 @@ public final class OverlayWindow {
             player.actionAtItemEnd = .none
             queuePlayer = player
 
-            let startTime = cfg.wallpaper?.start.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
-            let endTime = cfg.wallpaper?.end.map { CMTime(seconds: $0, preferredTimescale: 600) }
+            let startTime = wallpaperPresenter.start.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
+            let endTime = wallpaperPresenter.end.map { CMTime(seconds: $0, preferredTimescale: 600) }
 
-            // Seek to start position
             if startTime != .zero {
                 await player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
             }
 
-            // Loop: seek back to start when reaching end boundary
             if let endTime {
                 var seeking = false
                 let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
@@ -123,14 +119,14 @@ public final class OverlayWindow {
         window.orderFront(nil)
 
         let driver = DisplayLinkDriver { [weak self] in
-            self?.rippleState.idle()
-            self?.controller.updateActiveLineTick()
+            self?.ripplePresenter.idle()
+            self?.lyricsPresenter.updateActiveLineTick()
         }
         self.displayLinkDriver = driver
 
-        if cfg.ripple.enabled {
-            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [rippleState] event in
-                rippleState.update(screenPoint: NSEvent.mouseLocation)
+        if ripplePresenter.isEnabled {
+            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak ripplePresenter] event in
+                ripplePresenter?.update(screenPoint: NSEvent.mouseLocation)
             }
         }
 
@@ -158,10 +154,7 @@ public final class OverlayWindow {
         driver.start(in: window)
     }
 
-    public func start() { controller.start() }
-
     public func close() {
-        controller.stop()
         displayLinkDriver?.stop()
         queuePlayer?.pause()
         endTimeObserver.map { queuePlayer?.removeTimeObserver($0) }
@@ -176,18 +169,15 @@ public final class OverlayWindow {
     }
 
     private func recalculateLayout() async {
-        @Dependency(\.wallpaperUseCase) var wallpaperUseCase
-        let cfg = resolvedConfig
-        let wallpaperURL = try? await wallpaperUseCase.resolveWallpaper(
-            value: cfg.wallpaper?.location, configDir: cfg.configDir ?? FileManager.default.homeDirectoryForCurrentUser.path
-        )
+        @Dependency(\.configUseCase) var configService
+        let appStyle = configService.loadAppStyle()
         let frames = await Self.resolveFrames(
-            selector: cfg.screen,
-            wallpaperURL: wallpaperURL,
+            selector: appStyle.screen,
+            wallpaperURL: queuePlayer?.currentItem?.asset as? AVURLAsset != nil
+                ? (queuePlayer?.currentItem?.asset as? AVURLAsset)?.url : nil,
             hasWallpaper: hasWallpaper
         )
         window.setFrame(frames.window, display: false)
-        controller.state.screenOrigin = frames.origin
         hostingView.frame = frames.hosting
         if let containerView = window.contentView, containerView !== hostingView {
             containerView.frame = CGRect(origin: .zero, size: frames.window.size)

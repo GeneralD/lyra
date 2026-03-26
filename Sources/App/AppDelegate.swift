@@ -2,17 +2,17 @@ import AppKit
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var overlay: OverlayWindow?
+    private var router: AppRouter?
 
     public override init() {
         super.init()
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        let router = AppRouter()
+        self.router = router
         Task { @MainActor in
-            let overlayWindow = await OverlayWindow()
-            overlayWindow.start()
-            overlay = overlayWindow
+            await router.start()
         }
         setupSignalHandlers()
     }
@@ -22,7 +22,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             signal(signalType, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalType, queue: .main)
             source.setEventHandler { [weak self] in
-                self?.overlay?.close()
+                self?.router?.stop()
                 exit(0)
             }
             source.resume()

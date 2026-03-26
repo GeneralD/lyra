@@ -12,7 +12,6 @@ public final class HeaderPresenter: ObservableObject {
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
-    private var observeTask: Task<Void, Never>?
 
     @Dependency(\.trackInteractor) private var interactor
 
@@ -22,30 +21,21 @@ public final class HeaderPresenter: ObservableObject {
         let config = interactor.decodeEffectConfig
         titleEffect = DecodeEffectState(config: config)
         artistEffect = DecodeEffectState(config: config)
-
-        observeTask = Task { [weak self] in
-            guard let self else { return }
-            for await update in interactor.observeTrack() {
-                guard !Task.isCancelled else { break }
-                handleUpdate(update)
-            }
-        }
     }
 
     public func stop() {
-        observeTask?.cancel()
         titleEffect?.stop()
         artistEffect?.stop()
     }
-}
 
-extension HeaderPresenter {
-    private func handleUpdate(_ update: TrackUpdate) {
+    public func receive(_ update: TrackUpdate) {
         updateArtwork(update.artworkData)
         revealTitle(update.title)
         revealArtist(update.artist)
     }
+}
 
+extension HeaderPresenter {
     private func updateArtwork(_ data: Data?) {
         guard data != artworkData else { return }
         artworkData = data
