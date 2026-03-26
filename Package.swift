@@ -270,6 +270,14 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .testTarget(
+            name: "ScreenInteractorTests",
+            dependencies: [
+                "ScreenInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
         .testTarget(name: "ViewsTests", dependencies: ["Views"]),
         .testTarget(
