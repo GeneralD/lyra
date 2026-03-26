@@ -11,7 +11,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         let router = AppRouter()
         self.router = router
-        Task { @MainActor in
+        Task {
             await router.start()
         }
         setupSignalHandlers()
@@ -22,7 +22,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             signal(signalType, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalType, queue: .main)
             source.setEventHandler { [weak self] in
-                self?.router?.stop()
+                guard let self else { return }
+                router?.stop()
                 exit(0)
             }
             source.resume()

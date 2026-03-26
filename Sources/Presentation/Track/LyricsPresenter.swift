@@ -1,3 +1,4 @@
+import Combine
 import Dependencies
 import Domain
 import Foundation
@@ -15,6 +16,7 @@ public final class LyricsPresenter: ObservableObject {
     private var decodeConfig: DecodeEffect?
     private var latestElapsed: TimeInterval?
     private var latestPlaybackRate: Double = 1.0
+    private var cancellable: AnyCancellable?
 
     @Dependency(\.trackInteractor) private var interactor
 
@@ -25,13 +27,31 @@ public final class LyricsPresenter: ObservableObject {
         decodeConfig = layout.decodeEffect
         lyricStyle = layout.lyric
         highlightStyle = layout.highlight
+
+        cancellable = interactor.track
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] update in
+                self?.receive(update)
+            }
     }
 
     public func stop() {
+        cancellable?.cancel()
         stopEffects()
     }
 
-    public func receive(_ update: TrackUpdate) {
+    /// Called from DisplayLink to keep activeLineIndex in sync at frame rate.
+    public func updateActiveLineTick() {
+        guard case .success(.timed(let lines)) = lyricsState else { return }
+        guard latestPlaybackRate != 0 else { return }
+        let index = latestElapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
+        guard index != activeLineIndex else { return }
+        activeLineIndex = index
+    }
+}
+
+extension LyricsPresenter {
+    private func receive(_ update: TrackUpdate) {
         latestElapsed = update.elapsed
         latestPlaybackRate = update.playbackRate
 
@@ -51,17 +71,6 @@ public final class LyricsPresenter: ObservableObject {
         activeLineIndex = nil
     }
 
-    /// Called from DisplayLink to keep activeLineIndex in sync at frame rate.
-    public func updateActiveLineTick() {
-        guard case .success(.timed(let lines)) = lyricsState else { return }
-        guard latestPlaybackRate != 0 else { return }
-        let index = latestElapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
-        guard index != activeLineIndex else { return }
-        activeLineIndex = index
-    }
-}
-
-extension LyricsPresenter {
     private func reset() {
         lyricsState = .idle
         activeLineIndex = nil

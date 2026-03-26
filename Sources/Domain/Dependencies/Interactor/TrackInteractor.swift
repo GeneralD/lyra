@@ -1,7 +1,8 @@
+import Combine
 import Dependencies
 
 public protocol TrackInteractor: Sendable {
-    func observeTrack() -> AsyncStream<TrackUpdate>
+    var track: AnyPublisher<TrackUpdate, Never> { get }
     var decodeEffectConfig: DecodeEffect { get }
     var textLayout: TextLayout { get }
     var artworkStyle: ArtworkStyle { get }
@@ -19,8 +20,8 @@ extension DependencyValues {
 }
 
 private struct UnimplementedTrackInteractor: TrackInteractor {
-    func observeTrack() -> AsyncStream<TrackUpdate> {
-        AsyncStream { $0.finish() }
+    var track: AnyPublisher<TrackUpdate, Never> {
+        Empty().eraseToAnyPublisher()
     }
     var decodeEffectConfig: DecodeEffect { .init() }
     var textLayout: TextLayout { .init() }

@@ -16,15 +16,12 @@ public final class AppRouter {
     private let ripplePresenter = RipplePresenter()
     private let appPresenter = AppPresenter()
 
-    private var trackTask: Task<Void, Never>?
     private var window: NSWindow?
     private var displayLinkDriver: DisplayLinkDriver?
     private var mouseMonitor: Any?
     private var screenObserver: NSObjectProtocol?
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
-
-    @Dependency(\.trackInteractor) private var trackInteractor
 
     public init() {}
 
@@ -87,20 +84,9 @@ public final class AppRouter {
         }
 
         driver.start(in: window)
-
-        // Subscribe to TrackInteractor once, dispatch to both Presenters
-        trackTask = Task { [weak self] in
-            guard let self else { return }
-            for await update in trackInteractor.observeTrack() {
-                guard !Task.isCancelled else { break }
-                headerPresenter.receive(update)
-                lyricsPresenter.receive(update)
-            }
-        }
     }
 
     public func stop() {
-        trackTask?.cancel()
         headerPresenter.stop()
         lyricsPresenter.stop()
         wallpaperPresenter.stop()

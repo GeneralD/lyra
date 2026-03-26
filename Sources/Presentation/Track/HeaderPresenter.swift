@@ -1,3 +1,4 @@
+import Combine
 import Dependencies
 import Domain
 import Foundation
@@ -17,6 +18,7 @@ public final class HeaderPresenter: ObservableObject {
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
+    private var cancellable: AnyCancellable?
 
     @Dependency(\.trackInteractor) private var interactor
 
@@ -31,21 +33,28 @@ public final class HeaderPresenter: ObservableObject {
         artworkOpacity = interactor.artworkStyle.opacity
         titleEffect = DecodeEffectState(config: config)
         artistEffect = DecodeEffectState(config: config)
+
+        cancellable = interactor.track
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] update in
+                self?.receive(update)
+            }
     }
 
     public func stop() {
+        cancellable?.cancel()
         titleEffect?.stop()
         artistEffect?.stop()
-    }
-
-    public func receive(_ update: TrackUpdate) {
-        updateArtwork(update.artworkData)
-        revealTitle(update.title)
-        revealArtist(update.artist)
     }
 }
 
 extension HeaderPresenter {
+    private func receive(_ update: TrackUpdate) {
+        updateArtwork(update.artworkData)
+        revealTitle(update.title)
+        revealArtist(update.artist)
+    }
+
     private func updateArtwork(_ data: Data?) {
         guard data != artworkData else { return }
         artworkData = data
