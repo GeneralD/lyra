@@ -108,6 +108,44 @@ struct TrackInteractorRaceTests {
         #expect(hasTrackB, "Track B resolution should complete")
     }
 
+    @Test("nil NowPlaying does not emit TrackUpdate — last track info is retained")
+    func nilNowPlayingKeepsLastTrack() async throws {
+        let playback = StubPlaybackUseCase()
+
+        let interactor = withDependencies {
+            $0.playbackUseCase = playback
+            $0.metadataUseCase = InstantMetadataUseCase()
+            $0.lyricsUseCase = StubLyricsUseCase()
+            $0.configUseCase = StubConfigUseCase()
+        } operation: {
+            TrackInteractorImpl()
+        }
+
+        var received: [TrackUpdate] = []
+        let cancellable = interactor.trackChange
+            .sink { received.append($0) }
+
+        // Send a track
+        playback.subject.send(
+            NowPlaying(
+                title: "Track A", artist: "Artist A", artworkData: nil,
+                duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
+
+        try await Task.sleep(for: .milliseconds(800))
+
+        // Send nil (playback stopped)
+        playback.subject.send(nil)
+
+        try await Task.sleep(for: .milliseconds(300))
+
+        cancellable.cancel()
+
+        // nil NowPlaying must NOT produce any TrackUpdate (no "idle/clear" emission)
+        // The UI intentionally keeps showing the last track info
+        let afterNil = received.filter { $0.title != "Track A" }
+        #expect(afterNil.isEmpty, "nil NowPlaying should not emit any TrackUpdate — last track stays visible")
+    }
+
     @Test("track A loading emits but resolved does not when B arrives quickly")
     func staleLoadingVisibleButResolvedCancelled() async throws {
         let playback = StubPlaybackUseCase()

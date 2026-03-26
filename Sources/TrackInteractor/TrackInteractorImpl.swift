@@ -60,13 +60,14 @@ extension TrackInteractorImpl {
         let playback = playbackService
         return Deferred {
             let pub = PassthroughSubject<NowPlaying?, Never>()
-            nonisolated(unsafe) let sendable = pub
-            let task = Task {
-                for await info in playback.observeNowPlaying() {
+            nonisolated(unsafe) let unsafePub = pub
+            let capturedPlayback = playback
+            let task = Task { @Sendable in
+                for await info in capturedPlayback.observeNowPlaying() {
                     guard !Task.isCancelled else { break }
-                    sendable.send(info)
+                    unsafePub.send(info)
                 }
-                sendable.send(completion: .finished)
+                unsafePub.send(completion: .finished)
             }
             return pub.handleEvents(receiveCancel: { task.cancel() })
         }
@@ -90,12 +91,15 @@ extension TrackInteractorImpl {
         let metadata = metadataService
         let lyrics = lyricsService
 
+        let artworkData = info.artworkData
+        let duration = info.duration
+
         return Just(loading)
             .append(
                 Deferred {
                     Future<TrackUpdate, Never> { promise in
-                        nonisolated(unsafe) let promise = promise
-                        Task {
+                        nonisolated(unsafe) let unsafePromise = promise
+                        Task { @Sendable in
                             let candidates = await metadata.resolveCandidates(track: rawTrack)
                             let resolvedTitle = candidates.first?.title ?? title
                             let resolvedArtist =
@@ -110,13 +114,13 @@ extension TrackInteractorImpl {
                             let finalArtist = result.artistName ?? resolvedArtist
                             let content = LyricsContent(from: result)
 
-                            promise(
+                            unsafePromise(
                                 .success(
                                     TrackUpdate(
                                         title: finalTitle,
                                         artist: finalArtist,
-                                        artworkData: info.artworkData,
-                                        duration: info.duration,
+                                        artworkData: artworkData,
+                                        duration: duration,
                                         lyrics: content,
                                         lyricsState: content != nil ? .resolved : .notFound
                                     )))

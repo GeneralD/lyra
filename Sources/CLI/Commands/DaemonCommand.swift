@@ -14,7 +14,9 @@ struct DaemonCommand: ParsableCommand {
         MainActor.assumeIsolated {
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
-            app.delegate = AppDelegate()
+            let delegate = AppDelegate()
+            app.delegate = delegate
+            _ = delegate  // retain until app.run() returns
             app.run()
         }
     }
