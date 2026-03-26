@@ -10,7 +10,10 @@ import Views
 public final class OverlayWindow {
     private let window: NSWindow
     private let controller: OverlayController
+    private let headerPresenter = HeaderPresenter()
+    private let lyricsPresenter = LyricsPresenter()
     private let rippleState = RippleState()
+    private var screenOrigin: CGPoint = .zero
     private var displayLinkDriver: DisplayLinkDriver?
     private var loopObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
@@ -53,11 +56,14 @@ public final class OverlayWindow {
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
+        screenOrigin = frames.origin
         controller.state.screenOrigin = frames.origin
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
-                state: controller.state,
-                rippleState: rippleState
+                headerPresenter: headerPresenter,
+                lyricsPresenter: lyricsPresenter,
+                rippleState: rippleState,
+                screenOrigin: frames.origin
             ))
         hostingView.frame = frames.hosting
         self.hostingView = hostingView

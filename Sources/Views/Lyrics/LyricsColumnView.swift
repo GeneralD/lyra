@@ -12,16 +12,16 @@ private struct Column: Identifiable {
 
 @MainActor
 public struct LyricsColumnView: View {
-    let state: OverlayState
+    @ObservedObject var presenter: LyricsPresenter
 
-    public init(state: OverlayState) {
-        self.state = state
+    public init(presenter: LyricsPresenter) {
+        self.presenter = presenter
     }
 
     public var body: some View {
         GeometryReader { geo in
             let layout = ColumnLayout(width: geo.size.width, lyricsHeight: geo.size.height)
-            if let content = state.lyrics.value {
+            if let content = presenter.lyricsState.value {
                 let cols = columns(from: content, layout: layout)
                 HStack(alignment: .top, spacing: layout.columnGap) {
                     ForEach(cols) { column in
@@ -47,10 +47,10 @@ public struct LyricsColumnView: View {
             case .timed(let lines): lines.map(\.text)
             case .plain(let lines): lines
             }
-        let displayTexts = state.displayLyricLines
+        let displayTexts = presenter.displayLyricLines
         let highlightIndex: Int? =
             switch content {
-            case .timed: state.activeLineIndex
+            case .timed: presenter.activeLineIndex
             case .plain: nil
             }
         let lpc = layout.linesPerColumn
@@ -71,24 +71,9 @@ public struct LyricsColumnView: View {
         withDependencies {
             $0.appStyle = .init()
         } operation: {
-            LyricsColumnView(
-                state: {
-                    let s = OverlayState()
-                    let lines: [LyricLine] = [
-                        .init(time: 0, text: "It been a long day"),
-                        .init(time: 5, text: "without you my friend"),
-                        .init(time: 10, text: "And I will tell you all about it"),
-                        .init(time: 15, text: "when I see you again"),
-                        .init(time: 20, text: "We have come a long way"),
-                    ]
-                    s.lyrics = .success(.timed(lines))
-                    s.displayLyricLines = lines.map(\.text)
-                    s.activeLineIndex = 2
-                    return s
-                }()
-            )
-            .frame(width: 600, height: 300)
-            .background(.black)
+            LyricsColumnView(presenter: LyricsPresenter())
+                .frame(width: 600, height: 300)
+                .background(.black)
         }
     }
 #endif
