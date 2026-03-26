@@ -18,7 +18,6 @@ public final class AppRouter {
 
     private var window: NSWindow?
     private var displayLinkDriver: DisplayLinkDriver?
-    private var mouseMonitor: Any?
     private var screenObserver: NSObjectProtocol?
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -51,15 +50,6 @@ public final class AppRouter {
         }
         self.displayLinkDriver = driver
 
-        // Mouse monitoring for ripple
-        if ripplePresenter.isEnabled {
-            let rippleState = (window.contentView as? NSHostingView<OverlayContentView>)
-                .flatMap { _ in self.rippleState }
-            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak rippleState] event in
-                rippleState?.update(screenPoint: NSEvent.mouseLocation)
-            }
-        }
-
         // Screen change observer
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -90,8 +80,8 @@ public final class AppRouter {
         headerPresenter.stop()
         lyricsPresenter.stop()
         wallpaperPresenter.stop()
+        ripplePresenter.stop()
         displayLinkDriver?.stop()
-        mouseMonitor.map(NSEvent.removeMonitor)
         screenObserver.map(NotificationCenter.default.removeObserver)
         let ws = NSWorkspace.shared.notificationCenter
         sleepObserver.map(ws.removeObserver)
@@ -103,20 +93,14 @@ public final class AppRouter {
 
     // MARK: - Private
 
-    private var rippleState: RippleState?
-
     private func createWindow() -> NSWindow {
-        let rippleConfig = ripplePresenter.interactorRippleConfig
-        let rippleState = RippleState(config: rippleConfig)
-        self.rippleState = rippleState
-
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
-                rippleState: rippleState,
+                rippleState: ripplePresenter.rippleState ?? RippleState(),
                 screenOrigin: appPresenter.layout.screenOrigin,
-                rippleConfig: rippleConfig
+                rippleConfig: ripplePresenter.rippleConfig
             ))
         hostingView.frame = appPresenter.layout.hostingFrame
 

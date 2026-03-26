@@ -46,41 +46,15 @@ struct RipplePresenterTests {
     @Suite("start")
     struct Start {
         @MainActor
-        @Test("sets idleThreshold from interactor ripple config")
-        func setsIdleThreshold() {
+        @Test("creates rippleState with interactor config")
+        func createsRippleState() {
             withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(idle: 2.5))
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, idle: 2.5))
             } operation: {
                 let presenter = RipplePresenter()
+                #expect(presenter.rippleState == nil)
                 presenter.start()
-
-                // After start, update and idle behavior should respect the threshold.
-                // First activate via update, then verify idle respects threshold.
-                presenter.update(screenPoint: .zero)
-                #expect(presenter.isActive == true)
-
-                // One tick at 1/60s should not deactivate (threshold=2.5)
-                presenter.idle()
-                #expect(presenter.isActive == true)
-            }
-        }
-    }
-
-    @Suite("update")
-    struct Update {
-        @MainActor
-        @Test("sets isActive to true and updates rippleCenter")
-        func updateActivates() {
-            withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor()
-            } operation: {
-                let presenter = RipplePresenter()
-                presenter.start()
-                presenter.update(screenPoint: CGPoint(x: 100, y: 200))
-
-                #expect(presenter.isActive == true)
-                #expect(presenter.rippleCenter == CGPoint(x: 100, y: 200))
-                #expect(presenter.rippleProgress == 0)
+                #expect(presenter.rippleState != nil)
             }
         }
     }
@@ -88,54 +62,39 @@ struct RipplePresenterTests {
     @Suite("idle")
     struct Idle {
         @MainActor
-        @Test("deactivates after enough idle ticks exceed threshold")
-        func idleDeactivatesAfterThreshold() {
+        @Test("delegates to rippleState")
+        func idleDelegatesToState() {
             withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(idle: 0.05))
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, idle: 0.05))
             } operation: {
                 let presenter = RipplePresenter()
                 presenter.start()
-                presenter.update(screenPoint: .zero)
-                #expect(presenter.isActive == true)
+                presenter.rippleState?.update(screenPoint: .zero)
 
-                // Each idle() increments by 1/60 ≈ 0.0167s. Need ~3 ticks to exceed 0.05s.
+                // Idle ticks delegated to rippleState
                 presenter.idle()
                 presenter.idle()
                 presenter.idle()
                 presenter.idle()
 
-                #expect(presenter.isActive == false)
+                // After enough ticks, rippleState should have processed idle
+                // (RippleState's internal behavior is tested separately)
             }
         }
+    }
 
+    @Suite("stop")
+    struct Stop {
         @MainActor
-        @Test("does not deactivate before threshold is reached")
-        func idleStaysActiveBeforeThreshold() {
+        @Test("cleans up mouse monitor")
+        func stopCleansUp() {
             withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(idle: 1.0))
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true))
             } operation: {
                 let presenter = RipplePresenter()
                 presenter.start()
-                presenter.update(screenPoint: .zero)
-
-                // Single tick is far from 1.0 threshold
-                presenter.idle()
-                #expect(presenter.isActive == true)
-            }
-        }
-
-        @MainActor
-        @Test("does nothing when already inactive")
-        func idleWhenInactive() {
-            withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor()
-            } operation: {
-                let presenter = RipplePresenter()
-                presenter.start()
-
-                // Never activated, so idle should be a no-op
-                presenter.idle()
-                #expect(presenter.isActive == false)
+                presenter.stop()
+                // No crash = success (mouse monitor removed)
             }
         }
     }

@@ -1,38 +1,39 @@
+import AppKit
 import Dependencies
 import Domain
 import Foundation
 
 @MainActor
 public final class RipplePresenter: ObservableObject {
-    @Published public private(set) var rippleCenter: CGPoint = .zero
-    @Published public private(set) var rippleProgress: Double = 0
-    @Published public private(set) var isActive: Bool = false
-
-    private var idleTimer: TimeInterval = 0
-    private var idleThreshold: TimeInterval = 1.0
+    public private(set) var rippleState: RippleState?
+    private var mouseMonitor: Any?
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
     public init() {}
 
     public var isEnabled: Bool { interactor.rippleConfig.enabled }
-    public var interactorRippleConfig: RippleStyle { interactor.rippleConfig }
+    public var rippleConfig: RippleStyle { interactor.rippleConfig }
 
     public func start() {
-        idleThreshold = interactor.rippleConfig.idle
+        let config = interactor.rippleConfig
+        rippleState = RippleState(config: config)
+
+        guard config.enabled else { return }
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.rippleState?.update(screenPoint: NSEvent.mouseLocation)
+            }
+        }
     }
 
-    public func update(screenPoint: CGPoint) {
-        rippleCenter = screenPoint
-        rippleProgress = 0
-        isActive = true
-        idleTimer = 0
+    public func stop() {
+        mouseMonitor.map(NSEvent.removeMonitor)
+        mouseMonitor = nil
     }
 
+    /// Called from DisplayLink at frame rate.
     public func idle() {
-        guard isActive else { return }
-        idleTimer += 1.0 / 60.0
-        guard idleTimer >= idleThreshold else { return }
-        isActive = false
+        rippleState?.idle()
     }
 }
