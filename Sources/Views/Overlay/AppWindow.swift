@@ -6,12 +6,12 @@ import SwiftUI
 import Views
 
 @MainActor
-final class AppWindow: NSWindow {
+public final class AppWindow: NSWindow {
     private let hostingView: NSHostingView<OverlayContentView>
     private let appPresenter: AppPresenter
     private var screenObserver: NSObjectProtocol?
 
-    init(
+    public init(
         appPresenter: AppPresenter,
         wallpaperPresenter: WallpaperPresenter,
         headerPresenter: HeaderPresenter,
