@@ -20,6 +20,25 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
 }
 
+// MARK: - Helpers
+
+@MainActor
+private func waitForTitleSuccess(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
+    let deadline = ContinuousClock.now + timeout
+    while !presenter.titleState.isSuccess, ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+extension FetchState {
+    fileprivate var isSuccess: Bool {
+        switch self {
+        case .success: true
+        default: false
+        }
+    }
+}
+
 // MARK: - Tests
 
 @Suite("HeaderPresenter duplicate / artwork interactions")
@@ -44,7 +63,7 @@ struct HeaderPresenterDuplicateTests {
 
                 // First send
                 subject.send(update)
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForTitleSuccess(presenter)
                 #expect(presenter.titleState == .success("Same"))
                 #expect(presenter.artistState == .success("Artist"))
 
@@ -80,7 +99,7 @@ struct HeaderPresenterDuplicateTests {
 
                 // Set up title first
                 trackSubject.send(update)
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForTitleSuccess(presenter)
                 #expect(presenter.titleState == .success("Song"))
                 #expect(presenter.artworkData == nil)
 
@@ -116,7 +135,7 @@ struct HeaderPresenterDuplicateTests {
                 trackSubject.send(TrackUpdate(title: "New Song", artist: "New Artist"))
                 let artData = Data([0x89, 0x50, 0x4E, 0x47])
                 artworkSubject.send(artData)
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForTitleSuccess(presenter)
 
                 // Both should have settled correctly
                 #expect(presenter.artworkData == artData)

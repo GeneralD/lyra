@@ -20,6 +20,25 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { playbackPositionPublisher }
 }
 
+// MARK: - Helpers
+
+@MainActor
+private func waitForLyricsSuccess(_ presenter: LyricsPresenter, timeout: Duration = .seconds(3)) async {
+    let deadline = ContinuousClock.now + timeout
+    while !presenter.lyricsState.isSuccess, ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+extension FetchState {
+    fileprivate var isSuccess: Bool {
+        switch self {
+        case .success: true
+        default: false
+        }
+    }
+}
+
 // MARK: - Tests
 
 @Suite("LyricsPresenter duplicate / playback interactions")
@@ -44,7 +63,7 @@ struct LyricsPresenterDuplicateTests {
 
                 // First send
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForLyricsSuccess(presenter)
                 #expect(presenter.lyricsState == .success(content))
 
                 // Second send with identical content
@@ -84,7 +103,7 @@ struct LyricsPresenterDuplicateTests {
 
                 // First, resolve lyrics
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForLyricsSuccess(presenter)
                 #expect(presenter.lyricsState == .success(content))
 
                 // Send playback position at 6 seconds (should highlight "Second")
@@ -129,7 +148,7 @@ struct LyricsPresenterDuplicateTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForLyricsSuccess(presenter)
 
                 // Set position while playing
                 positionSubject.send(PlaybackPosition(elapsed: 6.0, playbackRate: 1.0))
