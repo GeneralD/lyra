@@ -1,0 +1,3 @@
+import CLI
+
+RootCommand.main()
