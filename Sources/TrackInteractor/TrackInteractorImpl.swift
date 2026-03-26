@@ -99,44 +99,46 @@ extension TrackInteractorImpl {
                 Deferred {
                     let subject = PassthroughSubject<TrackUpdate, Never>()
                     nonisolated(unsafe) let unsafeSubject = subject
-                    Task { @Sendable in
-                        let candidates = await metadata.resolveCandidates(track: rawTrack)
-                        let resolvedTitle = candidates.first?.title ?? title
-                        let resolvedArtist =
-                            candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 } ?? artist
+                    return subject.handleEvents(receiveSubscription: { _ in
+                        Task { @Sendable in
+                            let candidates = await metadata.resolveCandidates(track: rawTrack)
+                            let resolvedTitle = candidates.first?.title ?? title
+                            let resolvedArtist =
+                                candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 }
+                                ?? artist
 
-                        // Emit metadata-resolved update immediately (lyrics still loading)
-                        unsafeSubject.send(
-                            TrackUpdate(
-                                title: resolvedTitle,
-                                artist: resolvedArtist,
-                                artworkData: artworkData,
-                                duration: duration,
-                                lyricsState: .loading
-                            ))
+                            // Emit metadata-resolved update immediately (lyrics still loading)
+                            unsafeSubject.send(
+                                TrackUpdate(
+                                    title: resolvedTitle,
+                                    artist: resolvedArtist,
+                                    artworkData: artworkData,
+                                    duration: duration,
+                                    lyricsState: .loading
+                                ))
 
-                        let result =
-                            candidates.isEmpty
-                            ? await lyrics.fetchLyrics(track: rawTrack)
-                            : await lyrics.fetchLyrics(candidates: candidates)
+                            let result =
+                                candidates.isEmpty
+                                ? await lyrics.fetchLyrics(track: rawTrack)
+                                : await lyrics.fetchLyrics(candidates: candidates)
 
-                        let finalTitle = result.trackName ?? resolvedTitle
-                        let finalArtist = result.artistName ?? resolvedArtist
-                        let content = LyricsContent(from: result)
+                            let finalTitle = result.trackName ?? resolvedTitle
+                            let finalArtist = result.artistName ?? resolvedArtist
+                            let content = LyricsContent(from: result)
 
-                        // Emit final update with lyrics
-                        unsafeSubject.send(
-                            TrackUpdate(
-                                title: finalTitle,
-                                artist: finalArtist,
-                                artworkData: artworkData,
-                                duration: duration,
-                                lyrics: content,
-                                lyricsState: content != nil ? .resolved : .notFound
-                            ))
-                        unsafeSubject.send(completion: .finished)
-                    }
-                    return subject
+                            // Emit final update with lyrics
+                            unsafeSubject.send(
+                                TrackUpdate(
+                                    title: finalTitle,
+                                    artist: finalArtist,
+                                    artworkData: artworkData,
+                                    duration: duration,
+                                    lyrics: content,
+                                    lyricsState: content != nil ? .resolved : .notFound
+                                ))
+                            unsafeSubject.send(completion: .finished)
+                        }
+                    })
                 }
                 .delay(for: .milliseconds(300), scheduler: DispatchQueue.main)
             )
