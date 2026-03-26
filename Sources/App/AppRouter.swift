@@ -8,7 +8,7 @@ public final class AppRouter {
     private let headerPresenter = HeaderPresenter()
     private let lyricsPresenter = LyricsPresenter()
     private let wallpaperPresenter = WallpaperPresenter()
-    private var ripplePresenter: RipplePresenter!
+    private var ripplePresenter: RipplePresenter?
 
     private var appWindow: AppWindow?
     private var displayLinkDriver: DisplayLinkDriver?
@@ -17,34 +17,36 @@ public final class AppRouter {
 
     public func start() {
         appPresenter.start()
-        ripplePresenter = RipplePresenter(screenOrigin: appPresenter.layout.screenOrigin)
+        let ripple = RipplePresenter(screenOrigin: appPresenter.layout.screenOrigin)
+        ripplePresenter = ripple
 
         headerPresenter.start()
         lyricsPresenter.start()
-        ripplePresenter.start()
+        ripple.start()
         wallpaperPresenter.start()
 
-        appWindow = AppWindow(
+        let window = AppWindow(
             appPresenter: appPresenter,
             wallpaperPresenter: wallpaperPresenter,
             headerPresenter: headerPresenter,
             lyricsPresenter: lyricsPresenter,
-            ripplePresenter: ripplePresenter
+            ripplePresenter: ripple
         )
+        appWindow = window
 
         let driver = DisplayLinkDriver { [weak self] in
-            self?.ripplePresenter.idle()
+            self?.ripplePresenter?.idle()
             self?.lyricsPresenter.updateActiveLineTick()
         }
         self.displayLinkDriver = driver
-        driver.start(in: appWindow!)
+        driver.start(in: window)
     }
 
     public func stop() {
         headerPresenter.stop()
         lyricsPresenter.stop()
         wallpaperPresenter.stop()
-        ripplePresenter.stop()
+        ripplePresenter?.stop()
         displayLinkDriver?.stop()
         appWindow?.orderOut(nil)
         appWindow?.close()
