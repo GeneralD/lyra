@@ -146,6 +146,45 @@ struct TrackInteractorRaceTests {
         #expect(afterNil.isEmpty, "nil NowPlaying should not emit any TrackUpdate — last track stays visible")
     }
 
+    @Test("nil NowPlaying does not clear artwork — last artwork is retained")
+    func nilNowPlayingKeepsArtwork() async throws {
+        let playback = StubPlaybackUseCase()
+        let artworkBytes = Data([0xFF, 0xD8, 0xFF])
+
+        let interactor = withDependencies {
+            $0.playbackUseCase = playback
+            $0.metadataUseCase = InstantMetadataUseCase()
+            $0.lyricsUseCase = StubLyricsUseCase()
+            $0.configUseCase = StubConfigUseCase()
+        } operation: {
+            TrackInteractorImpl()
+        }
+
+        var artworkUpdates: [Data?] = []
+        let cancellable = interactor.artwork
+            .sink { artworkUpdates.append($0) }
+
+        // Send a track with artwork
+        playback.subject.send(
+            NowPlaying(
+                title: "Track A", artist: "Artist A", artworkData: artworkBytes,
+                duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
+
+        try await Task.sleep(for: .milliseconds(300))
+
+        // Send nil (playback stopped)
+        playback.subject.send(nil)
+
+        try await Task.sleep(for: .milliseconds(300))
+
+        cancellable.cancel()
+
+        // Artwork should NOT have received nil after the track artwork
+        // (nil NowPlaying is filtered out, keeping last artwork visible)
+        let nilAfterArtwork = artworkUpdates.dropFirst().contains(where: { $0 == nil })
+        #expect(!nilAfterArtwork, "nil NowPlaying should not clear artwork — last artwork stays visible")
+    }
+
     @Test("track A loading emits but resolved does not when B arrives quickly")
     func staleLoadingVisibleButResolvedCancelled() async throws {
         let playback = StubPlaybackUseCase()

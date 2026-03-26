@@ -24,10 +24,12 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .share()
         .eraseToAnyPublisher()
 
-    /// Emits when artwork data changes.
+    /// Emits when artwork data changes. Only emits when NowPlaying is present
+    /// (nil NowPlaying is ignored, keeping the last artwork visible).
     public lazy var artwork: AnyPublisher<Data?, Never> =
         shared
-        .map { $0?.artworkData }
+        .compactMap { $0 }
+        .map(\.artworkData)
         .removeDuplicates()
         .eraseToAnyPublisher()
 
