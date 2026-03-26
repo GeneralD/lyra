@@ -13,7 +13,6 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.6.0"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/LebJe/TOMLKit", from: "0.6.0"),
-        .package(url: "https://github.com/GeneralD/CollectionKit", from: "1.0.0"),
         .package(url: "https://github.com/Alamofire/Alamofire", from: "5.10.0"),
         .package(url: "https://github.com/JohnSundell/Files", from: "4.2.0"),
     ],
@@ -55,7 +54,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "Presentation",
-                .product(name: "CollectionKit", package: "CollectionKit"),
             ]
         ),
 
@@ -214,7 +212,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "Alamofire", package: "Alamofire"),
-                .product(name: "CollectionKit", package: "CollectionKit"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),

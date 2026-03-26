@@ -1,4 +1,3 @@
-import CollectionKit
 import Domain
 
 public struct RegexMetadataDataSourceImpl {
@@ -113,7 +112,7 @@ extension RegexMetadataDataSourceImpl {
         [" - ", " / ", " | ", "｜"]
             .reduce([title]) { parts, sep in parts.flatMap { $0.components(separatedBy: sep) } }
             .map { stripBrackets($0).trimmingCharacters(in: .whitespaces) }
-            .unless(isNoise)
+            .filter { !isNoise($0) }
     }
 
     public func generateCandidates(title: String, artist: String) -> [Track] {
@@ -136,13 +135,13 @@ extension RegexMetadataDataSourceImpl {
                 ]
                 : [],
             artistUsable
-                ? parts.unless { $0 == stripped }.map { Track(title: $0, artist: normalizedArtist) }
+                ? parts.filter { $0 != stripped }.map { Track(title: $0, artist: normalizedArtist) }
                 : [],
             parts.count == 1 && !artistUsable
                 ? [Track(title: parts[0], artist: "")]
                 : [],
         ]
-        .flatten
+        .flatMap { $0 }
         .filter { seen.insert("\($0.title.lowercased())|\($0.artist.lowercased())").inserted }
     }
 }
