@@ -41,11 +41,12 @@ struct WallpaperPresenterTests {
                 $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
             } operation: {
                 let presenter = WallpaperPresenter()
-                await presenter.start()
+                presenter.start()
+                try? await Task.sleep(for: .milliseconds(100))
 
                 #expect(presenter.wallpaperURL == url)
-                #expect(presenter.start == 5.0)
-                #expect(presenter.end == 30.0)
+                #expect(presenter.startTime == 5.0)
+                #expect(presenter.endTime == 30.0)
                 #expect(presenter.isLoading == false)
             }
         }
@@ -57,11 +58,12 @@ struct WallpaperPresenterTests {
                 $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: .init())
             } operation: {
                 let presenter = WallpaperPresenter()
-                await presenter.start()
+                presenter.start()
+                try? await Task.sleep(for: .milliseconds(100))
 
                 #expect(presenter.wallpaperURL == nil)
-                #expect(presenter.start == nil)
-                #expect(presenter.end == nil)
+                #expect(presenter.startTime == nil)
+                #expect(presenter.endTime == nil)
                 #expect(presenter.isLoading == false)
             }
         }
@@ -73,7 +75,8 @@ struct WallpaperPresenterTests {
                 $0.wallpaperInteractor = FailingWallpaperInteractor()
             } operation: {
                 let presenter = WallpaperPresenter()
-                await presenter.start()
+                presenter.start()
+                try? await Task.sleep(for: .milliseconds(100))
 
                 #expect(presenter.wallpaperURL == nil)
                 #expect(presenter.isLoading == false)

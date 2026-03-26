@@ -7,8 +7,8 @@ import Foundation
 @MainActor
 public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var wallpaperURL: URL?
-    @Published public private(set) var start: TimeInterval?
-    @Published public private(set) var end: TimeInterval?
+    @Published public private(set) var startTime: TimeInterval?
+    @Published public private(set) var endTime: TimeInterval?
     @Published public private(set) var isLoading: Bool = false
 
     public private(set) var player: AVPlayer?
@@ -21,14 +21,17 @@ public final class WallpaperPresenter: ObservableObject {
 
     public init() {}
 
-    public func start() async {
+    public func start() {
         isLoading = true
-        let state = try? await interactor.resolveWallpaper()
-        wallpaperURL = state?.url
-        start = state?.start
-        end = state?.end
-        isLoading = false
-        await setupPlayer()
+        Task { [weak self] in
+            guard let self else { return }
+            let state = try? await interactor.resolveWallpaper()
+            wallpaperURL = state?.url
+            startTime = state?.start
+            endTime = state?.end
+            isLoading = false
+            await setupPlayer()
+        }
     }
 
     private func setupPlayer() async {
@@ -40,20 +43,20 @@ public final class WallpaperPresenter: ObservableObject {
         player.actionAtItemEnd = .none
         self.player = player
 
-        let startTime = start.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
-        let endTime = end.map { CMTime(seconds: $0, preferredTimescale: 600) }
+        let seekStart = startTime.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
+        let seekEnd = endTime.map { CMTime(seconds: $0, preferredTimescale: 600) }
 
-        if startTime != .zero {
-            await player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        if seekStart != .zero {
+            await player.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
         }
 
-        if let endTime {
+        if let seekEnd {
             var seeking = false
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
             endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak player] time in
-                guard !seeking, time >= endTime else { return }
+                guard !seeking, time >= seekEnd else { return }
                 seeking = true
-                player?.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                     seeking = false
                 }
             }
@@ -63,7 +66,7 @@ public final class WallpaperPresenter: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: player.currentItem, queue: .main
         ) { [weak player] _ in
-            player?.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
             player?.play()
         }
 

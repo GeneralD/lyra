@@ -7,9 +7,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         let router = AppRouter()
         self.router = router
-        Task {
-            await router.start()
-        }
+        router.start()
 
         for signalType in [SIGTERM, SIGINT] {
             signal(signalType, SIG_IGN)

@@ -15,15 +15,14 @@ public final class AppRouter {
 
     public init() {}
 
-    public func start() async {
+    public func start() {
         appPresenter.start()
-
         ripplePresenter = RipplePresenter(screenOrigin: appPresenter.layout.screenOrigin)
 
         headerPresenter.start()
         lyricsPresenter.start()
         ripplePresenter.start()
-        await wallpaperPresenter.start()
+        wallpaperPresenter.start()
 
         appWindow = AppWindow(
             appPresenter: appPresenter,
