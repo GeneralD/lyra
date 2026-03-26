@@ -6,12 +6,11 @@ public struct RemoteWallpaperDataSourceImpl: Sendable {
 }
 
 extension RemoteWallpaperDataSourceImpl: WallpaperDataSource {
+    /// Downloads to a temp file in the cache folder. Returns the temp file path.
+    /// Cache deduplication is handled by WallpaperRepository.
     public func resolve(_ location: RemoteWallpaper) async throws -> String {
         let cache = try WallpaperCache()
-
-        if let cached = cache.cachedPath(for: location.url) {
-            return cached
-        }
+        let tempPath = cache.tempPath(for: location.url)
 
         let (tempURL, response) = try await URLSession.shared.download(from: location.url)
 
@@ -20,10 +19,9 @@ extension RemoteWallpaperDataSourceImpl: WallpaperDataSource {
             throw URLError(.badServerResponse)
         }
 
-        let destPath = cache.destinationPath(for: location.url)
-        let destURL = URL(fileURLWithPath: destPath)
+        let destURL = URL(fileURLWithPath: tempPath)
         try? FileManager.default.removeItem(at: destURL)
         try FileManager.default.moveItem(at: tempURL, to: destURL)
-        return destPath
+        return tempPath
     }
 }

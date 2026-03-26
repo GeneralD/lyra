@@ -80,6 +80,14 @@ public final class DatabaseManager: Sendable {
             }
         }
 
+        migrator.registerMigration("v4_wallpaperCache") { db in
+            try db.create(table: "wallpaper_cache", ifNotExists: true) { t in
+                t.column("url", .text).primaryKey()
+                t.column("content_hash", .text).notNull()
+                t.column("file_ext", .text).notNull()
+            }
+        }
+
         migrator.registerMigration("v1_removeLegacyCache") { _ in
             let envCache = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]?.trimmingCharacters(
                 in: .whitespacesAndNewlines)

@@ -6,16 +6,16 @@ public struct YouTubeWallpaperDataSourceImpl: Sendable {
 }
 
 extension YouTubeWallpaperDataSourceImpl: WallpaperDataSource {
+    /// Downloads and remuxes to a temp file in the cache folder. Returns the temp file path.
+    /// Cache deduplication is handled by WallpaperRepository.
     public func resolve(_ location: YouTubeWallpaper) async throws -> String {
         let cache = try WallpaperCache()
-
-        if let cached = cache.cachedPath(for: location.url, ext: location.format) {
-            return cached
-        }
+        let tempPath = cache.tempPath(for: location.url, ext: location.format)
 
         let tool = try detectTool()
-        let destPath = cache.destinationPath(for: location.url, ext: location.format)
-        let args = buildArgs(tool: tool, url: location.url, maxHeight: location.maxHeight, format: location.format, destPath: destPath)
+        let args = buildArgs(
+            tool: tool, url: location.url, maxHeight: location.maxHeight,
+            format: location.format, destPath: tempPath)
 
         let (status, stderr) = try await runProcess(executablePath: tool.executablePath, arguments: args)
 
@@ -23,13 +23,13 @@ extension YouTubeWallpaperDataSourceImpl: WallpaperDataSource {
             throw YouTubeDownloadError.downloadFailed(status: status, stderr: stderr)
         }
 
-        guard FileManager.default.fileExists(atPath: destPath) else {
+        guard FileManager.default.fileExists(atPath: tempPath) else {
             throw YouTubeDownloadError.outputNotFound
         }
 
-        try await remuxToStandardMP4(at: destPath)
+        try await remuxToStandardMP4(at: tempPath)
 
-        return destPath
+        return tempPath
     }
 }
 

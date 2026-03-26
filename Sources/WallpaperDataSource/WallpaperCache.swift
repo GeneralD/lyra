@@ -16,19 +16,10 @@ struct WallpaperCache {
         folder = try Folder(path: wallpaperPath)
     }
 
-    func cachedPath(for url: URL, ext: String? = nil) -> String? {
-        let name = fileName(for: url, ext: ext)
-        return (try? folder.file(named: name))?.path
-    }
-
-    func destinationPath(for url: URL, ext: String? = nil) -> String {
-        folder.path + fileName(for: url, ext: ext)
-    }
-
-    private func fileName(for url: URL, ext: String?) -> String {
+    func tempPath(for url: URL, ext: String? = nil) -> String {
         let hash = SHA256.hash(data: Data(url.absoluteString.utf8))
         let hex = hash.map { String(format: "%02x", $0) }.joined()
         let resolvedExt = ext ?? (url.pathExtension.isEmpty ? "mp4" : url.pathExtension)
-        return "\(hex).\(resolvedExt)"
+        return folder.path + "\(hex).\(resolvedExt)"
     }
 }
