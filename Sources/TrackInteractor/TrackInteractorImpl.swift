@@ -97,35 +97,46 @@ extension TrackInteractorImpl {
         return Just(loading)
             .append(
                 Deferred {
-                    Future<TrackUpdate, Never> { promise in
-                        nonisolated(unsafe) let unsafePromise = promise
-                        Task { @Sendable in
-                            let candidates = await metadata.resolveCandidates(track: rawTrack)
-                            let resolvedTitle = candidates.first?.title ?? title
-                            let resolvedArtist =
-                                candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 } ?? artist
+                    let subject = PassthroughSubject<TrackUpdate, Never>()
+                    nonisolated(unsafe) let unsafeSubject = subject
+                    Task { @Sendable in
+                        let candidates = await metadata.resolveCandidates(track: rawTrack)
+                        let resolvedTitle = candidates.first?.title ?? title
+                        let resolvedArtist =
+                            candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 } ?? artist
 
-                            let result =
-                                candidates.isEmpty
-                                ? await lyrics.fetchLyrics(track: rawTrack)
-                                : await lyrics.fetchLyrics(candidates: candidates)
+                        // Emit metadata-resolved update immediately (lyrics still loading)
+                        unsafeSubject.send(
+                            TrackUpdate(
+                                title: resolvedTitle,
+                                artist: resolvedArtist,
+                                artworkData: artworkData,
+                                duration: duration,
+                                lyricsState: .loading
+                            ))
 
-                            let finalTitle = result.trackName ?? resolvedTitle
-                            let finalArtist = result.artistName ?? resolvedArtist
-                            let content = LyricsContent(from: result)
+                        let result =
+                            candidates.isEmpty
+                            ? await lyrics.fetchLyrics(track: rawTrack)
+                            : await lyrics.fetchLyrics(candidates: candidates)
 
-                            unsafePromise(
-                                .success(
-                                    TrackUpdate(
-                                        title: finalTitle,
-                                        artist: finalArtist,
-                                        artworkData: artworkData,
-                                        duration: duration,
-                                        lyrics: content,
-                                        lyricsState: content != nil ? .resolved : .notFound
-                                    )))
-                        }
+                        let finalTitle = result.trackName ?? resolvedTitle
+                        let finalArtist = result.artistName ?? resolvedArtist
+                        let content = LyricsContent(from: result)
+
+                        // Emit final update with lyrics
+                        unsafeSubject.send(
+                            TrackUpdate(
+                                title: finalTitle,
+                                artist: finalArtist,
+                                artworkData: artworkData,
+                                duration: duration,
+                                lyrics: content,
+                                lyricsState: content != nil ? .resolved : .notFound
+                            ))
+                        unsafeSubject.send(completion: .finished)
                     }
+                    return subject
                 }
                 .delay(for: .milliseconds(300), scheduler: DispatchQueue.main)
             )
