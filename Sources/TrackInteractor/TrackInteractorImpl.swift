@@ -11,45 +11,24 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     private lazy var shared = nowPlayingPublisher.share()
 
-    /// Emits on track change (title+artist) with metadata + lyrics resolution,
-    /// and re-emits when artworkData arrives/changes for the same track.
-    public lazy var trackChange: AnyPublisher<TrackUpdate, Never> = {
-        let trackChanged =
-            shared
-            .compactMap { $0 }
-            .removeDuplicates { $0.title == $1.title && $0.artist == $1.artist }
-            .flatMap { [weak self] info -> AnyPublisher<TrackUpdate, Never> in
-                guard let self else { return Empty().eraseToAnyPublisher() }
-                return resolveTrack(from: info)
-            }
+    /// Emits on track change (title+artist) with metadata + lyrics resolution.
+    public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
+        shared
+        .compactMap { $0 }
+        .removeDuplicates { $0.title == $1.title && $0.artist == $1.artist }
+        .flatMap { [weak self] info -> AnyPublisher<TrackUpdate, Never> in
+            guard let self else { return Empty().eraseToAnyPublisher() }
+            return resolveTrack(from: info)
+        }
+        .share()
+        .eraseToAnyPublisher()
 
-        let artworkChanged =
-            shared
-            .compactMap { $0 }
-            .removeDuplicates { $0.artworkData == $1.artworkData }
-            .compactMap { $0.artworkData }
-
-        // Carry latest artwork into resolved track updates
-        return
-            trackChanged
-            .combineLatest(artworkChanged.prepend(Data()))
-            .map { update, artwork in
-                TrackUpdate(
-                    title: update.title,
-                    artist: update.artist,
-                    artworkData: artwork.isEmpty ? nil : artwork,
-                    duration: update.duration,
-                    lyrics: update.lyrics,
-                    lyricsState: update.lyricsState
-                )
-            }
-            .removeDuplicates {
-                $0.title == $1.title && $0.artist == $1.artist
-                    && $0.artworkData == $1.artworkData && $0.lyricsState == $1.lyricsState
-            }
-            .share()
-            .eraseToAnyPublisher()
-    }()
+    /// Emits when artwork data changes.
+    public lazy var artwork: AnyPublisher<Data?, Never> =
+        shared
+        .map { $0?.artworkData }
+        .removeDuplicates()
+        .eraseToAnyPublisher()
 
     /// Playback position: every NowPlaying update, just elapsed + rate.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =

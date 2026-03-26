@@ -68,6 +68,7 @@ extension LyricsPresenter {
             lyricsState = .loading
         case .resolved:
             guard let content = update.lyrics else { return }
+            guard lyricsState.value != content else { return }
             revealLyrics(content)
         case .notFound:
             lyricsState = .failure

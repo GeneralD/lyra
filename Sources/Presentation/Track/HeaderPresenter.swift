@@ -18,7 +18,7 @@ public final class HeaderPresenter: ObservableObject {
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
-    private var cancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
 
@@ -34,15 +34,24 @@ public final class HeaderPresenter: ObservableObject {
         titleEffect = DecodeEffectState(config: config)
         artistEffect = DecodeEffectState(config: config)
 
-        cancellable = interactor.trackChange
+        interactor.trackChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] update in
                 self?.receive(update)
             }
+            .store(in: &cancellables)
+
+        interactor.artwork
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] data in
+                guard data != self?.artworkData else { return }
+                self?.artworkData = data
+            }
+            .store(in: &cancellables)
     }
 
     public func stop() {
-        cancellable?.cancel()
+        cancellables.removeAll()
         titleEffect?.stop()
         artistEffect?.stop()
     }
@@ -50,14 +59,8 @@ public final class HeaderPresenter: ObservableObject {
 
 extension HeaderPresenter {
     private func receive(_ update: TrackUpdate) {
-        updateArtwork(update.artworkData)
         revealTitle(update.title)
         revealArtist(update.artist)
-    }
-
-    private func updateArtwork(_ data: Data?) {
-        guard data != artworkData else { return }
-        artworkData = data
     }
 
     private func revealTitle(_ text: String?) {
@@ -67,6 +70,7 @@ extension HeaderPresenter {
             return
         }
         guard let effect = titleEffect else { return }
+        guard titleState.value != text else { return }
         titleState = .revealing(text)
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
@@ -83,6 +87,7 @@ extension HeaderPresenter {
             return
         }
         guard let effect = artistEffect else { return }
+        guard artistState.value != text else { return }
         artistState = .revealing(text)
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText

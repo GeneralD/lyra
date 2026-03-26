@@ -15,6 +15,7 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var artworkStyle: ArtworkStyle = .init()
 
     var trackChange: AnyPublisher<TrackUpdate, Never> { trackChangePublisher }
+    var artwork: AnyPublisher<Data?, Never> { Empty().eraseToAnyPublisher() }
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
 }
 
@@ -87,7 +88,7 @@ struct HeaderPresenterTests {
                 // Allow decode effect (duration: 0) and DispatchQueue.main to settle
                 try? await Task.sleep(for: .milliseconds(200))
 
-                #expect(presenter.artworkData == Data([0xFF]))
+                // artworkData is managed by separate artwork stream
                 // With duration 0, decode completes immediately
                 #expect(presenter.titleState == .success("Hello"))
                 #expect(presenter.artistState == .success("World"))

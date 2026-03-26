@@ -11,7 +11,7 @@ public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var endTime: TimeInterval?
     @Published public private(set) var isLoading: Bool = false
 
-    public private(set) var player: AVPlayer?
+    @Published public private(set) var player: AVPlayer?
     private var loopObserver: NSObjectProtocol?
     private var endTimeObserver: Any?
     private var sleepObserver: NSObjectProtocol?
