@@ -13,7 +13,7 @@ public struct RippleView: View {
         if presenter.isEnabled, presenter.rippleState != nil {
             TimelineView(.animation) { timeline in
                 Canvas { context, size in
-                    let commands = presenter.rippleDrawCommands(
+                    let commands = presenter.drawingContexts(
                         canvasSize: size, now: timeline.date)
                     for cmd in commands {
                         context.stroke(

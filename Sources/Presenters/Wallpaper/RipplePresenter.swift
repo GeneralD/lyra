@@ -26,7 +26,7 @@ public final class RipplePresenter: ObservableObject {
     }
 
     /// Computes draw commands for all visible ripples.
-    public func rippleDrawCommands(canvasSize: CGSize, now: Date) -> [RippleDrawingContext] {
+    public func drawingContexts(canvasSize: CGSize, now: Date) -> [RippleDrawingContext] {
         guard let rippleState else { return [] }
         let config = rippleConfig
         let baseHSB: (hue: Double, saturation: Double, brightness: Double) =
