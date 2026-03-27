@@ -32,7 +32,7 @@ jobs:
           fi
 
       - name: Run tests with coverage
-        run: swift test --enable-code-coverage --skip-build
+        run: swift test --enable-code-coverage
 
       - name: Generate lcov report
         run: |
