@@ -10,8 +10,8 @@ public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var startTime: TimeInterval?
     @Published public private(set) var endTime: TimeInterval?
     @Published public private(set) var isLoading: Bool = false
-
     @Published public private(set) var player: AVPlayer?
+
     private var loopObserver: NSObjectProtocol?
     private var endTimeObserver: Any?
     private var isSeeking: Bool = false
@@ -35,6 +35,18 @@ public final class WallpaperPresenter: ObservableObject {
         }
     }
 
+    public func stop() {
+        player?.pause()
+        endTimeObserver.map { player?.removeTimeObserver($0) }
+        loopObserver.map(NotificationCenter.default.removeObserver)
+        let ws = NSWorkspace.shared.notificationCenter
+        sleepObserver.map(ws.removeObserver)
+        wakeObserver.map(ws.removeObserver)
+        player = nil
+    }
+}
+
+extension WallpaperPresenter {
     private func setupPlayer() async {
         guard let wallpaperURL else { return }
 
@@ -76,18 +88,6 @@ public final class WallpaperPresenter: ObservableObject {
         observeSleepWake()
     }
 
-    public func stop() {
-        player?.pause()
-        endTimeObserver.map { player?.removeTimeObserver($0) }
-        loopObserver.map(NotificationCenter.default.removeObserver)
-        let ws = NSWorkspace.shared.notificationCenter
-        sleepObserver.map(ws.removeObserver)
-        wakeObserver.map(ws.removeObserver)
-        player = nil
-    }
-}
-
-extension WallpaperPresenter {
     private func observeSleepWake() {
         let ws = NSWorkspace.shared.notificationCenter
         sleepObserver = ws.addObserver(

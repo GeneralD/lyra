@@ -108,9 +108,12 @@ struct LyricsPresenterDuplicateTests {
 
                 // Send playback position at 6 seconds (should highlight "Second")
                 positionSubject.send(PlaybackPosition(elapsed: 6.0, playbackRate: 1.0))
-                try? await Task.sleep(for: .milliseconds(200))
-
-                presenter.updateActiveLineTick()
+                var deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
 
                 // lyricsState must remain .success
@@ -118,9 +121,12 @@ struct LyricsPresenterDuplicateTests {
 
                 // Advance to 11 seconds (should highlight "Third")
                 positionSubject.send(PlaybackPosition(elapsed: 11.0, playbackRate: 1.0))
-                try? await Task.sleep(for: .milliseconds(200))
-
-                presenter.updateActiveLineTick()
+                deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 2 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 2)
                 #expect(presenter.lyricsState == .success(content))
             }

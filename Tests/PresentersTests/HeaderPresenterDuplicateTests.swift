@@ -108,7 +108,10 @@ struct HeaderPresenterDuplicateTests {
                 // Send artwork
                 let imageData = Data([0xFF, 0xD8, 0xFF])
                 artworkSubject.send(imageData)
-                try? await Task.sleep(for: .milliseconds(200))
+                let artDeadline = ContinuousClock.now + .seconds(3)
+                while presenter.artworkData != imageData, ContinuousClock.now < artDeadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
 
                 #expect(presenter.artworkData == imageData)
                 // Title state must remain unchanged
@@ -147,7 +150,10 @@ struct HeaderPresenterDuplicateTests {
                 // Now change artwork again
                 let newArtData = Data([0x00, 0x01])
                 artworkSubject.send(newArtData)
-                try? await Task.sleep(for: .milliseconds(200))
+                let newArtDeadline = ContinuousClock.now + .seconds(3)
+                while presenter.artworkData != newArtData, ContinuousClock.now < newArtDeadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
 
                 #expect(presenter.artworkData == newArtData)
                 // Title state still untouched
