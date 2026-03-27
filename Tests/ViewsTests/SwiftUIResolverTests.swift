@@ -44,6 +44,20 @@ struct SwiftUIResolverTests {
         #expect(abs(c.r - 1.0) < 0.01)
     }
 
+    @MainActor
+    @Test("4-digit hex (unsupported length) returns white")
+    func colorFourDigit() {
+        let c = rgb(NSColor(resolver.color(from: "#ABCD")))
+        #expect(abs(c.r - 1.0) < 0.01)
+    }
+
+    @MainActor
+    @Test("5-digit hex (unsupported length) returns white")
+    func colorFiveDigit() {
+        let c = rgb(NSColor(resolver.color(from: "#ABCDE")))
+        #expect(abs(c.r - 1.0) < 0.01)
+    }
+
     // MARK: - solidColor(from:)
 
     @MainActor
