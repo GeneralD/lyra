@@ -1,4 +1,5 @@
 import AppKit
+import Domain
 import Testing
 
 @testable import Views
@@ -87,5 +88,40 @@ struct HexColorTests {
         #expect(abs(c.r - 0xAA / 255.0) < 0.01)
         #expect(abs(c.g - 0xBB / 255.0) < 0.01)
         #expect(abs(c.b - 0xCC / 255.0) < 0.01)
+    }
+
+    @Test("4-digit hex returns white (unsupported length)")
+    func fourDigitReturnsWhite() {
+        let c = parse("#ABCD")
+        #expect(abs(c.r - 1.0) < 0.01)
+        #expect(abs(c.g - 1.0) < 0.01)
+    }
+
+    @Test("empty string returns white")
+    func emptyString() {
+        let c = parse("")
+        #expect(abs(c.r - 1.0) < 0.01)
+    }
+
+    @Test("ColorStyle.solid returns parsed color")
+    func solidColor() {
+        let style = ColorStyle.solid("#FF0000")
+        let c = rgb(NSColor(style.solidColor))
+        #expect(abs(c.r - 1.0) < 0.01)
+        #expect(abs(c.g - 0.0) < 0.01)
+    }
+
+    @Test("ColorStyle.gradient solidColor returns first color")
+    func gradientSolidColor() {
+        let style = ColorStyle.gradient(["#FF0000", "#00FF00"])
+        let c = rgb(NSColor(style.solidColor))
+        #expect(abs(c.r - 1.0) < 0.01)
+    }
+
+    @Test("ColorStyle.gradient solidColor with empty array returns white")
+    func gradientEmptySolidColor() {
+        let style = ColorStyle.gradient([])
+        let c = rgb(NSColor(style.solidColor))
+        #expect(abs(c.r - 1.0) < 0.01)
     }
 }
