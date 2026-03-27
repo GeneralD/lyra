@@ -21,8 +21,7 @@ public final class RipplePresenter: ObservableObject {
     // MARK: - Ripple drawing data
 
     public struct RippleDrawCommand {
-        public let center: CGPoint
-        public let radius: Double
+        public let rect: CGRect
         public let hue: Double
         public let saturation: Double
         public let brightness: Double
@@ -30,12 +29,14 @@ public final class RipplePresenter: ObservableObject {
     }
 
     /// Computes draw commands for all visible ripples.
-    /// `canvasSize` is the Canvas size, `baseHSB` is the pre-computed base color HSB.
-    public func rippleDrawCommands(
-        canvasSize: CGSize, baseHSB: (hue: Double, saturation: Double, brightness: Double), now: Date
-    ) -> [RippleDrawCommand] {
+    public func rippleDrawCommands(canvasSize: CGSize, now: Date) -> [RippleDrawCommand] {
         guard let rippleState else { return [] }
         let config = rippleConfig
+        let baseHSB: (hue: Double, saturation: Double, brightness: Double) =
+            switch config.color {
+            case .solid(let c): c.hsb
+            case .gradient(let cs): (cs.first ?? .white).hsb
+            }
         return rippleState.ripples.compactMap { ripple in
             let elapsed = now.timeIntervalSince(ripple.startTime)
             let dur = ripple.idle ? config.duration * 3 : config.duration
@@ -46,8 +47,7 @@ public final class RipplePresenter: ObservableObject {
             let x = ripple.position.x - screenOrigin.x
             let y = canvasSize.height - (ripple.position.y - screenOrigin.y)
             return RippleDrawCommand(
-                center: CGPoint(x: x, y: y),
-                radius: radius,
+                rect: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2),
                 hue: (baseHSB.hue + ripple.hueShift).truncatingRemainder(dividingBy: 1),
                 saturation: baseHSB.saturation,
                 brightness: baseHSB.brightness,
