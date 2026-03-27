@@ -256,6 +256,10 @@ This applies to all Combine + Timer + MainActor tests where DecodeEffect, state 
 
 **SwiftUIResolver**: Config→SwiftUI type conversions (font, color, shapeStyle, lineHeight) are centralized in `SwiftUIResolver` protocol with DI. Views access via `@Dependency(\.swiftUIResolver)` in body. `LiveSwiftUIResolver` is tested directly in `SwiftUIResolverTests`.
 
+### Git Workflow
+
+**Never commit directly to main.** All changes must go through a branch → PR → merge flow, even for small fixes. This ensures CI runs, reviews happen, and the commit history stays clean.
+
 ### Version Management
 
 Version is defined in `Sources/CLI/Resources/version.txt` (single source of truth). CI reads this file to auto-create/update git tags on push to main.
