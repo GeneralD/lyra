@@ -22,20 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        run: swift build
-
-      - name: Check for warnings
+      - name: Build and check for warnings
         run: |
-          WARNINGS=$(swift build 2>&1 | grep "warning:" | grep -v ".build/" || true)
+          OUTPUT=$(swift build 2>&1)
+          echo "$OUTPUT"
+          WARNINGS=$(echo "$OUTPUT" | grep "warning:" | grep -v ".build/" || true)
           if [ -n "$WARNINGS" ]; then
-            echo "$WARNINGS"
             echo "::error::Build produced warnings in project sources"
             exit 1
           fi
 
       - name: Run tests with coverage
-        run: swift test --enable-code-coverage
+        run: swift test --enable-code-coverage --skip-build
 
       - name: Generate lcov report
         run: |
