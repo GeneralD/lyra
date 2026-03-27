@@ -3,12 +3,6 @@ import Domain
 import Presenters
 import SwiftUI
 
-private struct Column: Identifiable {
-    let id: Int
-    let entries: [(index: Int, displayText: String, sourceText: String)]
-    let highlightIndex: Int?
-}
-
 @MainActor
 public struct LyricsColumnView: View {
     @ObservedObject var presenter: LyricsPresenter
@@ -18,51 +12,27 @@ public struct LyricsColumnView: View {
     }
 
     public var body: some View {
+        @Dependency(\.swiftUIResolver) var resolver
+
         GeometryReader { geo in
-            let layout = ColumnLayout(width: geo.size.width, lyricsHeight: geo.size.height, lyricStyle: presenter.lyricStyle)
-            if let content = presenter.lyricsState.value {
-                let cols = columns(from: content, layout: layout)
-                HStack(alignment: .top, spacing: layout.columnGap) {
-                    ForEach(cols) { column in
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(column.entries, id: \.index) { entry in
-                                LyricLineView(
-                                    text: entry.displayText,
-                                    isActive: entry.index == column.highlightIndex,
-                                    lyricStyle: presenter.lyricStyle,
-                                    highlightStyle: presenter.highlightStyle
-                                )
-                            }
-                            Spacer()
+            let lineHeight = resolver.lineHeight(from: presenter.lyricStyle)
+            let result = presenter.columns(in: geo.size, lineHeight: lineHeight)
+            HStack(alignment: .top, spacing: result.columnGap) {
+                ForEach(result.columns) { column in
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(column.entries) { entry in
+                            LyricLineView(
+                                text: entry.displayText,
+                                isActive: entry.index == column.highlightIndex,
+                                lyricStyle: presenter.lyricStyle,
+                                highlightStyle: presenter.highlightStyle
+                            )
                         }
-                        .frame(width: layout.columnWidth)
+                        Spacer()
                     }
+                    .frame(width: result.columnWidth)
                 }
             }
-        }
-    }
-
-    private func columns(from content: LyricsContent, layout: ColumnLayout) -> [Column] {
-        let sourceTexts: [String] =
-            switch content {
-            case .timed(let lines): lines.map(\.text)
-            case .plain(let lines): lines
-            }
-        let displayTexts = presenter.displayLyricLines
-        let highlightIndex: Int? =
-            switch content {
-            case .timed: presenter.activeLineIndex
-            case .plain: nil
-            }
-        let lpc = layout.linesPerColumn
-        let count = layout.columnsNeeded(for: sourceTexts.count)
-        return (0..<count).map { col in
-            let start = col * lpc
-            let end = min(start + lpc, sourceTexts.count)
-            let entries = (start..<end).map { i in
-                (index: i, displayText: i < displayTexts.count ? displayTexts[i] : sourceTexts[i], sourceText: sourceTexts[i])
-            }
-            return Column(id: col, entries: entries, highlightIndex: highlightIndex)
         }
     }
 }

@@ -49,6 +49,59 @@ public final class LyricsPresenter: ObservableObject {
         stopEffects()
     }
 
+    // MARK: - Column layout
+
+    public struct LyricColumn: Identifiable {
+        public let id: Int
+        public let entries: [Entry]
+        public let highlightIndex: Int?
+
+        public struct Entry: Identifiable {
+            public let index: Int
+            public let displayText: String
+            public let sourceText: String
+            public var id: Int { index }
+        }
+    }
+
+    public struct ColumnsResult {
+        public let columns: [LyricColumn]
+        public let columnWidth: Double
+        public let columnGap: Double
+    }
+
+    public func columns(in bounds: CGSize, lineHeight: Double) -> ColumnsResult {
+        let layout = ColumnLayout(width: bounds.width, lyricsHeight: bounds.height, lineHeight: lineHeight)
+        guard let content = lyricsState.value else {
+            return ColumnsResult(columns: [], columnWidth: layout.columnWidth, columnGap: layout.columnGap)
+        }
+        let sourceTexts: [String] =
+            switch content {
+            case .timed(let lines): lines.map(\.text)
+            case .plain(let lines): lines
+            }
+        let highlightIndex: Int? =
+            switch content {
+            case .timed: activeLineIndex
+            case .plain: nil
+            }
+        let lpc = layout.linesPerColumn
+        let count = layout.columnsNeeded(for: sourceTexts.count)
+        let cols = (0..<count).map { col in
+            let start = col * lpc
+            let end = min(start + lpc, sourceTexts.count)
+            let entries = (start..<end).map { i in
+                LyricColumn.Entry(
+                    index: i,
+                    displayText: i < displayLyricLines.count ? displayLyricLines[i] : sourceTexts[i],
+                    sourceText: sourceTexts[i]
+                )
+            }
+            return LyricColumn(id: col, entries: entries, highlightIndex: highlightIndex)
+        }
+        return ColumnsResult(columns: cols, columnWidth: layout.columnWidth, columnGap: layout.columnGap)
+    }
+
     /// Called from DisplayLink to keep activeLineIndex in sync at frame rate.
     public func updateActiveLineTick() {
         guard case .success(.timed(let lines)) = lyricsState else { return }

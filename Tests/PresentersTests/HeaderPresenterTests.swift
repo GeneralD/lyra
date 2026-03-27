@@ -19,6 +19,27 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
 }
 
+// MARK: - Helpers
+
+extension FetchState {
+    fileprivate var isSuccess: Bool {
+        switch self {
+        case .success: true
+        default: false
+        }
+    }
+}
+
+@MainActor
+private func waitForTitleSuccess(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
+    let deadline = ContinuousClock.now + timeout
+    while !presenter.titleState.isSuccess || !presenter.artistState.isSuccess,
+        ContinuousClock.now < deadline
+    {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}
+
 // MARK: - Tests
 
 @Suite("HeaderPresenter")
@@ -84,12 +105,8 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(update)
+                await waitForTitleSuccess(presenter)
 
-                // Allow decode effect (duration: 0) and DispatchQueue.main to settle
-                try? await Task.sleep(for: .milliseconds(200))
-
-                // artworkData is managed by separate artwork stream
-                // With duration 0, decode completes immediately
                 #expect(presenter.titleState == .success("Hello"))
                 #expect(presenter.artistState == .success("World"))
             }
@@ -143,7 +160,7 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(title: "Song", artist: "Artist"))
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForTitleSuccess(presenter)
                 #expect(presenter.titleState == .success("Song"))
 
                 presenter.stop()

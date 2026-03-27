@@ -1,17 +1,10 @@
-import Dependencies
-import Domain
-
-public struct ColumnLayout {
+public struct ColumnLayout: Sendable {
     public let columnWidth: Double
     public let columnGap: Double
     public let maxColumns: Int
     public let linesPerColumn: Int
 
-    @MainActor
-    public init(width: Double, lyricsHeight: Double, lyricStyle: TextAppearance) {
-        @Dependency(\.swiftUIResolver) var resolver
-        let lineHeight = resolver.lineHeight(from: lyricStyle)
-
+    public init(width: Double, lyricsHeight: Double, lineHeight: Double) {
         columnGap = (width * 0.03).rounded()
         columnWidth = (width * 0.28).rounded()
         maxColumns = max(1, Int((width + columnGap) / (columnWidth + columnGap)))
@@ -22,5 +15,3 @@ public struct ColumnLayout {
         min(maxColumns, max(1, (lineCount + linesPerColumn - 1) / linesPerColumn))
     }
 }
-
-extension ColumnLayout: Sendable {}
