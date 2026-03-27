@@ -20,13 +20,13 @@ public final class RipplePresenter: ObservableObject {
 
     // MARK: - Ripple drawing data
 
-    public struct RippleDrawCommand {
+    public struct RippleDrawingContext {
         public let rect: CGRect
         public let color: ColorConfig
     }
 
     /// Computes draw commands for all visible ripples.
-    public func rippleDrawCommands(canvasSize: CGSize, now: Date) -> [RippleDrawCommand] {
+    public func rippleDrawCommands(canvasSize: CGSize, now: Date) -> [RippleDrawingContext] {
         guard let rippleState else { return [] }
         let config = rippleConfig
         let baseHSB: (hue: Double, saturation: Double, brightness: Double) =
@@ -34,7 +34,7 @@ public final class RipplePresenter: ObservableObject {
             case .solid(let c): c.hsb
             case .gradient(let cs): (cs.first ?? .white).hsb
             }
-        return rippleState.ripples.compactMap { ripple -> RippleDrawCommand? in
+        return rippleState.ripples.compactMap { ripple -> RippleDrawingContext? in
             let elapsed = now.timeIntervalSince(ripple.startTime)
             let dur = ripple.idle ? config.duration * 3 : config.duration
             guard elapsed < dur else { return nil }
@@ -43,7 +43,7 @@ public final class RipplePresenter: ObservableObject {
             let radius = easeOut * config.radius
             let x = ripple.position.x - screenOrigin.x
             let y = canvasSize.height - (ripple.position.y - screenOrigin.y)
-            return RippleDrawCommand(
+            return RippleDrawingContext(
                 rect: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2),
                 color: ColorConfig(
                     hue: (baseHSB.hue + ripple.hueShift).truncatingRemainder(dividingBy: 1), saturation: baseHSB.saturation,
