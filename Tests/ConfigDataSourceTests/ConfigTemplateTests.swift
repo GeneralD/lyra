@@ -59,7 +59,7 @@ opacity = 1.0
 size = 96.0
 
 [ripple]
-color = '#AAAAFFFF'
+color = '#AAAAFF'
 duration = 0.6
 enabled = true
 idle = 1.0
@@ -86,7 +86,7 @@ shadow = '#000000E6'
 spacing = 6.0
 
 [text.highlight]
-color = [ '#B8942DFF', '#EDCF73FF', '#FFEB99FF', '#CCA64DFF', '#A68038FF' ]
+color = [ '#B8942D', '#EDCF73', '#FFEB99', '#CCA64D', '#A68038' ]
 fontName = 'Helvetica Neue'
 fontSize = 12.0
 fontWeight = 'regular'
@@ -150,7 +150,7 @@ spacing = 6.0
     "size" : 96
   },
   "ripple" : {
-    "color" : "#AAAAFFFF",
+    "color" : "#AAAAFF",
     "duration" : 0.6,
     "enabled" : true,
     "idle" : 1,
@@ -180,11 +180,11 @@ spacing = 6.0
     },
     "highlight" : {
       "color" : [
-        "#B8942DFF",
-        "#EDCF73FF",
-        "#FFEB99FF",
-        "#CCA64DFF",
-        "#A68038FF"
+        "#B8942D",
+        "#EDCF73",
+        "#FFEB99",
+        "#CCA64D",
+        "#A68038"
       ],
       "fontName" : "Helvetica Neue",
       "fontSize" : 12,
