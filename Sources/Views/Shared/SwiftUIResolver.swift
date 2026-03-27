@@ -110,6 +110,6 @@ private struct StubSwiftUIResolver: SwiftUIResolver {
     @MainActor func font(from style: TextAppearance) -> Font { .system(size: style.fontSize) }
     @MainActor func color(from hex: String) -> Color { .white }
     @MainActor func solidColor(from style: ColorStyle) -> Color { .white }
-    @MainActor func shapeStyle(from style: ColorStyle) -> AnyShapeStyle { AnyShapeStyle(.white) }
+    @MainActor func shapeStyle(from style: ColorStyle) -> AnyShapeStyle { .init(.white) }
     @MainActor func lineHeight(from style: TextAppearance) -> Double { style.fontSize + style.spacing * 2 }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import Dependencies
 import Domain
 import Presenters
 import SwiftUI
@@ -18,11 +19,11 @@ public struct RippleView: View {
     }
 
     private func rippleCanvas(rippleState: RippleState, config: RippleStyle) -> some View {
+        @Dependency(\.swiftUIResolver) var resolver
         let screenOrigin = presenter.screenOrigin
         let baseNSColor: NSColor = {
             guard case .solid(let hex) = config.color else { return .white }
-            let color = parseHexColor(hex)
-            return NSColor(color).usingColorSpace(.deviceRGB) ?? .white
+            return NSColor(resolver.color(from: hex)).usingColorSpace(.deviceRGB) ?? .white
         }()
 
         return TimelineView(.animation) { timeline in
