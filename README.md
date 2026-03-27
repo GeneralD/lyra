@@ -227,7 +227,11 @@ Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` a
 ```toml
 # includes = ["ai.toml"]
 screen = "main"
-# wallpaper = "loop.mp4"
+
+[wallpaper]
+location = "https://www.youtube.com/watch?v=Sn1ieBOLGB0"
+start = "0:17"
+end = "3:37"
 
 [text.default]
 font = "Helvetica Neue"
@@ -277,4 +281,4 @@ idle = 1.5
 
 ## License
 
-MIT
+GPL-3.0
