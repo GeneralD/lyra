@@ -181,8 +181,6 @@ struct TrackInteractorRaceTests {
 
         cancellable.cancel()
 
-        // Loading for Track A may appear (it's emitted immediately)
-        let loadingA = received.filter { $0.title == "Track A" && $0.lyricsState == .loading }
         // But resolved for Track A must NOT appear
         let resolvedA = received.filter { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
 
