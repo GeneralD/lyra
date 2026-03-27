@@ -19,6 +19,10 @@ Desktop lyrics overlay and video wallpaper for macOS.
 
 Displays synced lyrics from [LRCLIB](https://lrclib.net) over your desktop, with optional video wallpaper and mouse-reactive ripple effects. Text appears with a matrix-style decode animation.
 
+<p align="center">
+  <img src="assets/demo.gif" alt="lyra demo" width="600">
+</p>
+
 ## Install
 
 ```sh
