@@ -7,6 +7,9 @@
   <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS">
   <img src="https://img.shields.io/badge/Swift-6.0-orange" alt="Swift">
   <img src="https://img.shields.io/github/license/GeneralD/lyra" alt="License">
+  <img src="https://img.shields.io/github/actions/workflow/status/GeneralD/lyra/test.yml?label=tests" alt="Tests">
+  <img src="https://img.shields.io/coderabbit/prs/github/GeneralD/lyra?labelColor=171717&color=FF570A&label=CodeRabbit" alt="CodeRabbit Reviews">
+  <img src="https://img.shields.io/badge/open%20source-%E2%9D%A4-red" alt="Open Source">
 </p>
 
 # lyra
