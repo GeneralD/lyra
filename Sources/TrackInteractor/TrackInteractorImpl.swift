@@ -11,11 +11,45 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     private lazy var shared = nowPlayingPublisher.share()
 
-    /// Emits on track change (title+artist) with metadata + lyrics resolution.
-    public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
+    /// NowPlaying events with actual track info.
+    /// Drops "degraded" updates where artist becomes empty for the same title —
+    /// macOS MediaRemote clears artist on volume mute while keeping the title.
+    private lazy var activeNowPlaying =
         shared
         .compactMap { $0 }
-        .removeDuplicates { $0.title == $1.title && $0.artist == $1.artist }
+        .scan((previous: nil as NowPlaying?, current: nil as NowPlaying?)) { state, incoming in
+            (previous: state.current, current: incoming)
+        }
+        .compactMap { state -> NowPlaying? in
+            guard let current = state.current else { return nil }
+            guard let previous = state.previous else { return current }
+            // Same title but artist degraded from non-empty to empty → skip
+            let prevArtist = previous.artist ?? ""
+            let curArtist = current.artist ?? ""
+            guard current.title == previous.title, !prevArtist.isEmpty, curArtist.isEmpty else {
+                return current
+            }
+            return nil
+        }
+        .share()
+
+    /// Emits on track change (title+artist) with metadata + lyrics resolution.
+    ///
+    /// Deduplication: macOS MediaRemote temporarily clears the artist field (to "")
+    /// when system volume is set to 0, while keeping the title intact. On volume restore,
+    /// the artist reappears. To avoid triggering DecodeEffect on these transient changes,
+    /// compare by title only when either side has an empty/nil artist. When both have
+    /// a non-empty artist, compare title + artist (to detect genuinely different tracks).
+    public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
+        activeNowPlaying
+        .removeDuplicates {
+            let prevArtist = ($0.artist ?? "")
+            let curArtist = ($1.artist ?? "")
+            guard !prevArtist.isEmpty, !curArtist.isEmpty else {
+                return $0.title == $1.title
+            }
+            return $0.title == $1.title && prevArtist == curArtist
+        }
         .map { [weak self] info -> AnyPublisher<TrackUpdate, Never> in
             guard let self else { return Empty().eraseToAnyPublisher() }
             return resolveTrack(from: info)
@@ -24,17 +58,16 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .share()
         .eraseToAnyPublisher()
 
-    /// Emits when artwork data changes.
+    /// Emits when artwork data changes. Only emits when NowPlaying has track info.
     public lazy var artwork: AnyPublisher<Data?, Never> =
-        shared
-        .map { $0?.artworkData }
+        activeNowPlaying
+        .map(\.artworkData)
         .removeDuplicates()
         .eraseToAnyPublisher()
 
-    /// Playback position: every NowPlaying update, just elapsed + rate.
+    /// Playback position: every NowPlaying update with track info.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
-        shared
-        .compactMap { $0 }
+        activeNowPlaying
         .map { PlaybackPosition(elapsed: $0.elapsed, playbackRate: $0.playbackRate) }
         .eraseToAnyPublisher()
 

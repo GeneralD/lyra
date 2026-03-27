@@ -16,7 +16,8 @@ let register = unsafeBitCast(regSym, to: RegisterFn.self)
 @Sendable func fetchAndPrint() {
     getInfo(DispatchQueue.main) { dict in
         guard let d = dict as? [String: Any],
-            d["kMRMediaRemoteNowPlayingInfoTitle"] != nil
+            let title = d["kMRMediaRemoteNowPlayingInfoTitle"] as? String,
+            !title.isEmpty
         else {
             print(#"{"has_info":false}"#)
             fflush(stdout)
