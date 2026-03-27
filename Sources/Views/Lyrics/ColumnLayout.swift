@@ -9,10 +9,8 @@ public struct ColumnLayout {
 
     @MainActor
     public init(width: Double, lyricsHeight: Double, lyricStyle: TextAppearance) {
-        @Dependency(\.fontMetrics) var fontMetrics
-        let lineHeight = fontMetrics.lineHeight(
-            fontName: lyricStyle.fontName, fontSize: lyricStyle.fontSize, spacing: lyricStyle.spacing
-        )
+        @Dependency(\.swiftUIResolver) var resolver
+        let lineHeight = resolver.lineHeight(from: lyricStyle)
 
         columnGap = (width * 0.03).rounded()
         columnWidth = (width * 0.28).rounded()

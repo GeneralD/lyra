@@ -1,3 +1,4 @@
+import Dependencies
 import Domain
 import SwiftUI
 
@@ -16,34 +17,19 @@ public struct LyricLineView: View {
     }
 
     public var body: some View {
+        @Dependency(\.swiftUIResolver) var resolver
         let style = isActive ? highlightStyle : lyricStyle
 
         Text(text.isEmpty ? " " : text)
-            .font(makeFont(style: style))
-            .foregroundStyle(style.color.shapeStyle)
+            .font(resolver.font(from: style))
+            .foregroundStyle(resolver.shapeStyle(from: style.color))
             .opacity(isActive ? 1.0 : 0.7)
             .scaleEffect(isActive ? 1.03 : 1.0, anchor: .leading)
-            .shadow(color: style.shadow.solidColor, radius: 5, x: 0, y: 1)
+            .shadow(color: resolver.solidColor(from: style.shadow), radius: 5, x: 0, y: 1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, style.spacing)
             .animation(.easeInOut(duration: 0.3), value: isActive)
     }
-}
-
-func makeFont(style: TextAppearance) -> Font {
-    let weight: Font.Weight =
-        switch style.fontWeight.lowercased() {
-        case "ultralight": .ultraLight
-        case "thin": .thin
-        case "light": .light
-        case "medium": .medium
-        case "semibold": .semibold
-        case "bold": .bold
-        case "heavy": .heavy
-        case "black": .black
-        default: .regular
-        }
-    return Font.custom(style.fontName, size: style.fontSize).weight(weight)
 }
 
 #if DEBUG

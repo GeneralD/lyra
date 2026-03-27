@@ -54,6 +54,7 @@ let package = Package(
             dependencies: [
                 "Domain",
                 "Presenters",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
