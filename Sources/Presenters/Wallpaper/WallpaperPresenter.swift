@@ -66,11 +66,11 @@ extension WallpaperPresenter {
         if let seekEnd {
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
             endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                MainActor.assumeIsolated {
+                Task { @MainActor in
                     guard let self, !self.isSeeking, time >= seekEnd else { return }
                     self.isSeeking = true
                     player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                        MainActor.assumeIsolated { self?.isSeeking = false }
+                        Task { @MainActor in self?.isSeeking = false }
                     }
                 }
             }
@@ -94,13 +94,13 @@ extension WallpaperPresenter {
             forName: NSWorkspace.screensDidSleepNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.player?.pause() }
+            Task { @MainActor in self?.player?.pause() }
         }
         wakeObserver = ws.addObserver(
             forName: NSWorkspace.screensDidWakeNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.player?.play() }
+            Task { @MainActor in self?.player?.play() }
         }
     }
 }
