@@ -81,11 +81,13 @@ extension ColorConfig {
     }
 
     public init(hue: Double, saturation: Double, brightness: Double, alpha: Double = 1) {
+        let h = hue.truncatingRemainder(dividingBy: 1)
+        let normalizedHue = h < 0 ? h + 1 : h
         let c = brightness * saturation
-        let x = c * (1 - abs((hue * 6).truncatingRemainder(dividingBy: 2) - 1))
+        let x = c * (1 - abs((normalizedHue * 6).truncatingRemainder(dividingBy: 2) - 1))
         let m = brightness - c
         let (r1, g1, b1): (Double, Double, Double) =
-            switch hue {
+            switch normalizedHue {
             case 0..<1 / 6: (c, x, 0)
             case 1 / 6..<1 / 3: (x, c, 0)
             case 1 / 3..<1 / 2: (0, c, x)

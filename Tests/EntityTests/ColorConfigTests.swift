@@ -157,6 +157,32 @@ struct ColorConfigTests {
         #expect(abs(original.blue - reconstructed.blue) < 0.02)
     }
 
+    @Test("negative hue is normalized to valid RGB")
+    func negativeHue() {
+        let c = ColorConfig(hue: -0.15, saturation: 1, brightness: 1)
+        #expect(c.red >= 0 && c.red <= 1)
+        #expect(c.green >= 0 && c.green <= 1)
+        #expect(c.blue >= 0 && c.blue <= 1)
+    }
+
+    @Test("hue >= 1 wraps around")
+    func hueWraps() {
+        let c1 = ColorConfig(hue: 0.0, saturation: 1, brightness: 1)
+        let c2 = ColorConfig(hue: 1.0, saturation: 1, brightness: 1)
+        #expect(abs(c1.red - c2.red) < 0.01)
+        #expect(abs(c1.green - c2.green) < 0.01)
+        #expect(abs(c1.blue - c2.blue) < 0.01)
+    }
+
+    @Test("hue = 1.5 wraps to 0.5")
+    func hueOver1() {
+        let c1 = ColorConfig(hue: 0.5, saturation: 1, brightness: 1)
+        let c2 = ColorConfig(hue: 1.5, saturation: 1, brightness: 1)
+        #expect(abs(c1.red - c2.red) < 0.01)
+        #expect(abs(c1.green - c2.green) < 0.01)
+        #expect(abs(c1.blue - c2.blue) < 0.01)
+    }
+
     @Test("HSB alpha is preserved")
     func hsbAlpha() {
         let c = ColorConfig(hue: 0, saturation: 1, brightness: 1, alpha: 0.5)
