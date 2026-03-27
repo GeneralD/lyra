@@ -226,6 +226,11 @@ Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` a
 
 ```toml
 # includes = ["ai.toml"]
+# [ai]
+# endpoint = "https://api.openai.com/v1"
+# model = "gpt-4o-mini"
+# api_key = "sk-..."
+
 screen = "main"
 
 [wallpaper]
@@ -267,11 +272,6 @@ color = "#AAAAFFFF"
 radius = 80
 duration = 0.4
 idle = 1.5
-
-# [ai]
-# endpoint = "https://api.openai.com/v1"
-# model = "gpt-4o-mini"
-# api_key = "sk-..."
 ```
 
 ## Requirements
