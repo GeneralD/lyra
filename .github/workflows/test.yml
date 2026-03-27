@@ -25,5 +25,32 @@ jobs:
       - name: Build
         run: swift build
 
-      - name: Run tests
-        run: swift test
+      - name: Run tests with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Generate lcov report
+        run: |
+          BIN=$(swift build --show-bin-path)
+          TEST_BIN="$BIN/lyraPackageTests.xctest/Contents/MacOS/lyraPackageTests"
+          PROFDATA=$(find .build -name 'default.profdata' -print -quit)
+          if [[ -z "$PROFDATA" || ! -f "$PROFDATA" ]]; then
+            echo "Coverage profile not found under .build (expected default.profdata)."
+            exit 1
+          fi
+          if [[ ! -x "$TEST_BIN" ]]; then
+            echo "Test binary not found: $TEST_BIN"
+            exit 1
+          fi
+          xcrun llvm-cov export \
+            "$TEST_BIN" \
+            -instr-profile "$PROFDATA" \
+            -format lcov \
+            -ignore-filename-regex '.build|Tests/' \
+            > coverage.lcov
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.lcov
+          fail_ci_if_error: false

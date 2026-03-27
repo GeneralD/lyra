@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/Swift-6.0-orange" alt="Swift">
   <img src="https://img.shields.io/github/license/GeneralD/lyra" alt="License">
   <img src="https://img.shields.io/github/actions/workflow/status/GeneralD/lyra/test.yml?label=tests" alt="Tests">
+  <a href="https://codecov.io/gh/GeneralD/lyra"><img src="https://codecov.io/gh/GeneralD/lyra/graph/badge.svg" alt="Coverage"></a>
   <img src="https://img.shields.io/coderabbit/prs/github/GeneralD/lyra?labelColor=171717&color=FF570A&label=CodeRabbit" alt="CodeRabbit Reviews">
   <img src="https://img.shields.io/badge/open%20source-%E2%9D%A4-red" alt="Open Source">
 </p>
