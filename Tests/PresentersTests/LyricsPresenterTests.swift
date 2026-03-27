@@ -19,6 +19,19 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
 }
 
+// MARK: - Helpers
+
+@MainActor
+private func waitForLyricsSuccess(_ presenter: LyricsPresenter, timeout: Duration = .seconds(3)) async {
+    let deadline = ContinuousClock.now + timeout
+    while ContinuousClock.now < deadline {
+        switch presenter.lyricsState {
+        case .success: return
+        default: try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
 // MARK: - Tests
 
 @Suite("LyricsPresenter")
@@ -132,9 +145,8 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
+                await waitForLyricsSuccess(presenter)
 
-                // With duration 0, decode should complete to success
                 #expect(presenter.lyricsState == .success(content))
                 #expect(presenter.displayLyricLines.count == 2)
             }
