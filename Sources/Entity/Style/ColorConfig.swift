@@ -1,3 +1,5 @@
+import Foundation
+
 public struct ColorConfig: Sendable, Equatable {
     public let red: Double
     public let green: Double
@@ -40,10 +42,13 @@ public struct ColorConfig: Sendable, Equatable {
     }
 
     public var hex: String {
-        let r = Int(red * 0xFF)
-        let g = Int(green * 0xFF)
-        let b = Int(blue * 0xFF)
-        let a = Int(alpha * 0xFF)
+        func toByte(_ value: Double) -> Int {
+            Int(min(max(value * 0xFF, 0), 0xFF).rounded())
+        }
+        let r = toByte(red)
+        let g = toByte(green)
+        let b = toByte(blue)
+        let a = toByte(alpha)
         return a == 255
             ? String(format: "#%02X%02X%02X", r, g, b)
             : String(format: "#%02X%02X%02X%02X", r, g, b, a)
