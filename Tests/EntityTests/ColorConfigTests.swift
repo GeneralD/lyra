@@ -107,6 +107,72 @@ struct ColorConfigTests {
         #expect(abs(hsb.brightness) < 0.01)
     }
 
+    // MARK: - init(hue:saturation:brightness:alpha:)
+
+    @Test("red from HSB: hue 0, saturation 1, brightness 1")
+    func redFromHSB() {
+        let c = ColorConfig(hue: 0, saturation: 1, brightness: 1)
+        #expect(abs(c.red - 1.0) < 0.01)
+        #expect(abs(c.green) < 0.01)
+        #expect(abs(c.blue) < 0.01)
+    }
+
+    @Test("green from HSB: hue ~0.333")
+    func greenFromHSB() {
+        let c = ColorConfig(hue: 1.0 / 3.0, saturation: 1, brightness: 1)
+        #expect(abs(c.green - 1.0) < 0.01)
+        #expect(abs(c.red) < 0.01)
+    }
+
+    @Test("blue from HSB: hue ~0.667")
+    func blueFromHSB() {
+        let c = ColorConfig(hue: 2.0 / 3.0, saturation: 1, brightness: 1)
+        #expect(abs(c.blue - 1.0) < 0.01)
+        #expect(abs(c.red) < 0.01)
+    }
+
+    @Test("white from HSB: saturation 0, brightness 1")
+    func whiteFromHSB() {
+        let c = ColorConfig(hue: 0, saturation: 0, brightness: 1)
+        #expect(abs(c.red - 1.0) < 0.01)
+        #expect(abs(c.green - 1.0) < 0.01)
+        #expect(abs(c.blue - 1.0) < 0.01)
+    }
+
+    @Test("black from HSB: brightness 0")
+    func blackFromHSB() {
+        let c = ColorConfig(hue: 0, saturation: 0, brightness: 0)
+        #expect(abs(c.red) < 0.01)
+        #expect(abs(c.green) < 0.01)
+        #expect(abs(c.blue) < 0.01)
+    }
+
+    @Test("HSB round-trip: hex → hsb → init(hue:) → hex")
+    func hsbRoundTrip() {
+        let original = ColorConfig(hex: "#FF8040")
+        let hsb = original.hsb
+        let reconstructed = ColorConfig(hue: hsb.hue, saturation: hsb.saturation, brightness: hsb.brightness)
+        #expect(abs(original.red - reconstructed.red) < 0.02)
+        #expect(abs(original.green - reconstructed.green) < 0.02)
+        #expect(abs(original.blue - reconstructed.blue) < 0.02)
+    }
+
+    @Test("HSB alpha is preserved")
+    func hsbAlpha() {
+        let c = ColorConfig(hue: 0, saturation: 1, brightness: 1, alpha: 0.5)
+        #expect(abs(c.alpha - 0.5) < 0.01)
+    }
+
+    // MARK: - hex byte clamping
+
+    @Test("out-of-range values are clamped in hex output")
+    func hexClamping() {
+        let c = ColorConfig(red: 1.5, green: -0.1, blue: 0.5)
+        let hex = c.hex
+        #expect(hex.hasPrefix("#FF"))  // red clamped to 255
+        #expect(hex.contains("00"))  // green clamped to 0
+    }
+
     // MARK: - ExpressibleByStringLiteral
 
     @Test("string literal creates ColorConfig")
