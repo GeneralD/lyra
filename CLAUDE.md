@@ -258,7 +258,7 @@ This applies to all Combine + Timer + MainActor tests where DecodeEffect, state 
 
 ### Git Workflow
 
-**Never commit directly to main.** All code changes must go through a branch → PR → merge flow. Documentation-only changes (CLAUDE.md, README etc.) should be held and included in the next PR rather than committed directly to main.
+**Never commit directly to main.** All changes, including documentation-only updates, must go through a branch → PR → merge flow. Documentation-only changes (CLAUDE.md, README, etc.) should normally be batched into the next code-change PR, but small doc-only PRs are acceptable when needed; direct commits to `main` are never allowed.
 
 ### Version Management
 
