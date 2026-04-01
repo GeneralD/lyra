@@ -6,7 +6,7 @@ let package = Package(
     name: "Lyra",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "lyra", targets: ["Main"]),
+        .executable(name: "lyra", targets: ["CLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
@@ -17,14 +17,8 @@ let package = Package(
         .package(url: "https://github.com/JohnSundell/Files", from: "4.2.0"),
     ],
     targets: [
-        // ── Entry Point ──
+        // ── CLI (Entry Point) ──
         .executableTarget(
-            name: "Main",
-            dependencies: ["CLI"]
-        ),
-
-        // ── CLI ──
-        .target(
             name: "CLI",
             dependencies: [
                 "App",
