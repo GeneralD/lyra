@@ -51,6 +51,11 @@ lyra config template  # print default config to stdout
 lyra config init      # create config file with defaults
 lyra config edit      # open config in $EDITOR
 lyra config open      # open config in GUI app
+
+lyra track            # show now-playing info as JSON
+lyra track -r         # resolve metadata (MusicBrainz/regex)
+lyra track -l         # include lyrics (LRCLIB)
+lyra track -rl        # resolve + lyrics
 ```
 
 ### Auto-start
