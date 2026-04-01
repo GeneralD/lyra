@@ -9,6 +9,13 @@ public struct NowPlayingRepositoryImpl: Sendable {
 }
 
 extension NowPlayingRepositoryImpl: NowPlayingRepository {
+    public func fetch() async -> NowPlaying? {
+        switch await dataSource.poll() {
+        case .info(let nowPlaying): nowPlaying
+        case .noInfo, .eof: nil
+        }
+    }
+
     public func stream() -> AsyncStream<NowPlaying?> {
         let dataSource = self.dataSource
         return AsyncStream { continuation in

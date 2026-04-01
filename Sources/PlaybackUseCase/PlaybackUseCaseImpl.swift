@@ -8,6 +8,10 @@ public struct PlaybackUseCaseImpl {
 }
 
 extension PlaybackUseCaseImpl: PlaybackUseCase {
+    public func fetchNowPlaying() async -> NowPlaying? {
+        await nowPlaying.fetch()
+    }
+
     public func observeNowPlaying() -> AsyncStream<NowPlaying?> {
         nowPlaying.stream()
     }

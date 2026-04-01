@@ -1,36 +1,14 @@
 import ArgumentParser
 import Dependencies
 import Domain
-import Foundation
-import os
 
-struct HealthcheckCommand: ParsableCommand {
+struct HealthcheckCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "healthcheck",
         abstract: "Check connectivity to external services"
     )
 
-    func run() throws {
-        let result = OSAllocatedUnfairLock(initialState: Int32(0))
-        let done = OSAllocatedUnfairLock(initialState: false)
-
-        Task {
-            let code = await runChecks()
-            result.withLock { $0 = code }
-            done.withLock { $0 = true }
-        }
-
-        while !done.withLock({ $0 }) {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
-        }
-
-        let exitCode = result.withLock { $0 }
-        guard exitCode == 0 else { throw ExitCode(rawValue: exitCode) }
-    }
-}
-
-extension HealthcheckCommand {
-    fileprivate func runChecks() async -> Int32 {
+    func run() async throws {
         @Dependency(\.healthCheckers) var checkers
 
         var failed = 0
@@ -41,24 +19,20 @@ extension HealthcheckCommand {
         }
 
         print("")
-        switch failed {
-        case 0:
-            print("All checks passed.")
-            return 0
-        default:
+        guard failed == 0 else {
             print("\(failed) check(s) failed.")
-            return 1
+            throw ExitCode.failure
         }
+        print("All checks passed.")
     }
+}
 
-    fileprivate func printResult(name: String, result: HealthCheckResult) {
-        let tag: String
-        switch result.status {
-        case .pass: tag = "[PASS]"
-        case .fail: tag = "[FAIL]"
-        case .skip: tag = "[SKIP]"
-        }
-        let padded = name.padding(toLength: 20, withPad: ".", startingAt: 0)
-        print("\(tag) \(padded) \(result.detail)")
+private func printResult(name: String, result: HealthCheckResult) {
+    let tag: String
+    switch result.status {
+    case .pass: tag = "[PASS]"
+    case .fail: tag = "[FAIL]"
+    case .skip: tag = "[SKIP]"
     }
+    print("\(tag) \(name.padding(toLength: 20, withPad: ".", startingAt: 0)) \(result.detail)")
 }

@@ -24,7 +24,6 @@ macOS desktop overlay app showing synced lyrics and video wallpaper. VIPER + Cle
 ```mermaid
 graph TD
     subgraph Entry
-        Main[Main]
         CLI[CLI]
     end
 
@@ -88,7 +87,6 @@ graph TD
         end
     end
 
-    Main --> CLI
     CLI --> App
     App --> Views & Presenters & DependencyInjection
     DependencyInjection --> Implementations
@@ -112,7 +110,6 @@ graph TD
     WallpaperUseCase -.-> WallpaperRepository
     WallpaperRepository -.-> WallpaperDataSource
 
-    style Main fill:#333,stroke:#333,color:#fff
     style CLI fill:#555,stroke:#333,color:#fff
     style App fill:#6a5,stroke:#333,color:#fff
     style Views fill:#6a5,stroke:#333,color:#fff
@@ -164,8 +161,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 
 | Layer | Modules | Responsibility |
 |---|---|---|
-| Executable | `Main` | Entry point (`main.swift` → `RootCommand.main()`). Product name: `lyra` |
-| CLI | `CLI` | ArgumentParser commands, LaunchAgent |
+| Executable / CLI | `CLI` | Entry point (`@main RootCommand: AsyncParsableCommand`), ArgumentParser commands, LaunchAgent. Product name: `lyra` |
 | Router | `App` | `AppRouter` (pure wireframe), `AppDelegate` |
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
@@ -188,7 +184,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 
 **FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by Presenters using `DecodeEffectState`.
 
-**Entity types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `WallpaperStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`, `LocalWallpaper`, `RemoteWallpaper`, `YouTubeWallpaper`, `TrackUpdate`, `TrackLyricsState`, `WallpaperState`, `ScreenLayout`, `WallpaperConfig`. Config flows through Interactors, not via global `AppStyleKey`.
+**Entity types**: `AppStyle`, `TextLayout`, `TextAppearance`, `ArtworkStyle`, `RippleStyle`, `WallpaperStyle`, `DecodeEffect`, `AIEndpoint`, `ColorStyle`, `HealthCheckResult`, `ConfigValidationResult`, `MusicBrainzMetadata`, `MediaRemotePollResult`, `LocalWallpaper`, `RemoteWallpaper`, `YouTubeWallpaper`, `TrackUpdate`, `TrackLyricsState`, `WallpaperState`, `ScreenLayout`, `WallpaperConfig`, `NowPlayingInfo`, `LyricLine`, `LyricsContent`. Config flows through Interactors, not via global `AppStyleKey`.
 
 **No AppStyleKey**: `@Dependency(\.appStyle)` was removed. All config access goes through the owning Interactor's computed properties (e.g., `trackInteractor.textLayout`, `wallpaperInteractor.rippleConfig`). This enforces the VIPER dependency rule.
 
@@ -231,6 +227,10 @@ Cache is Repository's responsibility, not DataSource's. DataSources are pure API
 **DI with swift-dependencies**: Protocol definitions + `TestDependencyKey` in `Domain`, all `liveValue` registrations centralized in `DependencyInjection` module (`InteractorRegistration`, `UseCaseRegistration`, `RepositoryRegistration`, `DataSourceRegistration`, `DataStoreRegistration`, `HealthCheckRegistration`). No direct instantiation — everything through `@Dependency`.
 
 **Config commands**: `lyra config template` (stdout), `lyra config init` (file creation), `lyra config edit` ($EDITOR), `lyra config open` (GUI). Template generation flows through UseCase→Repository→DataSource. `ConfigDataSource.template(format:)` encodes `AppConfig.defaults` via `TOMLEncoder`/`JSONEncoder`. `ConfigFormat` enum in Entity. `ConfigWriteError` for init failure handling.
+
+**Track command**: `lyra track` outputs currently playing track info as JSON. Flags: `--resolve` (`-r`) resolves metadata via MusicBrainz/regex, `--lyrics` (`-l`) fetches lyrics from LRCLIB. The two flags are independent and combinable (`-rl`). Default (no flags) returns raw MediaRemote data. Uses `PlaybackUseCase.fetchNowPlaying()` (one-shot) + `MetadataUseCase` + `LyricsUseCase` via `@Dependency`. Output type is `NowPlayingInfo` (Codable).
+
+**NowPlayingRepository dual API**: `fetch()` for one-shot retrieval (used by CLI `track` command), `stream()` for continuous observation (used by GUI via `TrackInteractor`). `PlaybackUseCase` mirrors both: `fetchNowPlaying()` and `observeNowPlaying()`.
 
 **HealthCheckable**: Protocol in Domain with `serviceName` + `healthCheck()`. Implemented by `LRCLibAPI`, `MusicBrainzAPI`, `OpenAICompatibleAPI`. `lyra healthcheck` validates config, API connectivity, and AI token validity.
 

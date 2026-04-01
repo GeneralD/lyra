@@ -12,6 +12,8 @@ import Testing
 private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
     let subject = PassthroughSubject<NowPlaying?, Never>()
 
+    func fetchNowPlaying() async -> NowPlaying? { nil }
+
     func observeNowPlaying() -> AsyncStream<NowPlaying?> {
         AsyncStream { continuation in
             let cancellable = subject.sink(

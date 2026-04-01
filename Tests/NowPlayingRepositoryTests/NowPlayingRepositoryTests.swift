@@ -84,6 +84,49 @@ struct NowPlayingRepositoryTests {
         }
     }
 
+    // MARK: - fetch (one-shot)
+
+    @Test("fetch returns NowPlaying when dataSource returns .info")
+    func fetchReturnsInfo() async {
+        let expected = NowPlaying(
+            title: "One Shot", artist: "Artist", artworkData: nil,
+            duration: 120, rawElapsed: 5, playbackRate: 1, timestamp: Date()
+        )
+
+        await withDependencies {
+            $0.mediaRemoteDataSource = MockMediaRemoteDataSource(results: [.info(expected)])
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            let result = await repo.fetch()
+            #expect(result?.title == "One Shot")
+            #expect(result?.artist == "Artist")
+        }
+    }
+
+    @Test("fetch returns nil when dataSource returns .noInfo")
+    func fetchReturnsNilOnNoInfo() async {
+        await withDependencies {
+            $0.mediaRemoteDataSource = MockMediaRemoteDataSource(results: [.noInfo])
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            let result = await repo.fetch()
+            #expect(result == nil)
+        }
+    }
+
+    @Test("fetch returns nil when dataSource returns .eof")
+    func fetchReturnsNilOnEof() async {
+        await withDependencies {
+            $0.mediaRemoteDataSource = MockMediaRemoteDataSource(results: [.eof])
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            let result = await repo.fetch()
+            #expect(result == nil)
+        }
+    }
+
+    // MARK: - stream
+
     @Test("all NowPlaying fields are forwarded from dataSource")
     func allFieldsForwarded() async {
         let artworkData = "fake-image".data(using: .utf8)

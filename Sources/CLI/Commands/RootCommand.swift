@@ -8,7 +8,8 @@ private let appVersion: String = {
     return content.trimmingCharacters(in: .whitespacesAndNewlines)
 }()
 
-public struct RootCommand: ParsableCommand {
+@main
+public struct RootCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "lyra",
         abstract: "Desktop lyrics overlay, video wallpaper, and more",
@@ -23,6 +24,7 @@ public struct RootCommand: ParsableCommand {
             DaemonCommand.self,
             HealthcheckCommand.self,
             ConfigCommand.self,
+            TrackCommand.self,
         ],
         defaultSubcommand: StartCommand.self
     )

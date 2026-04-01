@@ -2,6 +2,7 @@ import Dependencies
 import Foundation
 
 public protocol PlaybackUseCase: Sendable {
+    func fetchNowPlaying() async -> NowPlaying?
     func observeNowPlaying() -> AsyncStream<NowPlaying?>
 }
 
@@ -17,5 +18,6 @@ extension DependencyValues {
 }
 
 private struct UnimplementedPlaybackUseCase: PlaybackUseCase {
+    func fetchNowPlaying() async -> NowPlaying? { nil }
     func observeNowPlaying() -> AsyncStream<NowPlaying?> { AsyncStream { $0.finish() } }
 }

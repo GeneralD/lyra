@@ -2,6 +2,7 @@ import Dependencies
 import Foundation
 
 public protocol NowPlayingRepository: Sendable {
+    func fetch() async -> NowPlaying?
     func stream() -> AsyncStream<NowPlaying?>
 }
 
@@ -17,6 +18,7 @@ extension DependencyValues {
 }
 
 private struct UnimplementedNowPlayingRepository: NowPlayingRepository {
+    func fetch() async -> NowPlaying? { nil }
     func stream() -> AsyncStream<NowPlaying?> {
         AsyncStream { $0.finish() }
     }

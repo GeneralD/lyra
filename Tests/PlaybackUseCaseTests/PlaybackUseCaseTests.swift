@@ -30,6 +30,38 @@ struct PlaybackUseCaseTests {
         }
     }
 
+    // MARK: - fetchNowPlaying (one-shot)
+
+    @Test("fetchNowPlaying returns first item from repository")
+    func fetchReturnsFirst() async {
+        let now = Date()
+        let expected = NowPlaying(
+            title: "Song", artist: "Artist", artworkData: nil,
+            duration: 200, rawElapsed: 10, playbackRate: 1.0, timestamp: now
+        )
+        await withDependencies {
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [expected])
+        } operation: {
+            let useCase = PlaybackUseCaseImpl()
+            let result = await useCase.fetchNowPlaying()
+            #expect(result?.title == "Song")
+            #expect(result?.artist == "Artist")
+        }
+    }
+
+    @Test("fetchNowPlaying returns nil when repository is empty")
+    func fetchReturnsNilWhenEmpty() async {
+        await withDependencies {
+            $0.nowPlayingRepository = MockNowPlayingRepository(infos: [])
+        } operation: {
+            let useCase = PlaybackUseCaseImpl()
+            let result = await useCase.fetchNowPlaying()
+            #expect(result == nil)
+        }
+    }
+
+    // MARK: - observeNowPlaying (stream)
+
     @Test("finishes when repository stream is empty")
     func emptyStream() async {
         await withDependencies {
@@ -49,6 +81,8 @@ struct PlaybackUseCaseTests {
 
 private struct MockNowPlayingRepository: NowPlayingRepository {
     let infos: [NowPlaying?]
+
+    func fetch() async -> NowPlaying? { infos.first ?? nil }
 
     func stream() -> AsyncStream<NowPlaying?> {
         AsyncStream { continuation in
