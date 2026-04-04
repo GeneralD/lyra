@@ -1,8 +1,9 @@
 import ArgumentParser
+import AsyncParsableCommand
 import Dependencies
 import Domain
 
-struct HealthcheckCommand: AsyncParsableCommand {
+struct HealthcheckCommand: AsyncRunnable {
     static let configuration = CommandConfiguration(
         commandName: "healthcheck",
         abstract: "Check connectivity to external services"

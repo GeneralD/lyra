@@ -11,7 +11,7 @@ struct DaemonCommand: ParsableCommand {
     )
 
     func run() {
-        DispatchQueue.main.sync {
+        MainActor.assumeIsolated {
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
             let delegate = AppDelegate()

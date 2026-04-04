@@ -1,9 +1,10 @@
 import ArgumentParser
+import AsyncParsableCommand
 import Dependencies
 import Domain
 import Foundation
 
-struct TrackCommand: AsyncParsableCommand {
+struct TrackCommand: AsyncRunnable {
     static let configuration = CommandConfiguration(
         commandName: "track",
         abstract: "Show currently playing track info as JSON"

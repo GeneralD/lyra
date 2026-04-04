@@ -9,7 +9,7 @@ private let appVersion: String = {
 }()
 
 @main
-public struct RootCommand: AsyncParsableCommand {
+public struct RootCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "lyra",
         abstract: "Desktop lyrics overlay, video wallpaper, and more",

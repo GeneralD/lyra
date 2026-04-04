@@ -66,9 +66,8 @@ extension WallpaperPresenter {
         if let seekEnd {
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
             endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                guard time >= seekEnd else { return }
                 Task { @MainActor in
-                    guard let self, !self.isSeeking else { return }
+                    guard let self, !self.isSeeking, time >= seekEnd else { return }
                     self.isSeeking = true
                     player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                         Task { @MainActor in self?.isSeeking = false }
