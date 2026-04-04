@@ -49,11 +49,12 @@ public final class ProcessLock: Sendable {
 
     /// Check whether another process currently holds the lock.
     /// Short-circuits to `false` when this instance already owns the lock.
+    /// Returns `true` on permission errors (fail-safe).
     public var isLocked: Bool {
         if state.withLock({ $0.fileDescriptor != nil }) { return false }
 
         let fd = open(lockURL.path, O_RDONLY)
-        guard fd >= 0 else { return false }
+        guard fd >= 0 else { return errno != ENOENT }
         defer { close(fd) }
 
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { return true }
@@ -61,11 +62,20 @@ public final class ProcessLock: Sendable {
         return false
     }
 
-    /// Clear the PID file without removing it, preserving the inode for flock.
+    /// Clear the PID file content, preserving the inode for flock.
+    /// Only truncates if this instance holds the lock or no other process does.
     public func cleanup() {
+        if let fd = state.withLock({ $0.fileDescriptor }) {
+            ftruncate(fd, 0)
+            return
+        }
+
         let fd = open(lockURL.path, O_WRONLY)
         guard fd >= 0 else { return }
         defer { close(fd) }
+
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { return }
+        defer { flock(fd, LOCK_UN) }
         ftruncate(fd, 0)
     }
 }

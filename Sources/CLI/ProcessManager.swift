@@ -32,9 +32,9 @@ public enum ProcessManager {
 
         // Wait for flock to be released (kernel cleanup after process death)
         for _ in 0..<20 {
-            guard ProcessLock.shared.isLocked else { break }
+            guard ProcessLock.shared.isLocked else { return true }
             usleep(100_000)
         }
-        return true
+        return !ProcessLock.shared.isLocked
     }
 }
