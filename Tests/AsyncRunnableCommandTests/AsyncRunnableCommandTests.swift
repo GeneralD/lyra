@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 import Testing
 
-@testable import AsyncParsableCommand
+@testable import AsyncRunnableCommand
 
 /// Shared actor for observing side effects from async commands.
 private actor Witness {

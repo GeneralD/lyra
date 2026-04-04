@@ -1,5 +1,5 @@
 import ArgumentParser
-import AsyncParsableCommand
+import AsyncRunnableCommand
 import Dependencies
 import Domain
 

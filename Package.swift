@@ -22,7 +22,7 @@ let package = Package(
             name: "CLI",
             dependencies: [
                 "App",
-                "AsyncParsableCommand",
+                "AsyncRunnableCommand",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
@@ -32,9 +32,9 @@ let package = Package(
             ]
         ),
 
-        // ── AsyncParsableCommand ──
+        // ── AsyncRunnableCommand ──
         .target(
-            name: "AsyncParsableCommand",
+            name: "AsyncRunnableCommand",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
@@ -297,9 +297,9 @@ let package = Package(
         ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
-            name: "AsyncParsableCommandTests",
+            name: "AsyncRunnableCommandTests",
             dependencies: [
-                "AsyncParsableCommand",
+                "AsyncRunnableCommand",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
