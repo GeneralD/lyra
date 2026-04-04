@@ -1,7 +1,11 @@
 import Foundation
 import Testing
 
-@Suite("ProcessLock E2E", .serialized)
+@Suite(
+    "ProcessLock E2E",
+    .serialized,
+    .enabled(if: ProcessInfo.processInfo.environment["CI"] == nil, "Requires GUI environment")
+)
 struct ProcessLockTests {
     private let lockPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".cache/lyra/lyra.pid").path
