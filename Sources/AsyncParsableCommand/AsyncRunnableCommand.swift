@@ -21,11 +21,11 @@ import Foundation
 /// `DispatchSemaphore`, running the async work on a cooperative thread pool thread
 /// while the calling thread waits. This gives subcommands the same ergonomics as
 /// `AsyncParsableCommand` without affecting the main thread's run loop.
-public protocol AsyncRunnable: ParsableCommand {
+public protocol AsyncRunnableCommand: ParsableCommand {
     mutating func run() async throws
 }
 
-extension AsyncRunnable {
+extension AsyncRunnableCommand {
     public mutating func run() throws {
         let command = UnsafeMutableTransferBox(self)
         let result = UnsafeMutableTransferBox(Result<Void, any Error>.success(()))

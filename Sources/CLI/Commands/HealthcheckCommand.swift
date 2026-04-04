@@ -3,7 +3,7 @@ import AsyncParsableCommand
 import Dependencies
 import Domain
 
-struct HealthcheckCommand: AsyncRunnable {
+struct HealthcheckCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(
         commandName: "healthcheck",
         abstract: "Check connectivity to external services"

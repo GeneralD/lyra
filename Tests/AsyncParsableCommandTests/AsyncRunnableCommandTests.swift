@@ -20,8 +20,8 @@ private enum Witnesses {
     nonisolated(unsafe) static var current = Witness()
 }
 
-@Suite("AsyncRunnable", .serialized)
-struct AsyncRunnableSpec {
+@Suite("AsyncRunnableCommand", .serialized)
+struct AsyncRunnableCommandSpec {
     init() { Witnesses.current = Witness() }
 
     // MARK: - Normal Behavior
@@ -104,13 +104,13 @@ struct AsyncRunnableSpec {
 // MARK: - Helpers
 
 /// Explicitly call the sync `run() throws` (the bridging default implementation).
-private func runSync<C: AsyncRunnable>(_ command: inout C) throws {
+private func runSync<C: AsyncRunnableCommand>(_ command: inout C) throws {
     try command.run() as Void
 }
 
 // MARK: - Test Commands
 
-private struct SucceedingCommand: AsyncRunnable {
+private struct SucceedingCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "succeed")
 
     mutating func run() async throws {
@@ -118,7 +118,7 @@ private struct SucceedingCommand: AsyncRunnable {
     }
 }
 
-private struct ValueCommand: AsyncRunnable {
+private struct ValueCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "value")
 
     mutating func run() async throws {
@@ -127,7 +127,7 @@ private struct ValueCommand: AsyncRunnable {
     }
 }
 
-private struct FailingCommand: AsyncRunnable {
+private struct FailingCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "fail")
 
     mutating func run() async throws {
@@ -135,7 +135,7 @@ private struct FailingCommand: AsyncRunnable {
     }
 }
 
-private struct CustomErrorCommand: AsyncRunnable {
+private struct CustomErrorCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "custom-error")
     enum SomeError: Error { case oops }
 
@@ -144,7 +144,7 @@ private struct CustomErrorCommand: AsyncRunnable {
     }
 }
 
-private struct SleepingCommand: AsyncRunnable {
+private struct SleepingCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "sleep")
 
     mutating func run() async throws {
@@ -153,7 +153,7 @@ private struct SleepingCommand: AsyncRunnable {
     }
 }
 
-private struct ConcurrentCommand: AsyncRunnable {
+private struct ConcurrentCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "concurrent")
 
     mutating func run() async throws {
@@ -165,7 +165,7 @@ private struct ConcurrentCommand: AsyncRunnable {
     }
 }
 
-private struct ThreadCheckCommand: AsyncRunnable {
+private struct ThreadCheckCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(commandName: "thread")
 
     mutating func run() async throws {

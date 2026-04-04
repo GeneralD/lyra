@@ -4,7 +4,7 @@ import Dependencies
 import Domain
 import Foundation
 
-struct TrackCommand: AsyncRunnable {
+struct TrackCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(
         commandName: "track",
         abstract: "Show currently playing track info as JSON"
