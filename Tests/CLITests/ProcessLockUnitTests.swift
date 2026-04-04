@@ -3,110 +3,210 @@ import Testing
 
 @testable import CLI
 
-@Suite("ProcessLock unit", .serialized)
-struct ProcessLockUnitTests {
+@Suite("ProcessLock", .serialized)
+struct ProcessLockSpec {
     private let tempDir = FileManager.default.temporaryDirectory
         .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)")
-    private let lockFileName = "lyra.pid"
 
-    private var lockPath: String { tempDir.appendingPathComponent(lockFileName).path }
+    private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
 
-    // MARK: - acquire
+    // MARK: - Normal Behavior
 
-    @Test("acquire succeeds and writes PID file")
-    func acquireWritesPID() throws {
-        let lock = ProcessLock(directory: tempDir)
-        defer { cleanupDir() }
+    @Suite("acquire")
+    struct Acquire {
+        private let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/acquire")
 
-        #expect(lock.acquire())
-        let content = try String(contentsOfFile: lockPath, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(content == "\(ProcessInfo.processInfo.processIdentifier)")
+        private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
+
+        @Test("writes holder's PID to file")
+        func writesPID() throws {
+            let lock = ProcessLock(directory: tempDir)
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            #expect(lock.acquire())
+            let content = try String(contentsOfFile: lockPath, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(content == "\(ProcessInfo.processInfo.processIdentifier)")
+        }
+
+        @Test("is idempotent — second call returns true without side effects")
+        func idempotent() {
+            let lock = ProcessLock(directory: tempDir)
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            #expect(lock.acquire())
+            #expect(lock.acquire())
+        }
     }
 
-    @Test("acquire is idempotent — second call returns true")
-    func acquireIdempotent() {
-        let lock = ProcessLock(directory: tempDir)
-        defer { cleanupDir() }
+    // MARK: - Cross-Process Mutual Exclusion
 
-        #expect(lock.acquire())
-        #expect(lock.acquire())
+    @Suite("mutual exclusion", .serialized)
+    struct MutualExclusion {
+        private let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/mutex")
+
+        private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
+
+        @Test("acquire fails when another process holds the lock")
+        func acquireBlocked() throws {
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+            let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            defer { FlockHelper.terminate(holder) }
+            try FlockHelper.waitForLockFile(atPath: lockPath)
+
+            let lock = ProcessLock(directory: tempDir)
+            #expect(!lock.acquire())
+        }
+
+        @Test("isLocked returns true when another process holds the lock")
+        func isLockedTrue() throws {
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+            let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            defer { FlockHelper.terminate(holder) }
+            try FlockHelper.waitForLockFile(atPath: lockPath)
+
+            let lock = ProcessLock(directory: tempDir)
+            #expect(lock.isLocked)
+        }
+
+        @Test("isLocked returns false when no lock file exists")
+        func isLockedNoFile() {
+            let lock = ProcessLock(directory: tempDir)
+            #expect(!lock.isLocked)
+        }
     }
 
-    @Test("acquire fails when another process holds flock")
-    func acquireFailsWhenHeld() throws {
-        defer { cleanupDir() }
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    // MARK: - Lock Release on Process Death
 
-        let holder = try launchFlockHolder()
-        defer { terminate(holder) }
-        try waitUntil { FileManager.default.fileExists(atPath: lockPath) }
+    @Suite("process death releases lock", .serialized)
+    struct ProcessDeath {
+        private let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/death")
 
-        let lock = ProcessLock(directory: tempDir)
-        #expect(!lock.acquire())
+        private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
+
+        @Test("isLocked returns false immediately after holder is SIGKILL'd")
+        func isLockedAfterKill() throws {
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+            let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            try FlockHelper.waitForLockFile(atPath: lockPath)
+
+            kill(holder.processIdentifier, SIGKILL)
+            holder.waitUntilExit()
+
+            let lock = ProcessLock(directory: tempDir)
+            #expect(!lock.isLocked)
+        }
+
+        @Test("acquire succeeds immediately after holder is SIGKILL'd")
+        func acquireAfterKill() throws {
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+            let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            try FlockHelper.waitForLockFile(atPath: lockPath)
+
+            kill(holder.processIdentifier, SIGKILL)
+            holder.waitUntilExit()
+
+            let lock = ProcessLock(directory: tempDir)
+            #expect(lock.acquire())
+        }
     }
 
-    // MARK: - isLocked
+    // MARK: - Child Process Isolation (O_CLOEXEC)
 
-    @Test("isLocked returns false when no lock file exists")
-    func isLockedNoFile() {
-        let lock = ProcessLock(directory: tempDir)
-        #expect(!lock.isLocked)
+    @Suite("child process isolation", .serialized)
+    struct ChildProcessIsolation {
+        private let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/child")
+
+        private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
+
+        @Test("killing holder releases lock even when its child process is still alive")
+        func childDoesNotInheritLock() throws {
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+            let holder = try FlockHelper.launchHolderWithChild(lockPath: lockPath)
+            try FlockHelper.waitForLockFile(atPath: lockPath)
+
+            // Kill only the parent — child stays alive
+            kill(holder.processIdentifier, SIGKILL)
+            holder.waitUntilExit()
+
+            let lock = ProcessLock(directory: tempDir)
+            #expect(lock.acquire(), "child must not inherit flock fd")
+        }
     }
 
-    @Test("isLocked returns true when another process holds flock")
-    func isLockedWhenHeld() throws {
-        defer { cleanupDir() }
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    // MARK: - Cleanup
 
-        let holder = try launchFlockHolder()
-        defer { terminate(holder) }
-        try waitUntil { FileManager.default.fileExists(atPath: lockPath) }
+    @Suite("cleanup", .serialized)
+    struct Cleanup {
+        private let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/cleanup")
 
-        let lock = ProcessLock(directory: tempDir)
-        #expect(lock.isLocked)
-    }
+        private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
 
-    @Test("isLocked returns false after holder exits")
-    func isLockedReleasedOnExit() throws {
-        defer { cleanupDir() }
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        @Test("truncates PID file content but preserves the file")
+        func truncatesFile() throws {
+            let lock = ProcessLock(directory: tempDir)
+            defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        let holder = try launchFlockHolder()
-        try waitUntil { FileManager.default.fileExists(atPath: lockPath) }
-        terminate(holder)
+            #expect(lock.acquire())
+            lock.cleanup()
 
-        let lock = ProcessLock(directory: tempDir)
-        #expect(!lock.isLocked)
-    }
+            #expect(FileManager.default.fileExists(atPath: lockPath))
+            let content = try String(contentsOfFile: lockPath, encoding: .utf8)
+            #expect(content.isEmpty)
+        }
 
-    // MARK: - cleanup
+        @Test("does not crash when lock file does not exist")
+        func cleanupMissingFile() {
+            let lock = ProcessLock(directory: tempDir)
+            lock.cleanup()  // must not throw or crash
+        }
 
-    @Test("cleanup truncates PID file but preserves the file")
-    func cleanupTruncates() throws {
-        let lock = ProcessLock(directory: tempDir)
-        defer { cleanupDir() }
+        @Test("another process can acquire on same inode after holder exits and cleanup")
+        func reacquireAfterCleanup() throws {
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
-        #expect(lock.acquire())
-        lock.cleanup()
+            // Subprocess acquires, writes PID, then exits (releasing flock)
+            let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            try FlockHelper.waitForLockFile(atPath: lockPath)
+            FlockHelper.terminate(holder)
 
-        #expect(FileManager.default.fileExists(atPath: lockPath))
-        let content = try String(contentsOfFile: lockPath, encoding: .utf8)
-        #expect(content.isEmpty)
+            // Cleanup truncates file (preserving inode)
+            let cleaner = ProcessLock(directory: tempDir)
+            cleaner.cleanup()
+
+            // New instance can acquire on the same inode
+            let lock = ProcessLock(directory: tempDir)
+            #expect(lock.acquire())
+        }
     }
 }
 
-// MARK: - Helpers
+// MARK: - Test Helpers
 
-extension ProcessLockUnitTests {
-    /// Launch a subprocess that holds an exclusive flock on the test PID file.
-    private func launchFlockHolder() throws -> Process {
+enum FlockHelper {
+    /// Launch a subprocess that holds an exclusive flock on the given path.
+    static func launchHolder(lockPath: String) throws -> Process {
         let script = """
             use Fcntl qw(:flock);
             open(my $fh, ">", $ARGV[0]) or die;
             flock($fh, LOCK_EX) or die;
-            print $fh "$$\\n";
-            $| = 1;
+            syswrite($fh, "$$\\n");
             sleep(600);
             """
         let process = Process()
@@ -118,24 +218,49 @@ extension ProcessLockUnitTests {
         return process
     }
 
-    private func terminate(_ process: Process) {
+    /// Launch a subprocess that holds flock AND spawns a long-lived child via fork+exec.
+    /// Simulates the daemon spawning helper processes.
+    static func launchHolderWithChild(lockPath: String) throws -> Process {
+        let script = """
+            use Fcntl qw(:flock);
+            open(my $fh, ">", $ARGV[0]) or die;
+            flock($fh, LOCK_EX) or die;
+            syswrite($fh, "$$\\n");
+            my $pid = fork();
+            if ($pid == 0) {
+                exec("sleep", "600");
+            }
+            sleep(600);
+            """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = ["-e", script, lockPath]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        return process
+    }
+
+    static func terminate(_ process: Process) {
         guard process.isRunning else { return }
         process.terminate()
         process.waitUntilExit()
     }
 
-    private func cleanupDir() {
-        try? FileManager.default.removeItem(at: tempDir)
-    }
-
-    private func waitUntil(timeout: Double = 30, condition: () -> Bool) throws {
+    /// Wait until the lock file contains a PID (written after flock is acquired).
+    static func waitForLockFile(atPath path: String, timeout: Double = 30) throws {
         let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
+        while true {
+            if let content = try? String(contentsOfFile: path, encoding: .utf8),
+                !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+                return
+            }
             guard Date() < deadline else {
                 struct Timeout: Error {}
                 throw Timeout()
             }
-            usleep(100_000)
+            usleep(50_000)
         }
     }
 }
