@@ -13,7 +13,7 @@ struct HealthcheckCommand: AsyncRunnableCommand {
         @Dependency(\.healthHandler) var handler
         @Dependency(\.standardOutput) var output
         let result = await handler.check()
-        output.output(result)
+        output.write(result)
         guard case .success = result else { throw ExitCode.failure }
     }
 }

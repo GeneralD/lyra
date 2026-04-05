@@ -13,13 +13,13 @@ public protocol StandardOutput: Sendable {
 
     // MARK: - Typed output (Result)
 
-    func output(_ result: StartResult)
-    func output(_ result: StopResult)
-    func output(_ result: ServiceInstallResult)
-    func output(_ result: HealthCheckReport)
-    func output(_ result: ServiceUninstallResult)
-    func output(_ result: ConfigWriteResult)
-    func output(_ result: ConfigPathResult)
+    func write(_ result: StartResult)
+    func write(_ result: StopResult)
+    func write(_ result: ServiceInstallResult)
+    func write(_ result: HealthCheckReport)
+    func write(_ result: ServiceUninstallResult)
+    func write(_ result: ConfigWriteResult)
+    func write(_ result: ConfigPathResult)
 }
 
 public enum StandardOutputKey: TestDependencyKey {
@@ -37,11 +37,11 @@ private struct UnimplementedStandardOutput: StandardOutput {
     func write(_ message: String) { fatalError("StandardOutput.write not implemented") }
     func writeError(_ message: String) { fatalError("StandardOutput.writeError not implemented") }
     func writeJson(_ value: some Encodable & Sendable) { fatalError("StandardOutput.writeJson not implemented") }
-    func output(_ result: StartResult) { fatalError("StandardOutput.output not implemented") }
-    func output(_ result: StopResult) { fatalError("StandardOutput.output not implemented") }
-    func output(_ result: ServiceInstallResult) { fatalError("StandardOutput.output not implemented") }
-    func output(_ result: ServiceUninstallResult) { fatalError("StandardOutput.output not implemented") }
-    func output(_ result: ConfigWriteResult) { fatalError("StandardOutput.output not implemented") }
-    func output(_ result: ConfigPathResult) { fatalError("StandardOutput.output not implemented") }
-    func output(_ result: HealthCheckReport) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: StartResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: StopResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: ServiceInstallResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: ServiceUninstallResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: ConfigWriteResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: ConfigPathResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: HealthCheckReport) { fatalError("StandardOutput.output not implemented") }
 }

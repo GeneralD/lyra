@@ -12,7 +12,7 @@ struct RestartCommand: ParsableCommand {
         @Dependency(\.processHandler) var handler
         @Dependency(\.standardOutput) var output
         let result = handler.restart()
-        output.output(result)
+        output.write(result)
         guard case .success = result else { throw ExitCode.failure }
     }
 }

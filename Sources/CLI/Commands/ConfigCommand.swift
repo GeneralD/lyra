@@ -56,7 +56,7 @@ struct ConfigInitCommand: ParsableCommand {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
         let result = handler.writeTemplate(format: format, force: force)
-        output.output(result)
+        output.write(result)
         guard case .success = result else { throw ExitCode.failure }
     }
 }
@@ -74,7 +74,7 @@ struct ConfigEditCommand: ParsableCommand {
         @Dependency(\.standardOutput) var output
         let result = handler.configPath()
         guard case .success(.found(let path)) = result else {
-            output.output(result)
+            output.write(result)
             throw ExitCode.failure
         }
 
@@ -104,7 +104,7 @@ struct ConfigOpenCommand: ParsableCommand {
         @Dependency(\.standardOutput) var output
         let result = handler.configPath()
         guard case .success(.found(let path)) = result else {
-            output.output(result)
+            output.write(result)
             throw ExitCode.failure
         }
 
