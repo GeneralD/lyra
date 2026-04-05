@@ -17,9 +17,12 @@ struct ServiceCommand: ParsableCommand {
         func run() throws {
             @Dependency(\.serviceHandler) var handler
             @Dependency(\.standardOutput) var output
-            let result = handler.install()
-            output.write(result.message)
-            guard result.succeeded else { throw ExitCode.failure }
+            switch handler.install() {
+            case .success(let s): output.output(s)
+            case .failure(let e):
+                output.output(e)
+                throw ExitCode.failure
+            }
         }
     }
 
@@ -31,9 +34,12 @@ struct ServiceCommand: ParsableCommand {
         func run() throws {
             @Dependency(\.serviceHandler) var handler
             @Dependency(\.standardOutput) var output
-            let result = handler.uninstall()
-            output.write(result.message)
-            guard result.succeeded else { throw ExitCode.failure }
+            switch handler.uninstall() {
+            case .success(let s): output.output(s)
+            case .failure(let e):
+                output.output(e)
+                throw ExitCode.failure
+            }
         }
     }
 }

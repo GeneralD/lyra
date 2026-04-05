@@ -12,7 +12,7 @@ public struct ProcessHandlerImpl: ProcessHandler {
 
     public func start() -> StartResult {
         guard !lock.isLocked, processManager.findOverlayPIDs().isEmpty else {
-            return .alreadyRunning
+            return .failure(.alreadyRunning)
         }
 
         let executablePath = Bundle.main.executablePath ?? CommandLine.arguments[0]
@@ -22,20 +22,20 @@ public struct ProcessHandlerImpl: ProcessHandler {
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         guard (try? task.run()) != nil else {
-            return .spawnFailed(detail: "Failed to launch daemon process")
+            return .failure(.spawnFailed(detail: "Failed to launch daemon process"))
         }
 
         usleep(500_000)
-        guard task.isRunning else { return .daemonExitedImmediately }
-        return .started(pid: task.processIdentifier)
+        guard task.isRunning else { return .failure(.daemonExitedImmediately) }
+        return .success(.started(pid: task.processIdentifier))
     }
 
     public func stop() -> StopResult {
         let pids = processManager.findOverlayPIDs()
         guard !pids.isEmpty else {
-            guard lock.isLocked else { return .notRunning }
+            guard lock.isLocked else { return .success(.notRunning) }
             lock.cleanup()
-            return .notRunning
+            return .success(.notRunning)
         }
 
         for pid in pids { kill(pid, SIGTERM) }
@@ -48,15 +48,14 @@ public struct ProcessHandlerImpl: ProcessHandler {
         lock.cleanup()
 
         for _ in 0..<20 {
-            guard lock.isLocked else { return .stopped }
+            guard lock.isLocked else { return .success(.stopped) }
             usleep(100_000)
         }
-        return lock.isLocked ? .lockReleaseTimedOut : .stopped
+        return lock.isLocked ? .failure(.lockReleaseTimedOut) : .success(.stopped)
     }
 
     public func restart() -> StartResult {
-        let stopResult = stop()
-        guard stopResult != .lockReleaseTimedOut else { return .alreadyRunning }
+        guard case .success = stop() else { return .failure(.alreadyRunning) }
         return start()
     }
 

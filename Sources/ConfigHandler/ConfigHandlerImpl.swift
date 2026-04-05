@@ -12,20 +12,20 @@ public struct ConfigHandlerImpl: ConfigHandler {
     public func writeTemplate(format: ConfigFormat, force: Bool) -> ConfigWriteResult {
         @Dependency(\.configUseCase) var configUseCase
         guard let path = try? configUseCase.writeTemplate(format: format, force: force) else {
-            return .failed(detail: "Failed to write config file")
+            return .failure(.failed(detail: "Failed to write config file"))
         }
-        return .created(path: path)
+        return .success(.created(path: path))
     }
 
     public func configPath() -> ConfigPathResult {
         @Dependency(\.configDataSource) var dataSource
 
         if let existing = dataSource.existingConfigPath() {
-            return .found(path: existing)
+            return .success(.found(path: existing))
         }
         switch writeTemplate(format: .toml, force: false) {
-        case .created(let path): return .found(path: path)
-        case .failed(let detail): return .failed(detail: detail)
+        case .success(.created(let path)): return .success(.found(path: path))
+        case .failure(let error): return .failure(error)
         }
     }
 }

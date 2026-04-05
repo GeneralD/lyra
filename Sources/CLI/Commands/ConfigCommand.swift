@@ -55,9 +55,12 @@ struct ConfigInitCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = handler.writeTemplate(format: format, force: force)
-        output.write(result.message)
-        guard result.succeeded else { throw ExitCode.failure }
+        switch handler.writeTemplate(format: format, force: force) {
+        case .success(let s): output.output(s)
+        case .failure(let e):
+            output.output(e)
+            throw ExitCode.failure
+        }
     }
 }
 
@@ -72,9 +75,8 @@ struct ConfigEditCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = handler.configPath()
-        guard case .found(let path) = result else {
-            output.write(result.message)
+        guard case .success(.found(let path)) = handler.configPath() else {
+            output.output(ConfigFailure.failed(detail: "Could not resolve config path"))
             throw ExitCode.failure
         }
 
@@ -102,9 +104,8 @@ struct ConfigOpenCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = handler.configPath()
-        guard case .found(let path) = result else {
-            output.write(result.message)
+        guard case .success(.found(let path)) = handler.configPath() else {
+            output.output(ConfigFailure.failed(detail: "Could not resolve config path"))
             throw ExitCode.failure
         }
 

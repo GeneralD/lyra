@@ -23,7 +23,7 @@ extension ServiceHandlerImpl {
     }
 
     public func install() -> ServiceInstallResult {
-        guard homebrewPlistFile == nil else { return .managedByHomebrew }
+        guard homebrewPlistFile == nil else { return .failure(.managedByHomebrew) }
 
         let plistDict: [String: Any] = [
             "Label": label,
@@ -34,7 +34,7 @@ extension ServiceHandlerImpl {
             let plistData = try? PropertyListSerialization.data(
                 fromPropertyList: plistDict, format: .xml, options: 0
             )
-        else { return .failed(detail: "Failed to serialize plist") }
+        else { return .failure(.failed(detail: "Failed to serialize plist")) }
 
         @Dependency(\.processHandler) var processHandler
         _ = processHandler.stop()
@@ -47,16 +47,16 @@ extension ServiceHandlerImpl {
         guard let folder = try? launchAgentsFolder,
             let file = try? folder.createFile(named: "\(label).plist"),
             (try? file.write(plistData)) != nil
-        else { return .failed(detail: "Failed to write plist file") }
+        else { return .failure(.failed(detail: "Failed to write plist file")) }
 
         let status = runLaunchctl(["bootstrap", target, file.path])
-        guard status == 0 else { return .bootstrapFailed(status: status) }
-        return .installed(path: file.path)
+        guard status == 0 else { return .failure(.bootstrapFailed(status: status)) }
+        return .success(.installed(path: file.path))
     }
 
     public func uninstall() -> ServiceUninstallResult {
         guard let file = plistFile else {
-            return homebrewPlistFile != nil ? .managedByHomebrew : .notInstalled
+            return homebrewPlistFile != nil ? .failure(.managedByHomebrew) : .failure(.notInstalled)
         }
         let uid = getuid()
         runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
@@ -65,9 +65,9 @@ extension ServiceHandlerImpl {
         _ = processHandler.stop()
 
         guard (try? file.delete()) != nil else {
-            return .failed(detail: "Failed to delete plist file")
+            return .failure(.failed(detail: "Failed to delete plist file"))
         }
-        return .uninstalled
+        return .success(.uninstalled)
     }
 }
 

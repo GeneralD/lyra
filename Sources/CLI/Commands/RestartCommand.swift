@@ -11,8 +11,11 @@ struct RestartCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.processHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = handler.restart()
-        output.write(result.message)
-        guard result.succeeded else { throw ExitCode.failure }
+        switch handler.restart() {
+        case .success(let s): output.output(s)
+        case .failure(let e):
+            output.output(e)
+            throw ExitCode.failure
+        }
     }
 }
