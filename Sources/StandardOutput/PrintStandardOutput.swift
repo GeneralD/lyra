@@ -1,13 +1,14 @@
 import Domain
 import Foundation
 
-struct PrintStandardOutput: StandardOutput {
-    func write(_ message: String) { print(message) }
-    func writeError(_ message: String) { fputs(message + "\n", stderr) }
+public struct PrintStandardOutput: StandardOutput {
+    public init() {}
+    public func write(_ message: String) { print(message) }
+    public func writeError(_ message: String) { fputs(message + "\n", stderr) }
 
     // MARK: - Process
 
-    func output(_ result: StartResult) {
+    public func output(_ result: StartResult) {
         switch result {
         case .success(.started(let pid)): write("Overlay started (PID \(pid))")
         case .failure(.alreadyRunning): writeError("Already running")
@@ -16,7 +17,7 @@ struct PrintStandardOutput: StandardOutput {
         }
     }
 
-    func output(_ result: StopResult) {
+    public func output(_ result: StopResult) {
         switch result {
         case .success(.stopped): write("Stopped")
         case .success(.notRunning): write("Not running")
@@ -26,7 +27,7 @@ struct PrintStandardOutput: StandardOutput {
 
     // MARK: - Service
 
-    func output(_ result: ServiceInstallResult) {
+    public func output(_ result: ServiceInstallResult) {
         switch result {
         case .success(.installed(let path)): write("Installed and started: \(path)")
         case .failure(.managedByHomebrew):
@@ -36,7 +37,7 @@ struct PrintStandardOutput: StandardOutput {
         }
     }
 
-    func output(_ result: ServiceUninstallResult) {
+    public func output(_ result: ServiceUninstallResult) {
         switch result {
         case .success(.uninstalled): write("Uninstalled")
         case .failure(.managedByHomebrew):
@@ -48,14 +49,14 @@ struct PrintStandardOutput: StandardOutput {
 
     // MARK: - Config
 
-    func output(_ result: ConfigWriteResult) {
+    public func output(_ result: ConfigWriteResult) {
         switch result {
         case .success(.created(let path)): write("Config file created at \(path)")
         case .failure(.failed(let detail)): writeError("Config error: \(detail)")
         }
     }
 
-    func output(_ result: ConfigPathResult) {
+    public func output(_ result: ConfigPathResult) {
         switch result {
         case .success(.found(let path)): write(path)
         case .failure(.failed(let detail)): writeError("Config error: \(detail)")

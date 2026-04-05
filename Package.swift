@@ -64,6 +64,14 @@ let package = Package(
             ]
         ),
 
+        // ── StandardOutput ──
+        .target(
+            name: "StandardOutput",
+            dependencies: [
+                "Domain",
+            ]
+        ),
+
         // ── TrackHandler ──
         .target(
             name: "TrackHandler",
@@ -152,6 +160,7 @@ let package = Package(
                 "HealthHandler",
                 "TrackHandler",
                 "ConfigHandler",
+                "StandardOutput",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
