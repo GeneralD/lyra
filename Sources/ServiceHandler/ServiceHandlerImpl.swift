@@ -1,4 +1,3 @@
-import Dependencies
 import Domain
 import Files
 import Foundation
@@ -36,9 +35,6 @@ extension ServiceHandlerImpl {
             )
         else { return .failure(.failed(detail: "Failed to serialize plist")) }
 
-        @Dependency(\.processHandler) var processHandler
-        _ = processHandler.stop()
-
         let uid = getuid()
         let target = "gui/\(uid)"
 
@@ -60,9 +56,6 @@ extension ServiceHandlerImpl {
         }
         let uid = getuid()
         runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
-
-        @Dependency(\.processHandler) var processHandler
-        _ = processHandler.stop()
 
         guard (try? file.delete()) != nil else {
             return .failure(.failed(detail: "Failed to delete plist file"))
