@@ -54,6 +54,10 @@ graph TD
     end
 
     subgraph Implementations
+        subgraph Handler
+            ProcessHandler[ProcessHandler]
+        end
+
         subgraph Interactor
             TrackInteractor[TrackInteractor]
             ScreenInteractor[ScreenInteractor]
@@ -112,6 +116,9 @@ graph TD
     WallpaperUseCase -.-> WallpaperRepository
     WallpaperRepository -.-> WallpaperDataSource
 
+    ProcessHandler -.-> Domain
+
+    style ProcessHandler fill:#7b5,stroke:#333,color:#fff
     style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
     style CLI fill:#555,stroke:#333,color:#fff
     style App fill:#6a5,stroke:#333,color:#fff
@@ -169,7 +176,8 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | Router | `App` | `AppRouter` (pure wireframe), `AppDelegate` |
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
-| Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor` | Combine-based reactive pipelines over UseCases |
+| Handler | `ProcessHandler` | CLI command logic — process lifecycle (start/stop/restart/lock). Protocols in Domain, injected via `@Dependency` |
+| Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Entity | `Entity` | Pure data types, zero external dependencies |
 | Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
