@@ -1,3 +1,4 @@
+import ConfigHandler
 import Dependencies
 import Domain
 import HealthHandler
@@ -35,4 +36,8 @@ extension HealthHandlerKey: DependencyKey {
 
 extension TrackHandlerKey: DependencyKey {
     public static let liveValue: any TrackHandler = TrackHandlerImpl()
+}
+
+extension ConfigHandlerKey: DependencyKey {
+    public static let liveValue: any ConfigHandler = ConfigHandlerImpl()
 }
