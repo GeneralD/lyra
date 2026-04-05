@@ -10,7 +10,7 @@ extension ProcessHandlerKey: DependencyKey {
 }
 
 extension ProcessLockKey: DependencyKey {
-    public static let liveValue: any ProcessLockProtocol = ProcessLock.shared
+    public static let liveValue: any ProcessLockable = ProcessLock.shared
 }
 
 extension ProcessManagingKey: DependencyKey {

@@ -5,7 +5,7 @@ import os
 /// Manages an exclusive `flock` on a PID file.
 /// The lock lives as long as this instance (or the process) is alive.
 /// On deinit, the file descriptor is closed and the flock is released.
-public final class ProcessLock: ProcessLockProtocol {
+public final class ProcessLock: ProcessLockable {
     public static let shared = ProcessLock(
         directory: FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cache/lyra")

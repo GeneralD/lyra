@@ -2,10 +2,10 @@ import Domain
 import Foundation
 
 public struct ProcessHandlerImpl: ProcessHandler {
-    private let lock: ProcessLockProtocol
+    private let lock: ProcessLockable
     private let processManager: ProcessManaging
 
-    public init(lock: ProcessLockProtocol, processManager: ProcessManaging) {
+    public init(lock: ProcessLockable, processManager: ProcessManaging) {
         self.lock = lock
         self.processManager = processManager
     }
