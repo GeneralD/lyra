@@ -46,6 +46,15 @@ let package = Package(
             ]
         ),
 
+        // ── HealthHandler ──
+        .target(
+            name: "HealthHandler",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // ── VersionHandler ──
         .target(
             name: "VersionHandler",
@@ -122,6 +131,7 @@ let package = Package(
                 "ProcessHandler",
                 "VersionHandler",
                 "ServiceHandler",
+                "HealthHandler",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),

@@ -10,30 +10,24 @@ struct HealthcheckCommand: AsyncRunnableCommand {
     )
 
     func run() async throws {
-        @Dependency(\.healthCheckers) var checkers
+        @Dependency(\.healthHandler) var handler
+        let report = await handler.check()
 
-        var failed = 0
-        for checker in checkers {
-            let result = await checker.healthCheck()
-            printResult(name: checker.serviceName, result: result)
-            if case .fail = result.status { failed += 1 }
+        for entry in report.entries {
+            let tag: String
+            switch entry.result.status {
+            case .pass: tag = "[PASS]"
+            case .fail: tag = "[FAIL]"
+            case .skip: tag = "[SKIP]"
+            }
+            print("\(tag) \(entry.serviceName.padding(toLength: 20, withPad: ".", startingAt: 0)) \(entry.result.detail)")
         }
 
         print("")
-        guard failed == 0 else {
-            print("\(failed) check(s) failed.")
+        guard report.allPassed else {
+            print("\(report.failedCount) check(s) failed.")
             throw ExitCode.failure
         }
         print("All checks passed.")
     }
-}
-
-private func printResult(name: String, result: HealthCheckResult) {
-    let tag: String
-    switch result.status {
-    case .pass: tag = "[PASS]"
-    case .fail: tag = "[FAIL]"
-    case .skip: tag = "[SKIP]"
-    }
-    print("\(tag) \(name.padding(toLength: 20, withPad: ".", startingAt: 0)) \(result.detail)")
 }
