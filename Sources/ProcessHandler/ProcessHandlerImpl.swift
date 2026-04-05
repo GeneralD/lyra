@@ -10,7 +10,7 @@ public struct ProcessHandlerImpl: ProcessHandler {
         self.processManager = processManager
     }
 
-    public func start() throws -> StartResult {
+    public func start() -> StartResult {
         guard !lock.isLocked, processManager.findOverlayPIDs().isEmpty else {
             return .alreadyRunning
         }
@@ -21,7 +21,9 @@ public struct ProcessHandlerImpl: ProcessHandler {
         task.arguments = ["daemon"]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        try task.run()
+        guard (try? task.run()) != nil else {
+            return .spawnFailed(detail: "Failed to launch daemon process")
+        }
 
         usleep(500_000)
         guard task.isRunning else { return .daemonExitedImmediately }
@@ -31,7 +33,6 @@ public struct ProcessHandlerImpl: ProcessHandler {
     public func stop() -> StopResult {
         let pids = processManager.findOverlayPIDs()
         guard !pids.isEmpty else {
-            // No PID found, but lock may be stale — clean up
             guard lock.isLocked else { return .notRunning }
             lock.cleanup()
             return .notRunning
@@ -53,10 +54,10 @@ public struct ProcessHandlerImpl: ProcessHandler {
         return lock.isLocked ? .lockReleaseTimedOut : .stopped
     }
 
-    public func restart() throws -> StartResult {
+    public func restart() -> StartResult {
         let stopResult = stop()
         guard stopResult != .lockReleaseTimedOut else { return .alreadyRunning }
-        return try start()
+        return start()
     }
 
     public func acquireDaemonLock() -> Bool {

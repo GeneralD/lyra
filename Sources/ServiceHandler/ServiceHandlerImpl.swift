@@ -22,7 +22,7 @@ extension ServiceHandlerImpl {
         try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
     }
 
-    public func install() throws -> ServiceInstallResult {
+    public func install() -> ServiceInstallResult {
         guard homebrewPlistFile == nil else { return .managedByHomebrew }
 
         let plistDict: [String: Any] = [
@@ -30,9 +30,11 @@ extension ServiceHandlerImpl {
             "ProgramArguments": programArguments,
             "RunAtLoad": true,
         ]
-        let plistData = try PropertyListSerialization.data(
-            fromPropertyList: plistDict, format: .xml, options: 0
-        )
+        guard
+            let plistData = try? PropertyListSerialization.data(
+                fromPropertyList: plistDict, format: .xml, options: 0
+            )
+        else { return .failed(detail: "Failed to serialize plist") }
 
         @Dependency(\.processHandler) var processHandler
         _ = processHandler.stop()
@@ -42,16 +44,17 @@ extension ServiceHandlerImpl {
 
         runLaunchctl(["bootout", "\(target)/\(label)"])
 
-        let folder = try launchAgentsFolder
-        let file = try folder.createFile(named: "\(label).plist")
-        try file.write(plistData)
+        guard let folder = try? launchAgentsFolder,
+            let file = try? folder.createFile(named: "\(label).plist"),
+            (try? file.write(plistData)) != nil
+        else { return .failed(detail: "Failed to write plist file") }
 
         let status = runLaunchctl(["bootstrap", target, file.path])
         guard status == 0 else { return .bootstrapFailed(status: status) }
         return .installed(path: file.path)
     }
 
-    public func uninstall() throws -> ServiceUninstallResult {
+    public func uninstall() -> ServiceUninstallResult {
         guard let file = plistFile else {
             return homebrewPlistFile != nil ? .managedByHomebrew : .notInstalled
         }
@@ -61,7 +64,9 @@ extension ServiceHandlerImpl {
         @Dependency(\.processHandler) var processHandler
         _ = processHandler.stop()
 
-        try file.delete()
+        guard (try? file.delete()) != nil else {
+            return .failed(detail: "Failed to delete plist file")
+        }
         return .uninstalled
     }
 }

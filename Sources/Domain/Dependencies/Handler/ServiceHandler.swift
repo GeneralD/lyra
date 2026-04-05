@@ -1,8 +1,8 @@
 import Dependencies
 
 public protocol ServiceHandler: Sendable {
-    func install() throws -> ServiceInstallResult
-    func uninstall() throws -> ServiceUninstallResult
+    func install() -> ServiceInstallResult
+    func uninstall() -> ServiceUninstallResult
 }
 
 public enum ServiceHandlerKey: TestDependencyKey {
@@ -17,6 +17,6 @@ extension DependencyValues {
 }
 
 private struct UnimplementedServiceHandler: ServiceHandler {
-    func install() throws -> ServiceInstallResult { fatalError("ServiceHandler.install not implemented") }
-    func uninstall() throws -> ServiceUninstallResult { fatalError("ServiceHandler.uninstall not implemented") }
+    func install() -> ServiceInstallResult { fatalError("ServiceHandler.install not implemented") }
+    func uninstall() -> ServiceUninstallResult { fatalError("ServiceHandler.uninstall not implemented") }
 }

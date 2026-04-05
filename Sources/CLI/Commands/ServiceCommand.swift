@@ -17,15 +17,9 @@ struct ServiceCommand: ParsableCommand {
         func run() throws {
             @Dependency(\.serviceHandler) var handler
             @Dependency(\.standardOutput) var output
-            switch try handler.install() {
-            case .installed(let path):
-                output.write("Installed and started: \(path)")
-            case .managedByHomebrew:
-                output.write("Already managed by brew services. Run 'brew services stop lyra' first.")
-            case .bootstrapFailed(let status):
-                output.write("Bootstrap failed (status \(status))")
-                throw ExitCode.failure
-            }
+            let result = handler.install()
+            output.write(result.message)
+            guard result.succeeded else { throw ExitCode.failure }
         }
     }
 
@@ -37,14 +31,9 @@ struct ServiceCommand: ParsableCommand {
         func run() throws {
             @Dependency(\.serviceHandler) var handler
             @Dependency(\.standardOutput) var output
-            switch try handler.uninstall() {
-            case .uninstalled:
-                output.write("Uninstalled")
-            case .managedByHomebrew:
-                output.write("Managed by brew services. Run 'brew services stop lyra' instead.")
-            case .notInstalled:
-                output.write("Not installed")
-            }
+            let result = handler.uninstall()
+            output.write(result.message)
+            guard result.succeeded else { throw ExitCode.failure }
         }
     }
 }

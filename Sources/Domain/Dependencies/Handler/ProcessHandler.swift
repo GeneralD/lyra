@@ -1,9 +1,9 @@
 import Dependencies
 
 public protocol ProcessHandler: Sendable {
-    func start() throws -> StartResult
+    func start() -> StartResult
     func stop() -> StopResult
-    func restart() throws -> StartResult
+    func restart() -> StartResult
     func acquireDaemonLock() -> Bool
 }
 
@@ -19,8 +19,8 @@ extension DependencyValues {
 }
 
 private struct UnimplementedProcessHandler: ProcessHandler {
-    func start() throws -> StartResult { fatalError("ProcessHandler.start not implemented") }
+    func start() -> StartResult { fatalError("ProcessHandler.start not implemented") }
     func stop() -> StopResult { fatalError("ProcessHandler.stop not implemented") }
-    func restart() throws -> StartResult { fatalError("ProcessHandler.restart not implemented") }
+    func restart() -> StartResult { fatalError("ProcessHandler.restart not implemented") }
     func acquireDaemonLock() -> Bool { fatalError("ProcessHandler.acquireDaemonLock not implemented") }
 }

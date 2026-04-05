@@ -55,8 +55,9 @@ struct ConfigInitCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
-        let path = try handler.writeTemplate(format: format, force: force)
-        output.write("Config file created at \(path)")
+        let result = handler.writeTemplate(format: format, force: force)
+        output.write(result.message)
+        guard result.succeeded else { throw ExitCode.failure }
     }
 }
 
@@ -70,7 +71,12 @@ struct ConfigEditCommand: ParsableCommand {
 
     func run() throws {
         @Dependency(\.configHandler) var handler
-        let path = try handler.configPath()
+        @Dependency(\.standardOutput) var output
+        let result = handler.configPath()
+        guard case .found(let path) = result else {
+            output.write(result.message)
+            throw ExitCode.failure
+        }
 
         guard let editor = ProcessInfo.processInfo.environment["EDITOR"] else {
             throw ValidationError("$EDITOR is not set. Set it with: export EDITOR=vim")
@@ -95,7 +101,12 @@ struct ConfigOpenCommand: ParsableCommand {
 
     func run() throws {
         @Dependency(\.configHandler) var handler
-        let path = try handler.configPath()
+        @Dependency(\.standardOutput) var output
+        let result = handler.configPath()
+        guard case .found(let path) = result else {
+            output.write(result.message)
+            throw ExitCode.failure
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")

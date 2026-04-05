@@ -11,7 +11,7 @@ struct RestartCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.processHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = try handler.restart()
+        let result = handler.restart()
         output.write(result.message)
         guard result.succeeded else { throw ExitCode.failure }
     }
