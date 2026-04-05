@@ -23,6 +23,8 @@ private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
             continuation.onTermination = { _ in cancellable.cancel() }
         }
     }
+
+    func elapsedTime(for np: NowPlaying) -> TimeInterval? { np.rawElapsed }
 }
 
 /// MetadataUseCase with configurable delay to simulate slow resolution.

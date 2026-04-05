@@ -9,9 +9,8 @@ public struct TrackHandlerImpl {
 extension TrackHandlerImpl: TrackHandler {
     public func fetchInfo(query: TrackQuery) async -> NowPlayingInfo {
         @Dependency(\.playbackUseCase) var playbackUseCase
-        let playback = playbackUseCase
 
-        guard let nowPlaying = await playback.fetchNowPlaying(),
+        guard let nowPlaying = await playbackUseCase.fetchNowPlaying(),
             let rawTitle = nowPlaying.title, let rawArtist = nowPlaying.artist
         else {
             return .init()
@@ -25,7 +24,7 @@ extension TrackHandlerImpl: TrackHandler {
         guard query.lyrics else {
             return .init(
                 title: title, artist: artist,
-                duration: nowPlaying.duration, elapsedTime: nowPlaying.elapsed
+                duration: nowPlaying.duration, elapsedTime: playbackUseCase.elapsedTime(for: nowPlaying)
             )
         }
 
@@ -41,9 +40,7 @@ extension TrackHandlerImpl {
         guard resolve else { return (track.title, track.artist, []) }
 
         @Dependency(\.metadataUseCase) var metadataUseCase
-        let metadata = metadataUseCase
-
-        let candidates = await metadata.resolveCandidates(track: track)
+        let candidates = await metadataUseCase.resolveCandidates(track: track)
         let title = candidates.first?.title ?? track.title
         let artist = candidates.first?.artist ?? track.artist
         return (title, artist, candidates)
@@ -53,13 +50,13 @@ extension TrackHandlerImpl {
         nowPlaying: NowPlaying, track: Track,
         title: String, artist: String, candidates: [Track]
     ) async -> NowPlayingInfo {
+        @Dependency(\.playbackUseCase) var playbackUseCase
         @Dependency(\.lyricsUseCase) var lyricsUseCase
-        let lyrics = lyricsUseCase
 
-        let result = await lyrics.fetchLyrics(
+        let result = await lyricsUseCase.fetchLyrics(
             candidates: candidates.isEmpty ? [track] : candidates
         )
-        let timedLines = lyrics.parseLyricsContent(from: result).flatMap { c -> [LyricLine]? in
+        let timedLines = lyricsUseCase.parseLyricsContent(from: result).flatMap { c -> [LyricLine]? in
             guard case .timed(let lines) = c else { return nil }
             return lines
         }
@@ -69,11 +66,11 @@ extension TrackHandlerImpl {
             artist: result.artistName ?? artist,
             album: result.albumName,
             duration: nowPlaying.duration,
-            elapsedTime: nowPlaying.elapsed,
+            elapsedTime: playbackUseCase.elapsedTime(for: nowPlaying),
             lyrics: result.plainLyrics,
             syncedLyrics: timedLines,
             currentLyric: timedLines.flatMap { lines in
-                nowPlaying.elapsed.flatMap { t in lines.last { $0.time <= t }?.text }
+                playbackUseCase.elapsedTime(for: nowPlaying).flatMap { t in lines.last { $0.time <= t }?.text }
             }
         )
     }

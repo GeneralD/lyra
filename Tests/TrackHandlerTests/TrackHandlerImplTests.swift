@@ -165,6 +165,7 @@ private struct StubPlaybackUseCase: PlaybackUseCase {
     let nowPlaying: NowPlaying?
     func fetchNowPlaying() async -> NowPlaying? { nowPlaying }
     func observeNowPlaying() -> AsyncStream<NowPlaying?> { AsyncStream { $0.finish() } }
+    func elapsedTime(for np: NowPlaying) -> TimeInterval? { np.rawElapsed }
 }
 
 private struct StubMetadataUseCase: MetadataUseCase {

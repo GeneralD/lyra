@@ -4,6 +4,7 @@ import Foundation
 public protocol PlaybackUseCase: Sendable {
     func fetchNowPlaying() async -> NowPlaying?
     func observeNowPlaying() -> AsyncStream<NowPlaying?>
+    func elapsedTime(for nowPlaying: NowPlaying) -> TimeInterval?
 }
 
 public enum PlaybackUseCaseKey: TestDependencyKey {
@@ -20,4 +21,5 @@ extension DependencyValues {
 private struct UnimplementedPlaybackUseCase: PlaybackUseCase {
     func fetchNowPlaying() async -> NowPlaying? { nil }
     func observeNowPlaying() -> AsyncStream<NowPlaying?> { AsyncStream { $0.finish() } }
+    func elapsedTime(for nowPlaying: NowPlaying) -> TimeInterval? { nil }
 }

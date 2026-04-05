@@ -68,7 +68,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
     /// Playback position: every NowPlaying update with track info.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
-        .map { PlaybackPosition(elapsed: $0.elapsed, playbackRate: $0.playbackRate) }
+        .map { [playbackService] np in PlaybackPosition(elapsed: playbackService.elapsedTime(for: np), playbackRate: np.playbackRate) }
         .eraseToAnyPublisher()
 
     public init() {}

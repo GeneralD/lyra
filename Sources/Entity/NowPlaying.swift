@@ -30,12 +30,3 @@ public struct NowPlaying {
 
 extension NowPlaying: Sendable {}
 extension NowPlaying: Equatable {}
-
-extension NowPlaying {
-    public var elapsed: TimeInterval? {
-        rawElapsed.map { base in
-            guard let ts = timestamp else { return base }
-            return base + playbackRate * Date().timeIntervalSince(ts)
-        }
-    }
-}
