@@ -3,6 +3,7 @@ import Domain
 import HealthHandler
 import ProcessHandler
 import ServiceHandler
+import TrackHandler
 import VersionHandler
 
 extension ProcessHandlerKey: DependencyKey {
@@ -30,4 +31,8 @@ extension ServiceHandlerKey: DependencyKey {
 
 extension HealthHandlerKey: DependencyKey {
     public static let liveValue: any HealthHandler = HealthHandlerImpl()
+}
+
+extension TrackHandlerKey: DependencyKey {
+    public static let liveValue: any TrackHandler = TrackHandlerImpl()
 }

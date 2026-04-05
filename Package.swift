@@ -55,6 +55,15 @@ let package = Package(
             ]
         ),
 
+        // ── TrackHandler ──
+        .target(
+            name: "TrackHandler",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // ── VersionHandler ──
         .target(
             name: "VersionHandler",
@@ -132,6 +141,7 @@ let package = Package(
                 "VersionHandler",
                 "ServiceHandler",
                 "HealthHandler",
+                "TrackHandler",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
