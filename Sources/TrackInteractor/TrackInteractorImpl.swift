@@ -157,7 +157,7 @@ extension TrackInteractorImpl {
 
                             let finalTitle = result.trackName ?? resolvedTitle
                             let finalArtist = result.artistName ?? resolvedArtist
-                            let content = LyricsContent(from: result)
+                            let content = lyrics.parseLyricsContent(from: result)
 
                             // Emit final update with lyrics
                             unsafeSubject.send(

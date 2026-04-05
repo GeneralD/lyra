@@ -5,7 +5,7 @@ import Testing
 @testable import HealthHandler
 
 @Suite("HealthHandlerImpl", .serialized)
-struct HealthHandlerImplSpec {
+struct HealthHandlerImplTests {
     // MARK: - Normal Behavior
 
     @Suite("normal behavior")

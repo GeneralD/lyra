@@ -59,7 +59,7 @@ extension TrackHandlerImpl {
         let result = await lyrics.fetchLyrics(
             candidates: candidates.isEmpty ? [track] : candidates
         )
-        let timedLines = LyricsContent(from: result).flatMap { c -> [LyricLine]? in
+        let timedLines = lyrics.parseLyricsContent(from: result).flatMap { c -> [LyricLine]? in
             guard case .timed(let lines) = c else { return nil }
             return lines
         }

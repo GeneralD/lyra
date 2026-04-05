@@ -3,7 +3,7 @@ import Testing
 @testable import VersionHandler
 
 @Suite("VersionHandlerImpl")
-struct VersionHandlerImplSpec {
+struct VersionHandlerImplTests {
     @Test("returns version string from bundled resource")
     func returnsVersion() {
         let handler = VersionHandlerImpl()

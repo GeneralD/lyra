@@ -385,6 +385,7 @@ let package = Package(
             name: "TrackHandlerTests",
             dependencies: [
                 "TrackHandler",
+                "LyricsUseCase",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

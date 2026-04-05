@@ -6,7 +6,7 @@ import os
 @testable import ConfigHandler
 
 @Suite("ConfigHandlerImpl")
-struct ConfigHandlerImplSpec {
+struct ConfigHandlerImplTests {
     // MARK: - template
 
     @Suite("template")

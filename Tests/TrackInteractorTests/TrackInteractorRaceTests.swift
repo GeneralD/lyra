@@ -52,6 +52,11 @@ private struct StubLyricsUseCase: LyricsUseCase, Sendable {
         guard let first = candidates.first else { return LyricsResult() }
         return await fetchLyrics(track: first)
     }
+
+    func parseLyricsContent(from result: LyricsResult?) -> LyricsContent? {
+        guard let synced = result?.syncedLyrics, !synced.isEmpty else { return nil }
+        return .timed([LyricLine(time: 0, text: synced)])
+    }
 }
 
 /// ConfigUseCase stub.

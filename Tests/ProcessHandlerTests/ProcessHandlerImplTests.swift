@@ -4,7 +4,7 @@ import Testing
 @testable import ProcessHandler
 
 @Suite("ProcessHandlerImpl")
-struct ProcessHandlerImplSpec {
+struct ProcessHandlerImplTests {
     // MARK: - start
 
     @Suite("start")

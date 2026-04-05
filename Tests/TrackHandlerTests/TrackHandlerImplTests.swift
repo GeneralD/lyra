@@ -1,13 +1,14 @@
 import Dependencies
 import Domain
 import Foundation
+import LyricsUseCase
 import Testing
 import os
 
 @testable import TrackHandler
 
 @Suite("TrackHandlerImpl")
-struct TrackHandlerImplSpec {
+struct TrackHandlerImplTests {
     // MARK: - No Track Playing
 
     @Suite("no track playing")
@@ -176,6 +177,9 @@ private struct StubLyricsUseCase: LyricsUseCase {
     let handler: @Sendable ([Track]) async -> LyricsResult
     func fetchLyrics(track: Track) async -> LyricsResult { await handler([track]) }
     func fetchLyrics(candidates: [Track]) async -> LyricsResult { await handler(candidates) }
+    func parseLyricsContent(from result: LyricsResult?) -> LyricsContent? {
+        LyricsUseCaseImpl().parseLyricsContent(from: result)
+    }
 }
 
 extension NowPlaying {

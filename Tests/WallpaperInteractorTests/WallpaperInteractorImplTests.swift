@@ -39,6 +39,39 @@ struct WallpaperInteractorImplTests {
         #expect(state.end == nil)
     }
 
+    @Test("resolveWallpaper returns state with URL when wallpaper configured")
+    func withWallpaperConfig() async throws {
+        let wallpaper = WallpaperStyle(location: "bg.mp4", start: 10, end: 180)
+        let style = AppStyle(wallpaper: wallpaper, configDir: "/config")
+        let resolved = URL(fileURLWithPath: "/resolved/bg.mp4")
+        let interactor = withDependencies {
+            $0.configUseCase = StubConfigUseCase(style: style)
+            $0.wallpaperUseCase = StubWallpaperUseCase(result: resolved)
+        } operation: {
+            WallpaperInteractorImpl()
+        }
+
+        let state = try await interactor.resolveWallpaper()
+        #expect(state.url == resolved)
+        #expect(state.start == 10)
+        #expect(state.end == 180)
+    }
+
+    @Test("resolveWallpaper uses home directory when configDir is nil")
+    func configDirFallback() async throws {
+        let wallpaper = WallpaperStyle(location: "bg.mp4")
+        let style = AppStyle(wallpaper: wallpaper, configDir: nil)
+        let interactor = withDependencies {
+            $0.configUseCase = StubConfigUseCase(style: style)
+            $0.wallpaperUseCase = StubWallpaperUseCase(result: URL(fileURLWithPath: "/bg.mp4"))
+        } operation: {
+            WallpaperInteractorImpl()
+        }
+
+        let state = try await interactor.resolveWallpaper()
+        #expect(state.url != nil)
+    }
+
     @Test("rippleConfig returns config from appStyle")
     func rippleConfigFromAppStyle() {
         let style = AppStyle(ripple: RippleStyle(enabled: true, idle: 3.0))

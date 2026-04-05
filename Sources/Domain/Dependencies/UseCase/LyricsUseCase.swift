@@ -4,6 +4,7 @@ import Foundation
 public protocol LyricsUseCase: Sendable {
     func fetchLyrics(track: Track) async -> LyricsResult
     func fetchLyrics(candidates: [Track]) async -> LyricsResult
+    func parseLyricsContent(from result: LyricsResult?) -> LyricsContent?
 }
 
 public enum LyricsUseCaseKey: TestDependencyKey {
@@ -20,4 +21,5 @@ extension DependencyValues {
 private struct UnimplementedLyricsUseCase: LyricsUseCase {
     func fetchLyrics(track: Track) async -> LyricsResult { .empty }
     func fetchLyrics(candidates: [Track]) async -> LyricsResult { .empty }
+    func parseLyricsContent(from result: LyricsResult?) -> LyricsContent? { nil }
 }
