@@ -1,12 +1,11 @@
 import ArgumentParser
-import Foundation
+import Dependencies
+import Domain
 
-let appVersion: String = {
-    guard let url = Bundle.module.url(forResource: "version", withExtension: "txt"),
-        let content = try? String(contentsOf: url, encoding: .utf8)
-    else { return "unknown" }
-    return content.trimmingCharacters(in: .whitespacesAndNewlines)
-}()
+var appVersion: String {
+    @Dependency(\.versionHandler) var handler
+    return handler.version
+}
 
 struct VersionCommand: ParsableCommand {
     static let configuration = CommandConfiguration(

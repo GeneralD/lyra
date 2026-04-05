@@ -74,7 +74,7 @@ private func binaryURL() -> URL {
 }
 
 private func resourcePath(_ filename: String) -> String {
-    packageRoot().appendingPathComponent("Sources/CLI/Resources/\(filename)").path
+    packageRoot().appendingPathComponent("Sources/VersionHandler/Resources/\(filename)").path
 }
 
 private func packageRoot() -> URL {

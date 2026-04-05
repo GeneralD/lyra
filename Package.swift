@@ -26,9 +26,6 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
-            ],
-            resources: [
-                .copy("Resources/version.txt"),
             ]
         ),
 
@@ -37,6 +34,17 @@ let package = Package(
             name: "ProcessHandler",
             dependencies: [
                 "Domain",
+            ]
+        ),
+
+        // ── VersionHandler ──
+        .target(
+            name: "VersionHandler",
+            dependencies: [
+                "Domain",
+            ],
+            resources: [
+                .copy("Resources/version.txt"),
             ]
         ),
 
@@ -103,6 +111,7 @@ let package = Package(
                 "WallpaperDataSource",
                 "SQLiteDataStore",
                 "ProcessHandler",
+                "VersionHandler",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),

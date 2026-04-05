@@ -56,6 +56,7 @@ graph TD
     subgraph CLIImplementations["CLI Implementations"]
         subgraph Handler
             ProcessHandler[ProcessHandler]
+            VersionHandler[VersionHandler]
         end
     end
 
@@ -180,7 +181,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | Router | `App` | `AppRouter` (pure wireframe), `AppDelegate` |
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
-| Handler | `ProcessHandler` | CLI command logic — process lifecycle (start/stop/restart/lock). Protocols in Domain, injected via `@Dependency` |
+| Handler | `ProcessHandler`, `VersionHandler` | CLI command logic. ProcessHandler: process lifecycle (start/stop/restart/lock). VersionHandler: version string from bundled resource. Protocols in Domain, injected via `@Dependency` |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Entity | `Entity` | Pure data types, zero external dependencies |
@@ -280,7 +281,7 @@ This applies to all Combine + Timer + MainActor tests where DecodeEffect, state 
 
 ### Version Management
 
-Version is defined in `Sources/CLI/Resources/version.txt` (single source of truth). CI reads this file to auto-create/update git tags on push to main.
+Version is defined in `Sources/VersionHandler/Resources/version.txt` (single source of truth). CI reads this file to auto-create/update git tags on push to main.
 
 **PR version bump rule**: When creating a PR, always include a version bump commit. Determine the level from the changes in the PR:
 - `feat:` → minor bump

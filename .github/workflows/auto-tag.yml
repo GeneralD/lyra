@@ -19,7 +19,7 @@ jobs:
 
       - name: Extract version
         run: |
-          VERSION=$(tr -d '[:space:]' < Sources/CLI/Resources/version.txt)
+          VERSION=$(tr -d '[:space:]' < Sources/VersionHandler/Resources/version.txt)
           if ! printf '%s\n' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Error: Invalid version in version.txt: '$VERSION'" >&2
             exit 1
