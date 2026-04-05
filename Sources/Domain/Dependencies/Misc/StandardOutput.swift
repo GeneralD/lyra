@@ -1,6 +1,9 @@
 import Dependencies
 
+/// A line-oriented standard output writer used by CLI commands.
+/// Implementations must append a trailing newline after the message (`print` semantics).
 public protocol StandardOutput: Sendable {
+    /// Writes `message` followed by a newline to standard output.
     func write(_ message: String)
 }
 
