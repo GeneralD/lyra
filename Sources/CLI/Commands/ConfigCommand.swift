@@ -29,8 +29,8 @@ struct ConfigTemplateCommand: ParsableCommand {
     var format: ConfigFormat = .toml
 
     func run() throws {
-        @Dependency(\.configUseCase) var configUseCase
-        guard let output = configUseCase.template(format: format) else {
+        @Dependency(\.configHandler) var handler
+        guard let output = handler.template(format: format) else {
             throw ValidationError("Failed to generate template")
         }
         print(output)
@@ -52,8 +52,8 @@ struct ConfigInitCommand: ParsableCommand {
     var force = false
 
     func run() throws {
-        @Dependency(\.configUseCase) var configUseCase
-        let path = try configUseCase.writeTemplate(format: format, force: force)
+        @Dependency(\.configHandler) var handler
+        let path = try handler.writeTemplate(format: format, force: force)
         print("Config file created at \(path)")
     }
 }
@@ -67,15 +67,8 @@ struct ConfigEditCommand: ParsableCommand {
     )
 
     func run() throws {
-        @Dependency(\.configDataSource) var dataSource
-
-        let path: String
-        if let existing = dataSource.existingConfigPath() {
-            path = existing
-        } else {
-            @Dependency(\.configUseCase) var configUseCase
-            path = try configUseCase.writeTemplate(format: .toml, force: false)
-        }
+        @Dependency(\.configHandler) var handler
+        let path = try handler.configPath()
 
         guard let editor = ProcessInfo.processInfo.environment["EDITOR"] else {
             throw ValidationError("$EDITOR is not set. Set it with: export EDITOR=vim")
@@ -99,15 +92,8 @@ struct ConfigOpenCommand: ParsableCommand {
     )
 
     func run() throws {
-        @Dependency(\.configDataSource) var dataSource
-
-        let path: String
-        if let existing = dataSource.existingConfigPath() {
-            path = existing
-        } else {
-            @Dependency(\.configUseCase) var configUseCase
-            path = try configUseCase.writeTemplate(format: .toml, force: false)
-        }
+        @Dependency(\.configHandler) var handler
+        let path = try handler.configPath()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
