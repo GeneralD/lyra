@@ -65,29 +65,29 @@ extension ServiceHandlerImpl {
 }
 
 extension ServiceHandlerImpl {
-    fileprivate var programArguments: [String] {
+    private var programArguments: [String] {
         guard let mintPath = mintRunPath else {
             return [installedPath ?? currentExecutablePath, "daemon"]
         }
         return [mintPath, "run", "GeneralD/lyra", "daemon"]
     }
 
-    fileprivate var mintRunPath: String? {
+    private var mintRunPath: String? {
         guard currentExecutablePath.contains("/.mint/") else { return nil }
         return whichCommand("mint")
     }
 
-    fileprivate var installedPath: String? {
+    private var installedPath: String? {
         whichCommand(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
     }
 
-    fileprivate var currentExecutablePath: String {
+    private var currentExecutablePath: String {
         URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL
             .path
     }
 
     @discardableResult
-    fileprivate func runLaunchctl(_ arguments: [String]) -> Int32 {
+    private func runLaunchctl(_ arguments: [String]) -> Int32 {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = arguments
@@ -97,7 +97,7 @@ extension ServiceHandlerImpl {
         return task.terminationStatus
     }
 
-    fileprivate func whichCommand(_ name: String) -> String? {
+    private func whichCommand(_ name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [name]
