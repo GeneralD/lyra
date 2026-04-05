@@ -370,7 +370,32 @@ let package = Package(
             ]
         ),
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
-        .testTarget(name: "ProcessHandlerTests", dependencies: ["ProcessHandler"]),
+        .testTarget(name: "ProcessHandlerTests", dependencies: ["ProcessHandler", "Domain"]),
+        .testTarget(name: "VersionHandlerTests", dependencies: ["VersionHandler"]),
+        .testTarget(
+            name: "ConfigHandlerTests",
+            dependencies: [
+                "ConfigHandler",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "TrackHandlerTests",
+            dependencies: [
+                "TrackHandler",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "HealthHandlerTests",
+            dependencies: [
+                "HealthHandler",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(name: "ViewsTests", dependencies: ["Views", "Domain"]),
         .testTarget(
             name: "PresentersTests",
