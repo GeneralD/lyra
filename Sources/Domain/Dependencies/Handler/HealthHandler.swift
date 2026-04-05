@@ -1,7 +1,7 @@
 import Dependencies
 
 public protocol HealthHandler: Sendable {
-    func check() async -> HealthReport
+    func check() async -> HealthCheckReport
 }
 
 public enum HealthHandlerKey: TestDependencyKey {
@@ -16,5 +16,5 @@ extension DependencyValues {
 }
 
 private struct UnimplementedHealthHandler: HealthHandler {
-    func check() async -> HealthReport { fatalError("HealthHandler.check not implemented") }
+    func check() async -> HealthCheckReport { fatalError("HealthHandler.check not implemented") }
 }

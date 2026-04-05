@@ -54,6 +54,32 @@ public struct PrintStandardOutput: StandardOutput {
         }
     }
 
+    // MARK: - Health
+
+    public func output(_ result: HealthCheckReport) {
+        let entries: [HealthReportEntry]
+        switch result {
+        case .success(let passed): entries = passed.entries
+        case .failure(let failed): entries = failed.entries
+        }
+
+        for entry in entries {
+            let tag: String
+            switch entry.result.status {
+            case .pass: tag = "[PASS]"
+            case .fail: tag = "[FAIL]"
+            case .skip: tag = "[SKIP]"
+            }
+            write("\(tag) \(entry.serviceName.padding(toLength: 20, withPad: ".", startingAt: 0)) \(entry.result.detail)")
+        }
+
+        write("")
+        switch result {
+        case .success: write("All checks passed.")
+        case .failure(let failed): writeError("\(failed.failedCount) check(s) failed.")
+        }
+    }
+
     // MARK: - Config
 
     public func output(_ result: ConfigWriteResult) {
