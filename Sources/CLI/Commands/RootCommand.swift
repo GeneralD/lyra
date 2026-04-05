@@ -20,6 +20,4 @@ struct RootCommand: ParsableCommand {
         ],
         defaultSubcommand: StartCommand.self
     )
-
-    init() {}
 }
