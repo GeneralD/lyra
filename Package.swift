@@ -372,6 +372,14 @@ let package = Package(
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
         .testTarget(name: "ProcessHandlerTests", dependencies: ["ProcessHandler"]),
         .testTarget(
+            name: "ConfigHandlerTests",
+            dependencies: [
+                "ConfigHandler",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
             name: "TrackHandlerTests",
             dependencies: [
                 "TrackHandler",
