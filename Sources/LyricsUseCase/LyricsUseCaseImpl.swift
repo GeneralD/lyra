@@ -37,7 +37,7 @@ extension LyricsUseCaseImpl {
             else { return nil }
             return LyricLine(
                 time: min * 60 + sec,
-                text: String(match.3).trimmingCharacters(in: .whitespaces)
+                text: String(match.3).trimmingCharacters(in: .whitespacesAndNewlines)
             )
         }
     }

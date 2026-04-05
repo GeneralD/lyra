@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 import Testing
 
@@ -79,9 +80,17 @@ struct DatabaseManagerMigrationSpec {
         }
     }
 
-    @Test("migrations are idempotent — running twice does not error")
+    @Test("migrations are idempotent — running on same DB twice does not error")
     func idempotent() throws {
-        _ = try DatabaseManager(inMemory: true)
-        _ = try DatabaseManager(inMemory: true)
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathExtension("sqlite")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let queue = try DatabaseQueue(path: tmp.path)
+        var migrator = DatabaseMigrator()
+        migrator.registerMigration("stub") { _ in }
+        try migrator.migrate(queue)
+        // Second run on same DB should not error
+        try migrator.migrate(queue)
     }
 }
