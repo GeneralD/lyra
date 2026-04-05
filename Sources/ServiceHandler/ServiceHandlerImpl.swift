@@ -2,25 +2,13 @@ import Domain
 import Files
 import Foundation
 
-public struct ServiceHandlerImpl: ServiceHandler {
+public struct ServiceHandlerImpl {
     public init() {}
     private let label = "com.generald.lyra"
     private let homebrewLabel = "homebrew.mxcl.lyra"
 }
 
-extension ServiceHandlerImpl {
-    private var launchAgentsFolder: Folder {
-        get throws { try Folder.home.subfolder(at: "Library/LaunchAgents") }
-    }
-
-    private var plistFile: File? {
-        try? launchAgentsFolder.file(named: "\(label).plist")
-    }
-
-    private var homebrewPlistFile: File? {
-        try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
-    }
-
+extension ServiceHandlerImpl: ServiceHandler {
     public func install() -> ServiceInstallResult {
         guard homebrewPlistFile == nil else { return .failure(.managedByHomebrew) }
 
@@ -63,8 +51,19 @@ extension ServiceHandlerImpl {
         return .success(.uninstalled)
     }
 }
-
 extension ServiceHandlerImpl {
+    private var launchAgentsFolder: Folder {
+        get throws { try Folder.home.subfolder(at: "Library/LaunchAgents") }
+    }
+
+    private var plistFile: File? {
+        try? launchAgentsFolder.file(named: "\(label).plist")
+    }
+
+    private var homebrewPlistFile: File? {
+        try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
+    }
+
     private var programArguments: [String] {
         guard let mintPath = mintRunPath else {
             return [installedPath ?? currentExecutablePath, "daemon"]
