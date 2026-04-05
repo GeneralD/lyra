@@ -1,27 +1,14 @@
-import Dependencies
 import Domain
 import Files
 import Foundation
 
-public struct ServiceHandlerImpl: ServiceHandler {
+public struct ServiceHandlerImpl {
     public init() {}
     private let label = "com.generald.lyra"
     private let homebrewLabel = "homebrew.mxcl.lyra"
 }
 
-extension ServiceHandlerImpl {
-    private var launchAgentsFolder: Folder {
-        get throws { try Folder.home.subfolder(at: "Library/LaunchAgents") }
-    }
-
-    private var plistFile: File? {
-        try? launchAgentsFolder.file(named: "\(label).plist")
-    }
-
-    private var homebrewPlistFile: File? {
-        try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
-    }
-
+extension ServiceHandlerImpl: ServiceHandler {
     public func install() -> ServiceInstallResult {
         guard homebrewPlistFile == nil else { return .failure(.managedByHomebrew) }
 
@@ -35,9 +22,6 @@ extension ServiceHandlerImpl {
                 fromPropertyList: plistDict, format: .xml, options: 0
             )
         else { return .failure(.failed(detail: "Failed to serialize plist")) }
-
-        @Dependency(\.processHandler) var processHandler
-        _ = processHandler.stop()
 
         let uid = getuid()
         let target = "gui/\(uid)"
@@ -61,40 +45,48 @@ extension ServiceHandlerImpl {
         let uid = getuid()
         runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
 
-        @Dependency(\.processHandler) var processHandler
-        _ = processHandler.stop()
-
         guard (try? file.delete()) != nil else {
             return .failure(.failed(detail: "Failed to delete plist file"))
         }
         return .success(.uninstalled)
     }
 }
-
 extension ServiceHandlerImpl {
-    fileprivate var programArguments: [String] {
+    private var launchAgentsFolder: Folder {
+        get throws { try Folder.home.subfolder(at: "Library/LaunchAgents") }
+    }
+
+    private var plistFile: File? {
+        try? launchAgentsFolder.file(named: "\(label).plist")
+    }
+
+    private var homebrewPlistFile: File? {
+        try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
+    }
+
+    private var programArguments: [String] {
         guard let mintPath = mintRunPath else {
             return [installedPath ?? currentExecutablePath, "daemon"]
         }
         return [mintPath, "run", "GeneralD/lyra", "daemon"]
     }
 
-    fileprivate var mintRunPath: String? {
+    private var mintRunPath: String? {
         guard currentExecutablePath.contains("/.mint/") else { return nil }
         return whichCommand("mint")
     }
 
-    fileprivate var installedPath: String? {
+    private var installedPath: String? {
         whichCommand(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
     }
 
-    fileprivate var currentExecutablePath: String {
+    private var currentExecutablePath: String {
         URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL
             .path
     }
 
     @discardableResult
-    fileprivate func runLaunchctl(_ arguments: [String]) -> Int32 {
+    private func runLaunchctl(_ arguments: [String]) -> Int32 {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = arguments
@@ -104,7 +96,7 @@ extension ServiceHandlerImpl {
         return task.terminationStatus
     }
 
-    fileprivate func whichCommand(_ name: String) -> String? {
+    private func whichCommand(_ name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [name]

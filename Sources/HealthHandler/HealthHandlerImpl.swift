@@ -1,9 +1,11 @@
 import Dependencies
 import Domain
 
-public struct HealthHandlerImpl: HealthHandler {
+public struct HealthHandlerImpl {
     public init() {}
+}
 
+extension HealthHandlerImpl: HealthHandler {
     public func check() async -> HealthCheckReport {
         @Dependency(\.healthCheckers) var checkers
         let checkerList = checkers

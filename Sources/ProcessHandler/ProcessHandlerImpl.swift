@@ -1,7 +1,7 @@
 import Domain
 import Foundation
 
-public struct ProcessHandlerImpl: ProcessHandler {
+public struct ProcessHandlerImpl {
     private let lock: ProcessLockable
     private let processManager: ProcessManaging
 
@@ -9,7 +9,9 @@ public struct ProcessHandlerImpl: ProcessHandler {
         self.lock = lock
         self.processManager = processManager
     }
+}
 
+extension ProcessHandlerImpl: ProcessHandler {
     public func start() -> StartResult {
         guard !lock.isLocked, processManager.findOverlayPIDs().isEmpty else {
             return .failure(.alreadyRunning)

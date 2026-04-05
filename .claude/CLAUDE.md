@@ -126,7 +126,6 @@ graph TD
     Presenters -.-> Interactor
     TrackHandler -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase
     ConfigHandler -.-> ConfigUseCase
-    ServiceHandler -.-> ProcessHandler
 
     style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
     style CLI fill:#555,stroke:#333,color:#fff

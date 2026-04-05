@@ -2,9 +2,11 @@ import Dependencies
 import Domain
 import Foundation
 
-public struct TrackHandlerImpl: TrackHandler {
+public struct TrackHandlerImpl {
     public init() {}
+}
 
+extension TrackHandlerImpl: TrackHandler {
     public func fetchInfo(query: TrackQuery) async -> NowPlayingInfo {
         @Dependency(\.playbackUseCase) var playbackUseCase
         let playback = playbackUseCase

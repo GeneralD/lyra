@@ -1,9 +1,11 @@
 import Dependencies
 import Domain
 
-public struct ConfigHandlerImpl: ConfigHandler {
+public struct ConfigHandlerImpl {
     public init() {}
+}
 
+extension ConfigHandlerImpl: ConfigHandler {
     public func template(format: ConfigFormat) -> String? {
         @Dependency(\.configUseCase) var configUseCase
         return configUseCase.template(format: format)
