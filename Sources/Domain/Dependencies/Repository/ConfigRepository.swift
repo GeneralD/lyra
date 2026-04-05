@@ -5,6 +5,7 @@ public protocol ConfigRepository: Sendable {
     func validate() -> ConfigValidationResult
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
+    var existingConfigPath: String? { get }
 }
 
 public enum ConfigRepositoryKey: TestDependencyKey {
@@ -23,4 +24,5 @@ private struct UnimplementedConfigRepository: ConfigRepository {
     func validate() -> ConfigValidationResult { .defaults }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
 }

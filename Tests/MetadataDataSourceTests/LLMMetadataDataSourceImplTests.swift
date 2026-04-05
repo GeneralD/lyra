@@ -25,5 +25,5 @@ private struct StubConfigDataSource: ConfigDataSource {
     func tryDecode() throws -> String { "" }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
-    func existingConfigPath() -> String? { nil }
+    var existingConfigPath: String? { nil }
 }

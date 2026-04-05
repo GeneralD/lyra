@@ -49,7 +49,7 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         return file.path
     }
 
-    public func existingConfigPath() -> String? {
+    public var existingConfigPath: String? {
         findConfigFile()?.path
     }
 

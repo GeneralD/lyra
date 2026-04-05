@@ -84,6 +84,7 @@ private struct MockConfigRepository: ConfigRepository {
     func validate() -> ConfigValidationResult { .defaults }
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
+    var existingConfigPath: String? { nil }
 }
 
 private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {
@@ -97,4 +98,5 @@ private final class CountingConfigRepository: ConfigRepository, @unchecked Senda
     func validate() -> ConfigValidationResult { .defaults }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
 }

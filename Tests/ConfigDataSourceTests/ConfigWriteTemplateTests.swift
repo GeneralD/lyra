@@ -93,7 +93,7 @@ struct ConfigWriteTemplateTests {
         let ds = ConfigDataSourceImpl()
         _ = try ds.writeTemplate(format: .toml, force: false)
 
-        #expect(ds.existingConfigPath() == "\(tmp)/lyra/config.toml")
+        #expect(ds.existingConfigPath == "\(tmp)/lyra/config.toml")
     }
 
     @Test("existingConfigPath returns nil when no config file exists")
@@ -105,7 +105,7 @@ struct ConfigWriteTemplateTests {
         }
 
         let ds = ConfigDataSourceImpl()
-        #expect(ds.existingConfigPath() == nil)
+        #expect(ds.existingConfigPath == nil)
     }
 
     @Test("creates intermediate directories")

@@ -18,4 +18,8 @@ extension ConfigUseCaseImpl: ConfigUseCase {
     public func writeTemplate(format: ConfigFormat, force: Bool) throws -> String {
         try repository.writeTemplate(format: format, force: force)
     }
+
+    public var existingConfigPath: String? {
+        repository.existingConfigPath
+    }
 }

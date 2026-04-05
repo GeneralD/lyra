@@ -48,6 +48,10 @@ extension ConfigRepositoryImpl: ConfigRepository {
         try dataSource.writeTemplate(format: format, force: force)
     }
 
+    public var existingConfigPath: String? {
+        dataSource.existingConfigPath
+    }
+
     public func validate() -> ConfigValidationResult {
         do {
             let path = try dataSource.tryDecode()

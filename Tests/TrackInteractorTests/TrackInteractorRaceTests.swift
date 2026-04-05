@@ -59,6 +59,7 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var appStyle: AppStyle { .init() }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
 }
 
 // MARK: - Tests

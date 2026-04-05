@@ -18,9 +18,9 @@ public struct ConfigHandlerImpl: ConfigHandler {
     }
 
     public func configPath() -> ConfigPathResult {
-        @Dependency(\.configDataSource) var dataSource
+        @Dependency(\.configUseCase) var configUseCase
 
-        if let existing = dataSource.existingConfigPath() {
+        if let existing = configUseCase.existingConfigPath {
             return .success(.found(path: existing))
         }
         switch writeTemplate(format: .toml, force: false) {

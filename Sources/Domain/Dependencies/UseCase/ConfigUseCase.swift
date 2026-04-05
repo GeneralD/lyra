@@ -4,6 +4,7 @@ public protocol ConfigUseCase: Sendable {
     var appStyle: AppStyle { get }
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
+    var existingConfigPath: String? { get }
 }
 
 public enum ConfigUseCaseKey: TestDependencyKey {
@@ -21,4 +22,5 @@ private struct UnimplementedConfigUseCase: ConfigUseCase {
     var appStyle: AppStyle { .init() }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
 }

@@ -5,7 +5,7 @@ public protocol ConfigDataSource: Sendable {
     func tryDecode() throws -> String
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
-    func existingConfigPath() -> String?
+    var existingConfigPath: String? { get }
 }
 
 public enum ConfigDataSourceKey: TestDependencyKey {
@@ -24,5 +24,5 @@ private struct UnimplementedConfigDataSource: ConfigDataSource {
     func tryDecode() throws -> String { "" }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
-    func existingConfigPath() -> String? { nil }
+    var existingConfigPath: String? { nil }
 }
