@@ -4,7 +4,7 @@ import Testing
 @testable import MetadataDataSource
 
 @Suite("OpenAI Compatible Models")
-struct OpenAIModelsSpec {
+struct OpenAIModelsTests {
     @Test("decodes ChatCompletionResponse")
     func decodeChatCompletion() throws {
         let json = """

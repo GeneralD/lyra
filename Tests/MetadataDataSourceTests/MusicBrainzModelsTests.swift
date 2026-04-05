@@ -4,7 +4,7 @@ import Testing
 @testable import MetadataDataSource
 
 @Suite("MusicBrainz Models")
-struct MusicBrainzModelsSpec {
+struct MusicBrainzModelsTests {
     // MARK: - MusicBrainzRecording
 
     @Suite("MusicBrainzRecording")
