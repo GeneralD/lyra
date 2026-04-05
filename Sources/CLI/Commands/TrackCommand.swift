@@ -22,7 +22,7 @@ struct TrackCommand: AsyncRunnableCommand {
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let json = (try? encoder.encode(info)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        print(json)
+        let data = try encoder.encode(info)
+        print(String(data: data, encoding: .utf8) ?? "{}")
     }
 }
