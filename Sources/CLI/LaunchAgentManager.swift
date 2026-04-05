@@ -1,3 +1,5 @@
+import Dependencies
+import Domain
 import Files
 import Foundation
 
@@ -36,7 +38,8 @@ extension LaunchAgentManager {
             fromPropertyList: plistDict, format: .xml, options: 0
         )
 
-        ProcessManager.stopExisting()
+        @Dependency(\.processHandler) var processHandler
+        _ = processHandler.stop()
 
         let uid = getuid()
         let target = "gui/\(uid)"
@@ -65,7 +68,8 @@ extension LaunchAgentManager {
         }
         let uid = getuid()
         runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
-        ProcessManager.stopExisting()
+        @Dependency(\.processHandler) var processHandler
+        _ = processHandler.stop()
         try file.delete()
         print("Uninstalled")
     }

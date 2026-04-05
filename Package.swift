@@ -32,6 +32,14 @@ let package = Package(
             ]
         ),
 
+        // ── ProcessHandler ──
+        .target(
+            name: "ProcessHandler",
+            dependencies: [
+                "Domain",
+            ]
+        ),
+
         // ── AsyncRunnableCommand ──
         .target(
             name: "AsyncRunnableCommand",
@@ -94,6 +102,7 @@ let package = Package(
                 "MediaRemoteDataSource",
                 "WallpaperDataSource",
                 "SQLiteDataStore",
+                "ProcessHandler",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -304,6 +313,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
+        .testTarget(name: "ProcessHandlerTests", dependencies: ["ProcessHandler"]),
         .testTarget(name: "ViewsTests", dependencies: ["Views", "Domain"]),
         .testTarget(
             name: "PresentersTests",

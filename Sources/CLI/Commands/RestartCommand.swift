@@ -1,4 +1,6 @@
 import ArgumentParser
+import Dependencies
+import Domain
 
 struct RestartCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -7,8 +9,9 @@ struct RestartCommand: ParsableCommand {
     )
 
     func run() throws {
-        ProcessManager.stopExisting()
-        let start = StartCommand()
-        try start.run()
+        @Dependency(\.processHandler) var handler
+        let result = try handler.restart()
+        print(result.message)
+        guard result.succeeded else { throw ExitCode.failure }
     }
 }

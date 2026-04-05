@@ -1,4 +1,6 @@
 import ArgumentParser
+import Dependencies
+import Domain
 
 struct StopCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -7,6 +9,15 @@ struct StopCommand: ParsableCommand {
     )
 
     func run() {
-        print(ProcessManager.stopExisting() ? "Stopped" : "Not running")
+        @Dependency(\.processHandler) var handler
+
+        switch handler.stop() {
+        case .stopped:
+            print("Stopped")
+        case .notRunning:
+            print("Not running")
+        case .lockReleaseTimedOut:
+            print("Stopped (warning: lock release timed out)")
+        }
     }
 }

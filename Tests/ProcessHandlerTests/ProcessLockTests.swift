@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import CLI
+@testable import ProcessHandler
 
 @Suite("ProcessLock", .serialized)
 struct ProcessLockSpec {

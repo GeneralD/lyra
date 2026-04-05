@@ -2,6 +2,7 @@ import App
 import AppKit
 import ArgumentParser
 import Dependencies
+import Domain
 
 struct DaemonCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -11,7 +12,9 @@ struct DaemonCommand: ParsableCommand {
     )
 
     func run() throws {
-        guard ProcessLock.shared.acquire() else {
+        @Dependency(\.processHandler) var handler
+
+        guard handler.acquireDaemonLock() else {
             print("Another lyra daemon is already running")
             throw ExitCode.failure
         }
