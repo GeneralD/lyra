@@ -2,10 +2,10 @@ import ArgumentParser
 import Dependencies
 import Domain
 
-let appVersion: String = {
+var appVersion: String {
     @Dependency(\.versionHandler) var handler
     return handler.version
-}()
+}
 
 struct VersionCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
