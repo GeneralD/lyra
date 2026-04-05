@@ -5,7 +5,7 @@ import Testing
 @testable import SQLiteDataStore
 
 @Suite("DatabaseManager migrations")
-struct DatabaseManagerMigrationSpec {
+struct DatabaseManagerMigrationTests {
     @Test("in-memory database creates all required tables")
     func allTablesCreated() throws {
         let db = try DatabaseManager(inMemory: true)

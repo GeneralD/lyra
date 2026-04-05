@@ -3,7 +3,7 @@ import Testing
 @testable import ConfigDataSource
 
 @Suite("sanitizeTomlFloats")
-struct SanitizeTomlFloatsSpec {
+struct SanitizeTomlFloatsTests {
     private let ds = ConfigDataSourceImpl()
 
     @Test("truncates long decimal fractions")

@@ -4,7 +4,7 @@ import Testing
 @testable import ConfigDataSource
 
 @Suite("tryDecode", .serialized)
-struct TryDecodeSpec {
+struct TryDecodeTests {
     @Test("returns empty string when no config file exists")
     func noFile() throws {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path

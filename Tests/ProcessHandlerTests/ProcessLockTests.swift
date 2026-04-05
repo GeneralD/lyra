@@ -4,7 +4,7 @@ import Testing
 @testable import ProcessHandler
 
 @Suite("ProcessLock", .serialized)
-struct ProcessLockSpec {
+struct ProcessLockTests {
     // MARK: - Normal Behavior
 
     @Suite("acquire")

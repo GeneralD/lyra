@@ -4,7 +4,7 @@ import Testing
 @testable import ServiceHandler
 
 @Suite("ServiceHandlerImpl", .serialized)
-struct ServiceHandlerImplSpec {
+struct ServiceHandlerImplTests {
     // MARK: - install
 
     @Suite("install", .serialized)

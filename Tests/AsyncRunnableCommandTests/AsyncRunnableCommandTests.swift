@@ -21,7 +21,7 @@ private enum Witnesses {
 }
 
 @Suite("AsyncRunnableCommand", .serialized)
-struct AsyncRunnableCommandSpec {
+struct AsyncRunnableCommandTests {
     init() { Witnesses.current = Witness() }
 
     // MARK: - Normal Behavior

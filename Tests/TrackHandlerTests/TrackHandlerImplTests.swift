@@ -8,7 +8,7 @@ import os
 @testable import TrackHandler
 
 @Suite("TrackHandlerImpl")
-struct TrackHandlerImplSpec {
+struct TrackHandlerImplTests {
     // MARK: - No Track Playing
 
     @Suite("no track playing")
