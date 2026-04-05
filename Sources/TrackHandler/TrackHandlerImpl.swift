@@ -61,16 +61,17 @@ extension TrackHandlerImpl {
             return lines
         }
 
+        let elapsed = playbackUseCase.elapsedTime(for: nowPlaying)
         return .init(
             title: result.trackName ?? title,
             artist: result.artistName ?? artist,
             album: result.albumName,
             duration: nowPlaying.duration,
-            elapsedTime: playbackUseCase.elapsedTime(for: nowPlaying),
+            elapsedTime: elapsed,
             lyrics: result.plainLyrics,
             syncedLyrics: timedLines,
             currentLyric: timedLines.flatMap { lines in
-                playbackUseCase.elapsedTime(for: nowPlaying).flatMap { t in lines.last { $0.time <= t }?.text }
+                elapsed.flatMap { t in lines.last { $0.time <= t }?.text }
             }
         )
     }
