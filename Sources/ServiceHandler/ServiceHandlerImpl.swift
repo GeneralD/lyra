@@ -3,9 +3,13 @@ import Files
 import Foundation
 
 public struct ServiceHandlerImpl {
-    public init() {}
     private let label = "com.generald.lyra"
     private let homebrewLabel = "homebrew.mxcl.lyra"
+    private let launchAgentsPath: String
+
+    public init(launchAgentsPath: String = "~/Library/LaunchAgents") {
+        self.launchAgentsPath = NSString(string: launchAgentsPath).expandingTildeInPath
+    }
 }
 
 extension ServiceHandlerImpl: ServiceHandler {
@@ -51,9 +55,10 @@ extension ServiceHandlerImpl: ServiceHandler {
         return .success(.uninstalled)
     }
 }
+
 extension ServiceHandlerImpl {
     private var launchAgentsFolder: Folder {
-        get throws { try Folder.home.subfolder(at: "Library/LaunchAgents") }
+        get throws { try Folder(path: launchAgentsPath) }
     }
 
     private var plistFile: File? {

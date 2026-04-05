@@ -372,6 +372,7 @@ let package = Package(
         .testTarget(name: "CLITests", dependencies: ["CLI"]),
         .testTarget(name: "ProcessHandlerTests", dependencies: ["ProcessHandler", "Domain"]),
         .testTarget(name: "VersionHandlerTests", dependencies: ["VersionHandler"]),
+        .testTarget(name: "ServiceHandlerTests", dependencies: ["ServiceHandler"]),
         .testTarget(
             name: "ConfigHandlerTests",
             dependencies: [
