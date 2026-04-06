@@ -74,20 +74,34 @@ private final class UpdateCollector: @unchecked Sendable {
         lock.withLock { _updates }
     }
 
+    var count: Int {
+        lock.withLock { _updates.count }
+    }
+
     func append(_ update: TrackUpdate) {
         lock.withLock { _updates.append(update) }
     }
+
+    func contains(where predicate: (TrackUpdate) -> Bool) -> Bool {
+        lock.withLock { _updates.contains(where: predicate) }
+    }
+}
+
+private struct WaitUntilTimeout: Error, CustomStringConvertible {
+    let timeout: Duration
+    let label: String
+    var description: String { "Timed out after \(timeout) waiting for \(label)" }
 }
 
 private func waitUntil(
     timeout: Duration = .seconds(5),
+    _ label: String = "condition",
     condition: @Sendable () -> Bool
 ) async throws {
     let deadline = ContinuousClock.now + timeout
     while !condition() {
         guard ContinuousClock.now < deadline else {
-            struct Timeout: Error {}
-            throw Timeout()
+            throw WaitUntilTimeout(timeout: timeout, label: label)
         }
         await MainActor.run {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
@@ -134,15 +148,15 @@ struct TrackInteractorRaceTests {
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil {
-            collector.updates.contains { $0.title == "Track A" && $0.lyricsState == .loading }
+        try await waitUntil("Track A loading") {
+            collector.contains { $0.title == "Track A" && $0.lyricsState == .loading }
         }
 
         playback.subject.send(
             NowPlaying(title: "Track B", artist: "Artist B", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil {
-            collector.updates.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        try await waitUntil("Track B resolved") {
+            collector.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         }
 
         let resolved = collector.updates.filter { $0.lyricsState == .resolved || $0.lyricsState == .notFound }
@@ -167,13 +181,13 @@ struct TrackInteractorRaceTests {
                 title: "Track A", artist: "Artist A", artworkData: nil,
                 duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil {
-            collector.updates.contains { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        try await waitUntil("Track A resolved") {
+            collector.contains { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         }
 
         #expect(!collector.updates.isEmpty, "Track A should have emitted before nil")
 
-        let countBeforeNil = collector.updates.count
+        let countBeforeNil = collector.count
 
         playback.subject.send(nil)
 
@@ -201,15 +215,15 @@ struct TrackInteractorRaceTests {
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil {
-            collector.updates.contains { $0.title == "Track A" && $0.lyricsState == .loading }
+        try await waitUntil("Track A loading") {
+            collector.contains { $0.title == "Track A" && $0.lyricsState == .loading }
         }
 
         playback.subject.send(
             NowPlaying(title: "Track B", artist: "Artist B", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil {
-            collector.updates.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        try await waitUntil("Track B resolved") {
+            collector.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         }
 
         let resolvedA = collector.updates.filter { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }

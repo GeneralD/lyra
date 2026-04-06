@@ -35,6 +35,7 @@ jobs:
         run: swift test --enable-code-coverage
 
       - name: Generate lcov report
+        if: always()
         run: |
           BIN=$(swift build --show-bin-path)
           TEST_BIN="$BIN/lyraPackageTests.xctest/Contents/MacOS/lyraPackageTests"
@@ -55,6 +56,7 @@ jobs:
             > coverage.lcov
 
       - name: Upload to Codecov
+        if: always()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
