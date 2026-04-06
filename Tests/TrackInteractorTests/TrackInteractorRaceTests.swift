@@ -8,7 +8,6 @@ import Testing
 
 // MARK: - Stubs
 
-/// PlaybackUseCase that emits controlled NowPlaying values.
 private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
     let subject = PassthroughSubject<NowPlaying?, Never>()
 
@@ -27,7 +26,6 @@ private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
     func elapsedTime(for np: NowPlaying) -> TimeInterval? { np.rawElapsed }
 }
 
-/// MetadataUseCase with configurable delay to simulate slow resolution.
 private struct DelayedMetadataUseCase: MetadataUseCase, Sendable {
     let delay: Duration
 
@@ -38,13 +36,11 @@ private struct DelayedMetadataUseCase: MetadataUseCase, Sendable {
     }
 }
 
-/// Instant MetadataUseCase — no delay.
 private struct InstantMetadataUseCase: MetadataUseCase, Sendable {
     func resolve(track: Track) async -> Track? { nil }
     func resolveCandidates(track: Track) async -> [Track] { [] }
 }
 
-/// LyricsUseCase that returns identifiable lyrics per track.
 private struct StubLyricsUseCase: LyricsUseCase, Sendable {
     func fetchLyrics(track: Track) async -> LyricsResult {
         LyricsResult(trackName: track.title, artistName: track.artist, syncedLyrics: "[\(track.title)]")
@@ -61,7 +57,6 @@ private struct StubLyricsUseCase: LyricsUseCase, Sendable {
     }
 }
 
-/// ConfigUseCase stub.
 private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var appStyle: AppStyle { .init() }
     func template(format: ConfigFormat) -> String? { nil }
@@ -71,7 +66,6 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
 
 // MARK: - Helpers
 
-/// Thread-safe collector for TrackUpdate values.
 private final class UpdateCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var _updates: [TrackUpdate] = []
@@ -83,13 +77,8 @@ private final class UpdateCollector: @unchecked Sendable {
     func append(_ update: TrackUpdate) {
         lock.withLock { _updates.append(update) }
     }
-
-    func contains(where predicate: (TrackUpdate) -> Bool) -> Bool {
-        lock.withLock { _updates.contains(where: predicate) }
-    }
 }
 
-/// Poll until condition is met or timeout.
 private func waitUntil(
     timeout: Duration = .seconds(5),
     condition: @Sendable () -> Bool
@@ -100,7 +89,25 @@ private func waitUntil(
             struct Timeout: Error {}
             throw Timeout()
         }
-        try await Task.sleep(for: .milliseconds(50))
+        await MainActor.run {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+    }
+}
+
+private func makeInteractor(
+    playback: StubPlaybackUseCase,
+    metadata: any MetadataUseCase = InstantMetadataUseCase(),
+    lyrics: any LyricsUseCase = StubLyricsUseCase(),
+    config: any ConfigUseCase = StubConfigUseCase()
+) -> TrackInteractorImpl {
+    withDependencies {
+        $0.playbackUseCase = playback
+        $0.metadataUseCase = metadata
+        $0.lyricsUseCase = lyrics
+        $0.configUseCase = config
+    } operation: {
+        TrackInteractorImpl()
     }
 }
 
@@ -112,87 +119,66 @@ struct TrackInteractorRaceTests {
     @Test("rapid track change cancels stale resolution — only latest track emits resolved")
     func rapidTrackChangeCancelsStale() async throws {
         let playback = StubPlaybackUseCase()
-
-        let interactor = withDependencies {
-            $0.playbackUseCase = playback
-            $0.metadataUseCase = DelayedMetadataUseCase(delay: .milliseconds(500))
-            $0.lyricsUseCase = StubLyricsUseCase()
-            $0.configUseCase = StubConfigUseCase()
-        } operation: {
-            TrackInteractorImpl()
-        }
+        let interactor = makeInteractor(
+            playback: playback,
+            metadata: DelayedMetadataUseCase(delay: .milliseconds(500))
+        )
 
         let collector = UpdateCollector()
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
+        defer { cancellable.cancel() }
 
-        // Send track A
+        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
+
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        // Wait just enough for loading to emit but not for resolution to complete
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitUntil {
+            collector.updates.contains { $0.title == "Track A" && $0.lyricsState == .loading }
+        }
 
-        // Send track B before A resolves (A's metadata takes 500ms)
         playback.subject.send(
             NowPlaying(title: "Track B", artist: "Artist B", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        // Poll until Track B resolves
         try await waitUntil {
             collector.updates.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         }
 
-        cancellable.cancel()
-
-        // Filter to only resolved updates (not loading)
         let resolved = collector.updates.filter { $0.lyricsState == .resolved || $0.lyricsState == .notFound }
-
-        // Track A's resolved should NOT be present (cancelled by switchToLatest)
-        let hasTrackA = resolved.contains { $0.title == "Track A" }
-        let hasTrackB = resolved.contains { $0.title == "Track B" }
-
-        #expect(!hasTrackA, "Track A resolution should be cancelled")
-        #expect(hasTrackB, "Track B resolution should complete")
+        #expect(!resolved.contains { $0.title == "Track A" }, "Track A resolution should be cancelled")
+        #expect(resolved.contains { $0.title == "Track B" }, "Track B resolution should complete")
     }
 
     @Test("nil NowPlaying does not emit TrackUpdate — last track info is retained")
     func nilNowPlayingKeepsLastTrack() async throws {
         let playback = StubPlaybackUseCase()
-
-        let interactor = withDependencies {
-            $0.playbackUseCase = playback
-            $0.metadataUseCase = InstantMetadataUseCase()
-            $0.lyricsUseCase = StubLyricsUseCase()
-            $0.configUseCase = StubConfigUseCase()
-        } operation: {
-            TrackInteractorImpl()
-        }
+        let interactor = makeInteractor(playback: playback)
 
         let collector = UpdateCollector()
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
+        defer { cancellable.cancel() }
 
-        // Send a track
+        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
+
         playback.subject.send(
             NowPlaying(
                 title: "Track A", artist: "Artist A", artworkData: nil,
                 duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        // Wait for Track A to resolve (Combine pipeline + withDependencies scope limitation
-        // prevents polling — async resolution runs outside the dependency scope)
-        try await Task.sleep(for: .seconds(2))
+        try await waitUntil {
+            collector.updates.contains { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        }
+
+        #expect(!collector.updates.isEmpty, "Track A should have emitted before nil")
 
         let countBeforeNil = collector.updates.count
 
-        // Send nil (playback stopped)
         playback.subject.send(nil)
 
-        // Wait to confirm no new emission
-        try await Task.sleep(for: .milliseconds(500))
+        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
 
-        cancellable.cancel()
-
-        // nil NowPlaying must NOT produce any TrackUpdate
         let afterNil = collector.updates.dropFirst(countBeforeNil)
         #expect(afterNil.isEmpty, "nil NowPlaying should not emit any TrackUpdate — last track stays visible")
     }
@@ -200,38 +186,33 @@ struct TrackInteractorRaceTests {
     @Test("track A loading emits but resolved does not when B arrives quickly")
     func staleLoadingVisibleButResolvedCancelled() async throws {
         let playback = StubPlaybackUseCase()
-
-        let interactor = withDependencies {
-            $0.playbackUseCase = playback
-            $0.metadataUseCase = DelayedMetadataUseCase(delay: .milliseconds(500))
-            $0.lyricsUseCase = StubLyricsUseCase()
-            $0.configUseCase = StubConfigUseCase()
-        } operation: {
-            TrackInteractorImpl()
-        }
+        let interactor = makeInteractor(
+            playback: playback,
+            metadata: DelayedMetadataUseCase(delay: .milliseconds(500))
+        )
 
         let collector = UpdateCollector()
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
 
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitUntil {
+            collector.updates.contains { $0.title == "Track A" && $0.lyricsState == .loading }
+        }
 
         playback.subject.send(
             NowPlaying(title: "Track B", artist: "Artist B", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        // Poll until Track B resolves
         try await waitUntil {
             collector.updates.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         }
 
-        cancellable.cancel()
-
-        // Resolved for Track A must NOT appear
         let resolvedA = collector.updates.filter { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
-
         #expect(resolvedA.isEmpty, "Track A resolution must be cancelled by switchToLatest")
     }
 

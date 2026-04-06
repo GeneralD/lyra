@@ -4,16 +4,13 @@ import Domain
 import Foundation
 
 public final class TrackInteractorImpl: @unchecked Sendable {
-    @Dependency(\.playbackUseCase) private var playbackService
-    @Dependency(\.lyricsUseCase) private var lyricsService
-    @Dependency(\.metadataUseCase) private var metadataService
-    @Dependency(\.configUseCase) private var configService
+    private let playbackService: any PlaybackUseCase
+    private let lyricsService: any LyricsUseCase
+    private let metadataService: any MetadataUseCase
+    private let configService: any ConfigUseCase
 
     private lazy var shared = nowPlayingPublisher.share()
 
-    /// NowPlaying events with actual track info.
-    /// Drops "degraded" updates where artist becomes empty for the same title —
-    /// macOS MediaRemote clears artist on volume mute while keeping the title.
     private lazy var activeNowPlaying =
         shared
         .compactMap { $0 }
@@ -23,7 +20,6 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .compactMap { state -> NowPlaying? in
             guard let current = state.current else { return nil }
             guard let previous = state.previous else { return current }
-            // Same title but artist degraded from non-empty to empty → skip
             let prevArtist = previous.artist ?? ""
             let curArtist = current.artist ?? ""
             guard current.title == previous.title, !prevArtist.isEmpty, curArtist.isEmpty else {
@@ -33,13 +29,6 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         }
         .share()
 
-    /// Emits on track change (title+artist) with metadata + lyrics resolution.
-    ///
-    /// Deduplication: macOS MediaRemote temporarily clears the artist field (to "")
-    /// when system volume is set to 0, while keeping the title intact. On volume restore,
-    /// the artist reappears. To avoid triggering DecodeEffect on these transient changes,
-    /// compare by title only when either side has an empty/nil artist. When both have
-    /// a non-empty artist, compare title + artist (to detect genuinely different tracks).
     public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
         activeNowPlaying
         .removeDuplicates {
@@ -58,20 +47,27 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .share()
         .eraseToAnyPublisher()
 
-    /// Emits when artwork data changes. Only emits when NowPlaying has track info.
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
         .map(\.artworkData)
         .removeDuplicates()
         .eraseToAnyPublisher()
 
-    /// Playback position: every NowPlaying update with track info.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
         .map { [playbackService] np in PlaybackPosition(elapsed: playbackService.elapsedTime(for: np), playbackRate: np.playbackRate) }
         .eraseToAnyPublisher()
 
-    public init() {}
+    public init() {
+        @Dependency(\.playbackUseCase) var playback
+        @Dependency(\.lyricsUseCase) var lyrics
+        @Dependency(\.metadataUseCase) var metadata
+        @Dependency(\.configUseCase) var config
+        self.playbackService = playback
+        self.lyricsService = lyrics
+        self.metadataService = metadata
+        self.configService = config
+    }
 }
 
 extension TrackInteractorImpl: TrackInteractor {
@@ -94,9 +90,8 @@ extension TrackInteractorImpl {
         return Deferred {
             let pub = PassthroughSubject<NowPlaying?, Never>()
             nonisolated(unsafe) let unsafePub = pub
-            let capturedPlayback = playback
             let task = Task { @Sendable in
-                for await info in capturedPlayback.observeNowPlaying() {
+                for await info in playback.observeNowPlaying() {
                     guard !Task.isCancelled else { break }
                     unsafePub.send(info)
                 }
@@ -140,7 +135,6 @@ extension TrackInteractorImpl {
                                 candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 }
                                 ?? artist
 
-                            // Emit metadata-resolved update immediately (lyrics still loading)
                             unsafeSubject.send(
                                 TrackUpdate(
                                     title: resolvedTitle,
@@ -159,7 +153,6 @@ extension TrackInteractorImpl {
                             let finalArtist = result.artistName ?? resolvedArtist
                             let content = lyrics.parseLyricsContent(from: result)
 
-                            // Emit final update with lyrics
                             unsafeSubject.send(
                                 TrackUpdate(
                                     title: finalTitle,
