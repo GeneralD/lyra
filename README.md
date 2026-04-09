@@ -60,6 +60,10 @@ lyra track            # show now-playing info as JSON
 lyra track -r         # resolve metadata (MusicBrainz/regex)
 lyra track -l         # include lyrics (LRCLIB)
 lyra track -rl        # resolve + lyrics
+
+lyra benchmark        # measure CPU/memory baselines
+lyra benchmark -d 30  # 30s per scenario
+lyra benchmark --json # JSON output for CI
 ```
 
 ### Auto-start
