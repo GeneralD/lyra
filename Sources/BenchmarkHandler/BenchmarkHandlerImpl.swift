@@ -7,25 +7,11 @@ public struct BenchmarkHandlerImpl {
 }
 
 extension BenchmarkHandlerImpl: BenchmarkHandler {
-    public func run(scenarios: [String], duration: TimeInterval) async -> BenchmarkReport {
-        let available = ["idle", "cpu_spike", "memory_alloc"]
-        let selected = scenarios.isEmpty ? available : scenarios.filter { available.contains($0) }
-
-        guard !selected.isEmpty else {
-            return .failure(BenchmarkFailed(detail: "No valid scenarios. Available: \(available.joined(separator: ", "))"))
-        }
-
-        var entries: [BenchmarkEntry] = []
-        for scenario in selected {
-            let entry = await measure(scenario: scenario, duration: duration)
-            entries.append(entry)
-        }
-        return .success(BenchmarkPassed(entries: entries))
+    public var availableScenarios: [String] {
+        ["idle", "cpu_spike", "memory_alloc"]
     }
-}
 
-extension BenchmarkHandlerImpl {
-    private func measure(scenario: String, duration: TimeInterval) async -> BenchmarkEntry {
+    public func measure(scenario: String, duration: Double) async -> BenchmarkEntry {
         let before = ProcessSnapshot.current
         let start = ContinuousClock.now
 
@@ -43,8 +29,10 @@ extension BenchmarkHandlerImpl {
             currentRSSBytes: after.currentRSS
         )
     }
+}
 
-    private func runScenario(_ scenario: String, duration: TimeInterval) async {
+extension BenchmarkHandlerImpl {
+    private func runScenario(_ scenario: String, duration: Double) async {
         switch scenario {
         case "idle":
             try? await Task.sleep(for: .seconds(duration))
@@ -114,6 +102,6 @@ extension timeval {
 extension Duration {
     fileprivate var seconds: Double {
         let (s, a) = components
-        return Double(s) + Double(a) / 1_000_000_000_000
+        return Double(s) + Double(a) / 1_000_000_000_000_000_000
     }
 }

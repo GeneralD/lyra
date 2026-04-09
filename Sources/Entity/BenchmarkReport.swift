@@ -1,15 +1,3 @@
-public typealias BenchmarkReport = Result<BenchmarkPassed, BenchmarkFailed>
-
-public struct BenchmarkPassed: Sendable {
-    public let entries: [BenchmarkEntry]
-    public init(entries: [BenchmarkEntry]) { self.entries = entries }
-}
-
-public struct BenchmarkFailed: Error, Sendable {
-    public let detail: String
-    public init(detail: String) { self.detail = detail }
-}
-
 public struct BenchmarkEntry: Sendable, Codable {
     public let scenario: String
     public let durationSeconds: Double

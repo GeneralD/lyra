@@ -99,32 +99,27 @@ public struct PrintStandardOutput: StandardOutput {
 
     // MARK: - Benchmark
 
-    public func write(_ result: BenchmarkReport) {
-        switch result {
-        case .success(let passed):
-            let header =
-                "Scenario".padding(toLength: 16, withPad: " ", startingAt: 0)
-                + "Duration".padding(toLength: 10, withPad: " ", startingAt: 0)
-                + "CPU(user)".padding(toLength: 11, withPad: " ", startingAt: 0)
-                + "CPU(sys)".padding(toLength: 11, withPad: " ", startingAt: 0)
-                + "RSS(MB)".padding(toLength: 10, withPad: " ", startingAt: 0)
-                + "Peak(MB)"
-            write(header)
-            write(String(repeating: "─", count: header.count))
+    public func writeBenchmarkHeader() {
+        let header =
+            "Scenario".padding(toLength: 16, withPad: " ", startingAt: 0)
+            + "Duration".padding(toLength: 10, withPad: " ", startingAt: 0)
+            + "CPU(user)".padding(toLength: 11, withPad: " ", startingAt: 0)
+            + "CPU(sys)".padding(toLength: 11, withPad: " ", startingAt: 0)
+            + "RSS(MB)".padding(toLength: 10, withPad: " ", startingAt: 0)
+            + "Peak(MB)"
+        write(header)
+        write(String(repeating: "─", count: header.count))
+    }
 
-            for entry in passed.entries {
-                let line =
-                    entry.scenario.padding(toLength: 16, withPad: " ", startingAt: 0)
-                    + formatted(seconds: entry.durationSeconds).padding(toLength: 10, withPad: " ", startingAt: 0)
-                    + formatted(seconds: entry.cpuUserSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
-                    + formatted(seconds: entry.cpuSystemSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
-                    + formatted(megabytes: entry.currentRSSBytes).padding(toLength: 10, withPad: " ", startingAt: 0)
-                    + formatted(megabytes: entry.peakRSSBytes)
-                write(line)
-            }
-        case .failure(let failed):
-            writeError("Benchmark failed: \(failed.detail)")
-        }
+    public func write(_ entry: BenchmarkEntry) {
+        let line =
+            entry.scenario.padding(toLength: 16, withPad: " ", startingAt: 0)
+            + formatted(seconds: entry.durationSeconds).padding(toLength: 10, withPad: " ", startingAt: 0)
+            + formatted(seconds: entry.cpuUserSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
+            + formatted(seconds: entry.cpuSystemSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
+            + formatted(megabytes: entry.currentRSSBytes).padding(toLength: 10, withPad: " ", startingAt: 0)
+            + formatted(megabytes: entry.peakRSSBytes)
+        write(line)
     }
 
     private func formatted(seconds: Double) -> String {

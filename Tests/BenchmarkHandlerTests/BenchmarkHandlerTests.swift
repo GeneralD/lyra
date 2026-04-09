@@ -9,15 +9,8 @@ struct BenchmarkHandlerTests {
     @Test("idle scenario returns non-negative CPU and memory values")
     func idleScenario() async {
         let handler = BenchmarkHandlerImpl()
-        let result = await handler.run(scenarios: ["idle"], duration: 1)
+        let entry = await handler.measure(scenario: "idle", duration: 1)
 
-        guard case .success(let passed) = result else {
-            Issue.record("Expected success but got failure")
-            return
-        }
-        #expect(passed.entries.count == 1)
-
-        let entry = passed.entries[0]
         #expect(entry.scenario == "idle")
         #expect(entry.durationSeconds >= 1.0)
         #expect(entry.cpuUserSeconds >= 0)
@@ -26,42 +19,11 @@ struct BenchmarkHandlerTests {
         #expect(entry.peakRSSBytes > 0)
     }
 
-    @Test("invalid scenario returns failure")
-    func invalidScenario() async {
-        let handler = BenchmarkHandlerImpl()
-        let result = await handler.run(scenarios: ["nonexistent"], duration: 1)
-
-        guard case .failure(let failed) = result else {
-            Issue.record("Expected failure but got success")
-            return
-        }
-        #expect(failed.detail.contains("No valid scenarios"))
-    }
-
-    @Test("multiple scenarios run sequentially")
-    func multipleScenarios() async {
-        let handler = BenchmarkHandlerImpl()
-        let result = await handler.run(scenarios: ["idle", "idle"], duration: 1)
-
-        guard case .success(let passed) = result else {
-            Issue.record("Expected success but got failure")
-            return
-        }
-        #expect(passed.entries.count == 2)
-        #expect(passed.entries.allSatisfy { $0.scenario == "idle" })
-    }
-
     @Test("cpu_spike scenario shows higher CPU than idle")
     func cpuSpikeHigherThanIdle() async {
         let handler = BenchmarkHandlerImpl()
-        let result = await handler.run(scenarios: ["idle", "cpu_spike"], duration: 1)
-
-        guard case .success(let passed) = result else {
-            Issue.record("Expected success but got failure")
-            return
-        }
-        let idle = passed.entries[0]
-        let spike = passed.entries[1]
+        let idle = await handler.measure(scenario: "idle", duration: 1)
+        let spike = await handler.measure(scenario: "cpu_spike", duration: 1)
         #expect(spike.cpuUserSeconds > idle.cpuUserSeconds)
     }
 
@@ -81,15 +43,12 @@ struct BenchmarkHandlerTests {
         #expect(decoded.durationSeconds == 1.0)
     }
 
-    @Test("empty scenarios defaults to all available")
-    func emptyScenariosDefaultsToAll() async {
+    @Test("availableScenarios returns three scenarios")
+    func availableScenarios() {
         let handler = BenchmarkHandlerImpl()
-        let result = await handler.run(scenarios: [], duration: 1)
-
-        guard case .success(let passed) = result else {
-            Issue.record("Expected success but got failure")
-            return
-        }
-        #expect(passed.entries.count == 3)
+        #expect(handler.availableScenarios.count == 3)
+        #expect(handler.availableScenarios.contains("idle"))
+        #expect(handler.availableScenarios.contains("cpu_spike"))
+        #expect(handler.availableScenarios.contains("memory_alloc"))
     }
 }

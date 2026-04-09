@@ -22,14 +22,29 @@ struct BenchmarkCommand: AsyncRunnableCommand {
         @Dependency(\.benchmarkHandler) var handler
         @Dependency(\.standardOutput) var output
 
-        let scenarioList = scenarios.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        let result = await handler.run(scenarios: scenarioList, duration: Double(duration))
+        let requested = scenarios.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let available = handler.availableScenarios
+        let selected = requested.isEmpty ? available : requested.filter { available.contains($0) }
 
-        if json, case .success(let passed) = result {
-            output.writeJson(passed.entries)
-        } else {
-            output.write(result)
+        guard !selected.isEmpty else {
+            output.writeError("No valid scenarios. Available: \(available.joined(separator: ", "))")
+            throw ExitCode.failure
         }
-        guard case .success = result else { throw ExitCode.failure }
+
+        if json {
+            var entries: [BenchmarkEntry] = []
+            for scenario in selected {
+                let entry = await handler.measure(scenario: scenario, duration: Double(duration))
+                entries.append(entry)
+            }
+            output.writeJson(entries)
+        } else {
+            output.writeBenchmarkHeader()
+            for scenario in selected {
+                output.write("  \(scenario)...")
+                let entry = await handler.measure(scenario: scenario, duration: Double(duration))
+                output.write(entry)
+            }
+        }
     }
 }

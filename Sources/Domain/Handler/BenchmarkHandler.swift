@@ -1,7 +1,8 @@
 import Dependencies
 
 public protocol BenchmarkHandler: Sendable {
-    func run(scenarios: [String], duration: Double) async -> BenchmarkReport
+    var availableScenarios: [String] { get }
+    func measure(scenario: String, duration: Double) async -> BenchmarkEntry
 }
 
 public enum BenchmarkHandlerKey: TestDependencyKey {
@@ -16,7 +17,8 @@ extension DependencyValues {
 }
 
 private struct UnimplementedBenchmarkHandler: BenchmarkHandler {
-    func run(scenarios: [String], duration: Double) async -> BenchmarkReport {
-        fatalError("BenchmarkHandler.run not implemented")
+    var availableScenarios: [String] { [] }
+    func measure(scenario: String, duration: Double) async -> BenchmarkEntry {
+        fatalError("BenchmarkHandler.measure not implemented")
     }
 }
