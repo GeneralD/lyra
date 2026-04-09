@@ -4,7 +4,11 @@ import Foundation
 import TOMLKit
 
 public struct ConfigDataSourceImpl: Sendable {
-    public init() {}
+    private let configHomeOverride: String?
+
+    public init(configHome: String? = nil) {
+        configHomeOverride = configHome
+    }
 }
 
 extension ConfigDataSourceImpl: ConfigDataSource {
@@ -67,9 +71,11 @@ extension ConfigDataSourceImpl {
     func findConfigFile() -> File? {
         let home = Folder.home
         let xdgConfigFolder: Folder? = {
-            let envXdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
-                in: .whitespacesAndNewlines)
-            guard let path = envXdg, !path.isEmpty else {
+            let explicit =
+                configHomeOverride
+                ?? ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
+                    in: .whitespacesAndNewlines)
+            guard let path = explicit, !path.isEmpty else {
                 return try? home.subfolder(named: ".config")
             }
             return try? Folder(path: path)
@@ -89,10 +95,12 @@ extension ConfigDataSourceImpl {
 
     func lyraConfigFolder() throws -> Folder {
         let home = Folder.home
-        let envXdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
-            in: .whitespacesAndNewlines)
+        let explicit =
+            configHomeOverride
+            ?? ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
+                in: .whitespacesAndNewlines)
         let xdgConfigPath =
-            (envXdg?.isEmpty == false) ? envXdg! : "\(home.path).config"
+            (explicit?.isEmpty == false) ? explicit! : "\(home.path).config"
         let lyraPath = "\(xdgConfigPath)/lyra"
         try FileManager.default.createDirectory(atPath: lyraPath, withIntermediateDirectories: true)
         return try Folder(path: lyraPath)
