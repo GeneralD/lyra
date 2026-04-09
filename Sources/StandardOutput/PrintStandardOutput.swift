@@ -119,7 +119,8 @@ public struct PrintStandardOutput: StandardOutput {
             + formatted(seconds: entry.cpuSystemSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
             + formatted(megabytes: entry.currentRSSBytes).padding(toLength: 10, withPad: " ", startingAt: 0)
             + formatted(megabytes: entry.peakRSSBytes)
-        write(line)
+        let padded = line.padding(toLength: 80, withPad: " ", startingAt: 0)
+        print("\r\(padded)")
     }
 
     public func writeBenchmarkLive(
@@ -136,10 +137,6 @@ public struct PrintStandardOutput: StandardOutput {
         let padded = line.padding(toLength: 80, withPad: " ", startingAt: 0)
         print("\r\(padded)", terminator: "")
         fflush(stdout)
-    }
-
-    public func finalizeBenchmarkLine() {
-        print()
     }
 
     private func formatted(seconds: Double) -> String {

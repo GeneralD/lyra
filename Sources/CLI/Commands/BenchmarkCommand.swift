@@ -1,5 +1,6 @@
 import ArgumentParser
 import AsyncRunnableCommand
+import Darwin
 import Dependencies
 import Domain
 
@@ -39,6 +40,9 @@ struct BenchmarkCommand: AsyncRunnableCommand {
             }
             output.writeJson(entries)
         } else {
+            let restore = suppressEcho()
+            defer { restore() }
+
             output.writeBenchmarkHeader()
             for scenario in selected {
                 let entry = await measureWithLiveDisplay(
@@ -78,8 +82,16 @@ struct BenchmarkCommand: AsyncRunnableCommand {
                 group.cancelAll()
                 break
             }
-            output.finalizeBenchmarkLine()
             return entry
         }
+    }
+
+    private func suppressEcho() -> () -> Void {
+        var old = termios()
+        tcgetattr(STDIN_FILENO, &old)
+        var raw = old
+        raw.c_lflag &= ~UInt(ECHO | ICANON)
+        tcsetattr(STDIN_FILENO, TCSANOW, &raw)
+        return { tcsetattr(STDIN_FILENO, TCSANOW, &old) }
     }
 }

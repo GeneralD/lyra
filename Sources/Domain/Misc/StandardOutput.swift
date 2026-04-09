@@ -23,7 +23,6 @@ public protocol StandardOutput: Sendable {
     func writeBenchmarkHeader()
     func write(_ entry: BenchmarkEntry)
     func writeBenchmarkLive(scenario: String, elapsed: Double, metrics: ProcessMetrics, baseline: ProcessMetrics)
-    func finalizeBenchmarkLine()
 }
 
 public enum StandardOutputKey: TestDependencyKey {
@@ -53,5 +52,4 @@ private struct UnimplementedStandardOutput: StandardOutput {
     func writeBenchmarkLive(scenario: String, elapsed: Double, metrics: ProcessMetrics, baseline: ProcessMetrics) {
         fatalError("StandardOutput.output not implemented")
     }
-    func finalizeBenchmarkLine() { fatalError("StandardOutput.output not implemented") }
 }
