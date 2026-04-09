@@ -138,7 +138,7 @@ public struct PrintStandardOutput: StandardOutput {
     }
 
     private func benchmarkRow(_ entry: BenchmarkEntry) -> String {
-        entry.scenario.padding(toLength: 16, withPad: " ", startingAt: 0)
+        entry.scenario.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)
             + formatted(seconds: entry.durationSeconds).padding(toLength: 10, withPad: " ", startingAt: 0)
             + formatted(seconds: entry.cpuUserSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
             + formatted(seconds: entry.cpuSystemSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)

@@ -1,8 +1,7 @@
 import Dependencies
 
 public protocol BenchmarkHandler: Sendable {
-    var availableScenarios: [String] { get }
-    func run(scenarios: [String], duration: Double) -> AsyncStream<BenchmarkUpdate>
+    func run(scenarios: [BenchmarkScenario], duration: Double) -> AsyncStream<BenchmarkUpdate>
 }
 
 public enum BenchmarkHandlerKey: TestDependencyKey {
@@ -17,8 +16,7 @@ extension DependencyValues {
 }
 
 private struct UnimplementedBenchmarkHandler: BenchmarkHandler {
-    var availableScenarios: [String] { [] }
-    func run(scenarios: [String], duration: Double) -> AsyncStream<BenchmarkUpdate> {
+    func run(scenarios: [BenchmarkScenario], duration: Double) -> AsyncStream<BenchmarkUpdate> {
         AsyncStream { $0.finish() }
     }
 }

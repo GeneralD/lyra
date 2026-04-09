@@ -12,7 +12,7 @@ struct BenchmarkHandlerTests {
         var liveCount = 0
         var completed: BenchmarkEntry?
 
-        for await update in handler.run(scenarios: ["idle"], duration: 1) {
+        for await update in handler.run(scenarios: [.idle], duration: 1) {
             switch update {
             case .live: liveCount += 1
             case .completed(let entry): completed = entry
@@ -20,7 +20,7 @@ struct BenchmarkHandlerTests {
         }
 
         let entry = try! #require(completed)
-        #expect(entry.scenario == "idle")
+        #expect(entry.scenario == .idle)
         #expect(entry.durationSeconds >= 1.0)
         #expect(entry.cpuUserSeconds >= 0)
         #expect(entry.currentRSSBytes > 0)
@@ -32,7 +32,7 @@ struct BenchmarkHandlerTests {
         let handler = BenchmarkHandlerImpl()
         var results: [BenchmarkEntry] = []
 
-        for await case .completed(let entry) in handler.run(scenarios: ["idle", "cpu_spike"], duration: 1) {
+        for await case .completed(let entry) in handler.run(scenarios: [.idle, .cpuSpike], duration: 1) {
             results.append(entry)
         }
 
@@ -40,10 +40,10 @@ struct BenchmarkHandlerTests {
         #expect(results[1].cpuUserSeconds > results[0].cpuUserSeconds)
     }
 
-    @Test("BenchmarkEntry encodes to JSON")
+    @Test("BenchmarkEntry encodes to JSON with scenario rawValue")
     func entryEncodesToJson() throws {
         let entry = BenchmarkEntry(
-            scenario: "test",
+            scenario: .idle,
             durationSeconds: 1.0,
             cpuUserSeconds: 0.5,
             cpuSystemSeconds: 0.1,
@@ -52,17 +52,11 @@ struct BenchmarkHandlerTests {
         )
         let data = try JSONEncoder().encode(entry)
         let decoded = try JSONDecoder().decode(BenchmarkEntry.self, from: data)
-        #expect(decoded.scenario == "test")
+        #expect(decoded.scenario == .idle)
         #expect(decoded.durationSeconds == 1.0)
     }
 
-    @Test("availableScenarios returns three scenarios")
-    func availableScenarios() {
-        let handler = BenchmarkHandlerImpl()
-        #expect(handler.availableScenarios == ["idle", "cpu_spike", "memory_alloc"])
-    }
-
-    @Test("empty scenarios defaults to all available")
+    @Test("empty scenarios defaults to all cases")
     func emptyScenariosDefaultsToAll() async {
         let handler = BenchmarkHandlerImpl()
         var completedCount = 0
@@ -71,6 +65,6 @@ struct BenchmarkHandlerTests {
             completedCount += 1
         }
 
-        #expect(completedCount == 3)
+        #expect(completedCount == BenchmarkScenario.allCases.count)
     }
 }

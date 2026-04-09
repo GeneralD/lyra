@@ -1,10 +1,16 @@
+public enum BenchmarkScenario: String, CaseIterable, Sendable, Codable {
+    case idle
+    case cpuSpike = "cpu_spike"
+    case memoryAlloc = "memory_alloc"
+}
+
 public enum BenchmarkUpdate: Sendable {
     case live(BenchmarkEntry)
     case completed(BenchmarkEntry)
 }
 
 public struct BenchmarkEntry: Sendable, Codable {
-    public let scenario: String
+    public let scenario: BenchmarkScenario
     public let durationSeconds: Double
     public let cpuUserSeconds: Double
     public let cpuSystemSeconds: Double
@@ -12,7 +18,7 @@ public struct BenchmarkEntry: Sendable, Codable {
     public let currentRSSBytes: Int64
 
     public init(
-        scenario: String,
+        scenario: BenchmarkScenario,
         durationSeconds: Double,
         cpuUserSeconds: Double,
         cpuSystemSeconds: Double,

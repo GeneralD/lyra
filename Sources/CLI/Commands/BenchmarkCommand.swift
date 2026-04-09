@@ -12,8 +12,11 @@ struct BenchmarkCommand: AsyncRunnableCommand {
     @Option(name: .shortAndLong, help: "Duration per scenario in seconds")
     var duration: Int = 5
 
-    @Option(name: .shortAndLong, help: "Scenarios to run (comma-separated: idle, cpu_spike, memory_alloc)")
-    var scenarios: String = "idle,cpu_spike,memory_alloc"
+    @Option(
+        name: .shortAndLong,
+        help: "Scenarios to run (comma-separated: \(BenchmarkScenario.allCases.map(\.rawValue).joined(separator: ", ")))"
+    )
+    var scenarios: String = ""
 
     @Flag(help: "Output results as JSON")
     var json: Bool = false
@@ -22,12 +25,7 @@ struct BenchmarkCommand: AsyncRunnableCommand {
         @Dependency(\.benchmarkHandler) var handler
         @Dependency(\.standardOutput) var output
 
-        let selected = scenarios.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-
-        guard !selected.isEmpty else {
-            output.writeError("No valid scenarios. Available: \(handler.availableScenarios.joined(separator: ", "))")
-            throw ExitCode.failure
-        }
+        let selected = parsedScenarios
 
         if json {
             var entries: [BenchmarkEntry] = []
@@ -46,5 +44,11 @@ struct BenchmarkCommand: AsyncRunnableCommand {
                 }
             }
         }
+    }
+
+    private var parsedScenarios: [BenchmarkScenario] {
+        guard !scenarios.isEmpty else { return [] }
+        return scenarios.split(separator: ",")
+            .compactMap { BenchmarkScenario(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
     }
 }

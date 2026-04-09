@@ -7,13 +7,8 @@ public struct BenchmarkHandlerImpl {
 }
 
 extension BenchmarkHandlerImpl: BenchmarkHandler {
-    public var availableScenarios: [String] {
-        ["idle", "cpu_spike", "memory_alloc"]
-    }
-
-    public func run(scenarios: [String], duration: Double) -> AsyncStream<BenchmarkUpdate> {
-        let available = availableScenarios
-        let selected = scenarios.isEmpty ? available : scenarios.filter { available.contains($0) }
+    public func run(scenarios: [BenchmarkScenario], duration: Double) -> AsyncStream<BenchmarkUpdate> {
+        let selected = scenarios.isEmpty ? BenchmarkScenario.allCases : scenarios
         return AsyncStream { continuation in
             Task {
                 for scenario in selected {
@@ -28,7 +23,8 @@ extension BenchmarkHandlerImpl: BenchmarkHandler {
 
 extension BenchmarkHandlerImpl {
     private func measureWithLiveUpdates(
-        scenario: String, duration: Double, continuation: AsyncStream<BenchmarkUpdate>.Continuation
+        scenario: BenchmarkScenario, duration: Double,
+        continuation: AsyncStream<BenchmarkUpdate>.Continuation
     ) async {
         let before = ProcessSnapshot.current
         let start = ContinuousClock.now
@@ -36,33 +32,14 @@ extension BenchmarkHandlerImpl {
         await withTaskGroup(of: BenchmarkEntry?.self) { group in
             group.addTask {
                 await runScenario(scenario, duration: duration)
-                let after = ProcessSnapshot.current
-                let elapsed = start.duration(to: .now)
-                return BenchmarkEntry(
-                    scenario: scenario,
-                    durationSeconds: elapsed.fractionalSeconds,
-                    cpuUserSeconds: after.cpuUser - before.cpuUser,
-                    cpuSystemSeconds: after.cpuSystem - before.cpuSystem,
-                    peakRSSBytes: after.peakRSS,
-                    currentRSSBytes: after.currentRSS
-                )
+                return snapshot(scenario: scenario, since: start, baseline: before)
             }
 
             group.addTask {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(250))
                     guard !Task.isCancelled else { break }
-                    let now = ProcessSnapshot.current
-                    let elapsed = start.duration(to: .now)
-                    let entry = BenchmarkEntry(
-                        scenario: scenario,
-                        durationSeconds: elapsed.fractionalSeconds,
-                        cpuUserSeconds: now.cpuUser - before.cpuUser,
-                        cpuSystemSeconds: now.cpuSystem - before.cpuSystem,
-                        peakRSSBytes: now.peakRSS,
-                        currentRSSBytes: now.currentRSS
-                    )
-                    continuation.yield(.live(entry))
+                    continuation.yield(.live(snapshot(scenario: scenario, since: start, baseline: before)))
                 }
                 return nil
             }
@@ -76,12 +53,27 @@ extension BenchmarkHandlerImpl {
         }
     }
 
-    private func runScenario(_ scenario: String, duration: Double) async {
+    private func snapshot(
+        scenario: BenchmarkScenario, since start: ContinuousClock.Instant, baseline: ProcessSnapshot
+    ) -> BenchmarkEntry {
+        let now = ProcessSnapshot.current
+        let elapsed = start.duration(to: .now)
+        return BenchmarkEntry(
+            scenario: scenario,
+            durationSeconds: elapsed.fractionalSeconds,
+            cpuUserSeconds: now.cpuUser - baseline.cpuUser,
+            cpuSystemSeconds: now.cpuSystem - baseline.cpuSystem,
+            peakRSSBytes: now.peakRSS,
+            currentRSSBytes: now.currentRSS
+        )
+    }
+
+    private func runScenario(_ scenario: BenchmarkScenario, duration: Double) async {
         switch scenario {
-        case "idle":
+        case .idle:
             try? await Task.sleep(for: .seconds(duration))
 
-        case "cpu_spike":
+        case .cpuSpike:
             await withTaskGroup(of: Void.self) { group in
                 let deadline = ContinuousClock.now + .seconds(duration)
                 for _ in 0..<ProcessInfo.processInfo.processorCount {
@@ -94,7 +86,7 @@ extension BenchmarkHandlerImpl {
                 }
             }
 
-        case "memory_alloc":
+        case .memoryAlloc:
             var buffers: [Data] = []
             let chunkSize = 1_048_576
             let deadline = ContinuousClock.now + .seconds(duration)
@@ -103,9 +95,6 @@ extension BenchmarkHandlerImpl {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             _ = buffers.count
-
-        default:
-            break
         }
     }
 }
