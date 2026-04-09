@@ -38,6 +38,18 @@ If a command needs streaming output, iterate the stream and call output methods 
 - Output receives data and formats it. It never calls handlers or orchestrates work.
 - **Never pass a handler as an argument to an output method.** If output needs data during display (e.g., live metrics), the handler should stream it.
 
+## Protocol API Design
+
+- **Don't expose implementation details in protocols.** If only one implementation
+  needs a method (e.g., `suppressEcho`), keep it `private` in that implementation.
+  Protocols define the contract consumers need, not the mechanics of one backend.
+- **Event enums should be self-contained.** Each case handles its own lifecycle
+  (e.g., `.live` suppresses echo, `.completed` restores it). Don't add separate
+  setup/teardown events (`.started`, `.finished`) when cases can manage their own state.
+- **AsyncStream ending is the natural cleanup signal.** When `for await` exits,
+  the work is done. Don't yield a redundant `.finished` event — it duplicates
+  what the stream already communicates.
+
 ## Testing Constraints
 
 - **Never use `setenv`** — process-global, races with Swift Testing parallel execution. Inject values via constructor parameters instead.
