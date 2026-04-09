@@ -117,13 +117,15 @@ private struct ProcessSnapshot {
 
     static var current: ProcessSnapshot {
         var usage = rusage()
-        getrusage(RUSAGE_SELF, &usage)
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else {
+            return ProcessSnapshot(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0)
+        }
 
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        withUnsafeMutablePointer(to: &info) { ptr in
+        let kr = withUnsafeMutablePointer(to: &info) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
-                _ = task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), intPtr, &count)
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), intPtr, &count)
             }
         }
 
@@ -131,7 +133,7 @@ private struct ProcessSnapshot {
             cpuUser: usage.ru_utime.seconds,
             cpuSystem: usage.ru_stime.seconds,
             peakRSS: Int64(usage.ru_maxrss),
-            currentRSS: Int64(info.resident_size)
+            currentRSS: kr == KERN_SUCCESS ? Int64(info.resident_size) : 0
         )
     }
 }

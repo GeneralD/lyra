@@ -8,7 +8,7 @@ extension BenchmarkScenario: ExpressibleByArgument {}
 struct BenchmarkCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(
         commandName: "benchmark",
-        abstract: "Measure CPU, memory, and energy baselines"
+        abstract: "Measure CPU and memory baselines"
     )
 
     @Option(name: .shortAndLong, help: "Duration per scenario in seconds")
