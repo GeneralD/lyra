@@ -14,6 +14,12 @@
 
 All commands follow: **inject → call → write → guard**. No exceptions.
 
+Commands contain zero logic — no loops, task groups, branching, or data
+transformation. This ensures:
+- **Testability**: handler and output are independently testable without CLI
+- **Readability**: each command reads as a one-line description of what it does
+- **Separation of concerns**: handler owns logic, output owns formatting, command is glue only
+
 ```swift
 func run() async throws {
     @Dependency(\.handler) var handler
