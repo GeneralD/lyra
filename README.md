@@ -13,6 +13,10 @@
   <img src="https://img.shields.io/badge/open%20source-%E2%9D%A4-red" alt="Open Source">
 </p>
 
+<p align="center">
+  <a href="https://codecov.io/gh/GeneralD/lyra"><img src="https://codecov.io/gh/GeneralD/lyra/graphs/sunburst.svg?token=TJ416Q2M2J" alt="Coverage Sunburst" width="200"></a>
+</p>
+
 # lyra
 
 Desktop lyrics overlay and video wallpaper for macOS.
