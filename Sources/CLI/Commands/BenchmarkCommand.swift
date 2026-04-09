@@ -20,6 +20,12 @@ struct BenchmarkCommand: AsyncRunnableCommand {
     @Flag(help: "Output results as JSON")
     var json: Bool = false
 
+    func validate() throws {
+        guard duration > 0 else {
+            throw ValidationError("Duration must be positive")
+        }
+    }
+
     func run() async throws {
         @Dependency(\.benchmarkHandler) var handler
         @Dependency(\.standardOutput) var output

@@ -7,7 +7,7 @@ import Testing
 @Suite("BenchmarkHandlerImpl")
 struct BenchmarkHandlerTests {
     @Test("idle scenario emits header, live updates, then completed")
-    func idleScenario() async {
+    func idleScenario() async throws {
         let handler = BenchmarkHandlerImpl()
         var hasHeader = false
         var liveCount = 0
@@ -24,7 +24,7 @@ struct BenchmarkHandlerTests {
         #expect(hasHeader)
         #expect(liveCount >= 1)
 
-        let entry = try! #require(completed)
+        let entry = try #require(completed)
         #expect(entry.scenario == .idle)
         #expect(entry.durationSeconds >= 1.0)
         #expect(entry.cpuUserSeconds >= 0)

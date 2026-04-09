@@ -10,14 +10,16 @@ extension BenchmarkHandlerImpl: BenchmarkHandler {
     public func run(scenarios: [BenchmarkScenario], duration: Double) -> AsyncStream<BenchmarkUpdate> {
         let selected = scenarios.isEmpty ? BenchmarkScenario.allCases : scenarios
         return AsyncStream { continuation in
-            Task {
+            let task = Task {
                 continuation.yield(.header)
                 for scenario in selected {
+                    guard !Task.isCancelled else { break }
                     await measureWithLiveUpdates(
                         scenario: scenario, duration: duration, continuation: continuation)
                 }
                 continuation.finish()
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
     public func measure(scenarios: [BenchmarkScenario], duration: Double) async -> [BenchmarkEntry] {

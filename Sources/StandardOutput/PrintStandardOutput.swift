@@ -103,6 +103,7 @@ public struct PrintStandardOutput: StandardOutput {
     public func write(_ update: BenchmarkUpdate) {
         switch update {
         case .header:
+            setEcho(enabled: false)
             let header =
                 "Scenario".padding(toLength: 16, withPad: " ", startingAt: 0)
                 + "Duration".padding(toLength: 10, withPad: " ", startingAt: 0)
@@ -114,29 +115,26 @@ public struct PrintStandardOutput: StandardOutput {
             write(String(repeating: "─", count: header.count))
 
         case .live(let entry):
-            suppressEcho()
             let padded = benchmarkRow(entry).padding(toLength: 80, withPad: " ", startingAt: 0)
             print("\r\(padded)", terminator: "")
             fflush(stdout)
 
         case .completed(let entry):
-            restoreEcho()
+            setEcho(enabled: true)
             let padded = benchmarkRow(entry).padding(toLength: 80, withPad: " ", startingAt: 0)
             print("\r\(padded)")
         }
     }
 
-    private func suppressEcho() {
+    private func setEcho(enabled: Bool) {
+        guard isatty(STDIN_FILENO) != 0 else { return }
         var attr = termios()
-        tcgetattr(STDIN_FILENO, &attr)
-        attr.c_lflag &= ~UInt(ECHO | ICANON)
-        tcsetattr(STDIN_FILENO, TCSANOW, &attr)
-    }
-
-    private func restoreEcho() {
-        var attr = termios()
-        tcgetattr(STDIN_FILENO, &attr)
-        attr.c_lflag |= UInt(ECHO | ICANON)
+        guard tcgetattr(STDIN_FILENO, &attr) == 0 else { return }
+        if enabled {
+            attr.c_lflag |= UInt(ECHO | ICANON)
+        } else {
+            attr.c_lflag &= ~UInt(ECHO | ICANON)
+        }
         tcsetattr(STDIN_FILENO, TCSANOW, &attr)
     }
 

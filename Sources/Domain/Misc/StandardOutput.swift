@@ -48,5 +48,5 @@ private struct UnimplementedStandardOutput: StandardOutput {
     func write(_ result: ConfigWriteResult) { fatalError("StandardOutput.output not implemented") }
     func write(_ result: ConfigPathResult) { fatalError("StandardOutput.output not implemented") }
     func write(_ result: HealthCheckReport) { fatalError("StandardOutput.output not implemented") }
-    func write(_ update: BenchmarkUpdate) {}
+    func write(_ update: BenchmarkUpdate) { fatalError("StandardOutput.output not implemented") }
 }
