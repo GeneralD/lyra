@@ -194,10 +194,8 @@ struct LyricsPresenterTests {
 
                 // Send a paused playback position (rate = 0)
                 positionSubject.send(PlaybackPosition(elapsed: 6, playbackRate: 0))
-                let deadline = ContinuousClock.now + .seconds(1)
-                while ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                // Allow Combine to deliver the position update
+                try? await Task.sleep(for: .milliseconds(50))
 
                 presenter.updateActiveLineTick()
                 // activeLineIndex should remain nil because playback is paused
@@ -232,10 +230,8 @@ struct LyricsPresenterTests {
 
                 // Send position at 6s — should highlight Line B (time=5)
                 positionSubject.send(PlaybackPosition(elapsed: 6, playbackRate: 1.0))
-                let deadline = ContinuousClock.now + .seconds(1)
-                while ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                // Allow Combine to deliver the position update
+                try? await Task.sleep(for: .milliseconds(50))
 
                 presenter.updateActiveLineTick()
                 #expect(presenter.activeLineIndex == 1)
@@ -288,10 +284,18 @@ struct LyricsPresenterTests {
                 await waitForLyricsSuccess(presenter)
                 #expect(presenter.lyricsState == .success(content))
 
+                // Track state transitions after duplicate send
+                var enteredRevealing = false
+                let cancellable = presenter.$lyricsState.dropFirst().sink { state in
+                    if state.isRevealing { enteredRevealing = true }
+                }
+
                 // Send same lyrics again — guard prevents re-reveal
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
                 try? await Task.sleep(for: .milliseconds(100))
                 #expect(presenter.lyricsState == .success(content))
+                #expect(!enteredRevealing, "should not re-enter .revealing for duplicate lyrics")
+                _ = cancellable
             }
         }
     }

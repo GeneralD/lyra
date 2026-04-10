@@ -84,8 +84,8 @@ struct RippleStateTests {
         state.update(screenPoint: CGPoint(x: 200, y: 200))
         state.update(screenPoint: CGPoint(x: 300, y: 300))
 
-        // Only the new ripples should remain
-        let allRecent = state.ripples.allSatisfy { Date.now.timeIntervalSince($0.startTime) < 1 }
-        #expect(allRecent)
+        // Original ripples should have been cleaned up; only new ones remain
+        let countAfterCleanup = state.ripples.count
+        #expect(countAfterCleanup <= 2, "expired ripples should have been removed during cleanup")
     }
 }

@@ -125,6 +125,7 @@ struct DecodeEffectStateTests {
         state.startLoading()
         #expect(state.isAnimating)
         #expect(state.displayText.count == 12)
+        state.stop()
     }
 
     @MainActor
@@ -142,6 +143,7 @@ struct DecodeEffectStateTests {
 
         // Display text should have changed due to tickLoading
         #expect(state.displayText.count == 6)
+        #expect(state.displayText != initial, "timer should have randomized display text")
         state.stop()
     }
 
