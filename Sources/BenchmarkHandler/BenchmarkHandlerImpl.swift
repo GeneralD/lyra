@@ -1,9 +1,12 @@
-import Darwin
+import Dependencies
 import Domain
 import Foundation
 
 public struct BenchmarkHandlerImpl {
     public init() {}
+
+    @Dependency(\.continuousClock) private var clock
+    @Dependency(\.resourceSampler) private var sampler
 }
 
 extension BenchmarkHandlerImpl: BenchmarkHandler {
@@ -22,13 +25,15 @@ extension BenchmarkHandlerImpl: BenchmarkHandler {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
     public func measure(scenarios: [BenchmarkScenario], duration: Double) async -> [BenchmarkEntry] {
         let selected = scenarios.isEmpty ? BenchmarkScenario.allCases : scenarios
         return await selected.asyncMap { scenario in
-            let baseline = ProcessSnapshot.current
-            let start = ContinuousClock.now
-            await runScenario(scenario, duration: duration)
-            return snapshot(scenario: scenario, since: start, baseline: baseline)
+            let baseline = sampler.current
+            let elapsed = await clock.measure {
+                await runScenario(scenario, duration: duration)
+            }
+            return entry(scenario: scenario, elapsed: elapsed, baseline: baseline, current: sampler.current)
         }
     }
 }
@@ -38,111 +43,85 @@ extension BenchmarkHandlerImpl {
         scenario: BenchmarkScenario, duration: Double,
         continuation: AsyncStream<BenchmarkUpdate>.Continuation
     ) async {
-        let before = ProcessSnapshot.current
-        let start = ContinuousClock.now
+        let baseline = sampler.current
 
-        await withTaskGroup(of: BenchmarkEntry?.self) { group in
-            group.addTask {
-                await runScenario(scenario, duration: duration)
-                return snapshot(scenario: scenario, since: start, baseline: before)
-            }
-
-            group.addTask {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(250))
-                    guard !Task.isCancelled else { break }
-                    continuation.yield(.live(snapshot(scenario: scenario, since: start, baseline: before)))
+        let elapsed: Duration = await clock.measure {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    await runScenario(scenario, duration: duration)
                 }
-                return nil
-            }
 
-            for await result in group {
-                guard let result else { continue }
-                continuation.yield(.completed(result))
+                group.addTask { [sampler, clock] in
+                    var accumulated: Duration = .zero
+                    while !Task.isCancelled {
+                        try? await clock.sleep(for: .milliseconds(250))
+                        accumulated += .milliseconds(250)
+                        guard !Task.isCancelled else { break }
+                        continuation.yield(
+                            .live(
+                                entry(
+                                    scenario: scenario, elapsed: accumulated, baseline: baseline,
+                                    current: sampler.current)))
+                    }
+                }
+
+                // Wait for scenario to finish, then cancel live updater
+                await group.next()
                 group.cancelAll()
-                break
             }
         }
+
+        continuation.yield(
+            .completed(entry(scenario: scenario, elapsed: elapsed, baseline: baseline, current: sampler.current)))
     }
 
-    private func snapshot(
-        scenario: BenchmarkScenario, since start: ContinuousClock.Instant, baseline: ProcessSnapshot
+    private func entry(
+        scenario: BenchmarkScenario, elapsed: Duration, baseline: ResourceSnapshot,
+        current: ResourceSnapshot
     ) -> BenchmarkEntry {
-        let now = ProcessSnapshot.current
-        let elapsed = start.duration(to: .now)
-        return BenchmarkEntry(
+        BenchmarkEntry(
             scenario: scenario,
             durationSeconds: elapsed.fractionalSeconds,
-            cpuUserSeconds: now.cpuUser - baseline.cpuUser,
-            cpuSystemSeconds: now.cpuSystem - baseline.cpuSystem,
-            peakRSSBytes: now.peakRSS,
-            currentRSSBytes: now.currentRSS
+            cpuUserSeconds: current.cpuUser - baseline.cpuUser,
+            cpuSystemSeconds: current.cpuSystem - baseline.cpuSystem,
+            peakRSSBytes: current.peakRSS,
+            currentRSSBytes: current.currentRSS
         )
     }
 
     private func runScenario(_ scenario: BenchmarkScenario, duration: Double) async {
         switch scenario {
         case .idle:
-            try? await Task.sleep(for: .seconds(duration))
+            try? await clock.sleep(for: .seconds(duration))
 
         case .cpuSpike:
             await withTaskGroup(of: Void.self) { group in
-                let deadline = ContinuousClock.now + .seconds(duration)
+                group.addTask { [clock] in
+                    try? await clock.sleep(for: .seconds(duration))
+                }
                 for _ in 0..<ProcessInfo.processInfo.processorCount {
                     group.addTask {
-                        while ContinuousClock.now < deadline {
+                        while !Task.isCancelled {
                             _ = (0..<1000).reduce(0.0) { acc, i in acc + sin(Double(i)) }
                             await Task.yield()
                         }
                     }
                 }
+                await group.next()
+                group.cancelAll()
             }
 
         case .memoryAlloc:
             var buffers: [Data] = []
             let chunkSize = 1_048_576
-            let deadline = ContinuousClock.now + .seconds(duration)
-            while ContinuousClock.now < deadline {
+            let iterations = max(1, Int(duration / 0.1))
+            for _ in 0..<iterations {
+                guard !Task.isCancelled else { break }
                 buffers.append(Data(repeating: 0xAB, count: chunkSize))
-                try? await Task.sleep(for: .milliseconds(100))
+                try? await clock.sleep(for: .milliseconds(100))
             }
             _ = buffers.count
         }
-    }
-}
-
-private struct ProcessSnapshot {
-    let cpuUser: Double
-    let cpuSystem: Double
-    let peakRSS: Int64
-    let currentRSS: Int64
-
-    static var current: ProcessSnapshot {
-        var usage = rusage()
-        guard getrusage(RUSAGE_SELF, &usage) == 0 else {
-            return ProcessSnapshot(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0)
-        }
-
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        let kr = withUnsafeMutablePointer(to: &info) { ptr in
-            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
-                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), intPtr, &count)
-            }
-        }
-
-        return ProcessSnapshot(
-            cpuUser: usage.ru_utime.seconds,
-            cpuSystem: usage.ru_stime.seconds,
-            peakRSS: Int64(usage.ru_maxrss),
-            currentRSS: kr == KERN_SUCCESS ? Int64(info.resident_size) : 0
-        )
-    }
-}
-
-extension timeval {
-    fileprivate var seconds: Double {
-        Double(tv_sec) + Double(tv_usec) / 1_000_000
     }
 }
 

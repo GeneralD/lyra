@@ -46,3 +46,7 @@ extension ConfigHandlerKey: DependencyKey {
 extension BenchmarkHandlerKey: DependencyKey {
     public static let liveValue: any BenchmarkHandler = BenchmarkHandlerImpl()
 }
+
+extension ResourceSamplerKey: DependencyKey {
+    public static let liveValue: any ResourceSampler = SystemResourceSampler()
+}
