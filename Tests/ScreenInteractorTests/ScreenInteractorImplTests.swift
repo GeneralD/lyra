@@ -1,10 +1,11 @@
+import CoreGraphics
 import Dependencies
 import Domain
 import Testing
 
 @testable import ScreenInteractor
 
-// MARK: - Stub
+// MARK: - Stubs
 
 private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var style: AppStyle = .init()
@@ -14,117 +15,175 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var existingConfigPath: String? { nil }
 }
 
+private struct StubScreenProvider: ScreenProvider {
+    var screens: [ScreenInfo] = []
+    var mainScreen: ScreenInfo? = nil
+}
+
+private let largeScreen = ScreenInfo(
+    frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+    visibleFrame: CGRect(x: 0, y: 25, width: 1920, height: 1055)
+)
+private let smallScreen = ScreenInfo(
+    frame: CGRect(x: 1920, y: 0, width: 1280, height: 720),
+    visibleFrame: CGRect(x: 1920, y: 25, width: 1280, height: 695)
+)
+private let twoScreens = [largeScreen, smallScreen]
+
 // MARK: - Tests
 
 @Suite("ScreenInteractor")
 struct ScreenInteractorImplTests {
 
-    @MainActor
-    @Test("resolveLayout returns non-zero window frame from real screen")
-    func resolveLayoutReturnsNonZeroFrame() {
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase()
-        } operation: {
-            ScreenInteractorImpl()
+    @Suite("screenSelector")
+    struct ScreenSelectorTests {
+        @Test("default screenSelector is .main")
+        func defaultIsMain() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase()
+                $0.screenProvider = StubScreenProvider()
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            #expect(interactor.screenSelector == .main)
         }
 
-        let layout = interactor.resolveLayout()
-        #expect(layout.windowFrame.width > 0)
-        #expect(layout.windowFrame.height > 0)
+        @Test("screenSelector reflects config value")
+        func reflectsConfig() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .largest))
+                $0.screenProvider = StubScreenProvider()
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            #expect(interactor.screenSelector == .largest)
+        }
     }
 
-    @MainActor
-    @Test("resolveLayout hostingFrame fits within windowFrame")
-    func hostingFrameFitsInWindow() {
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase()
-        } operation: {
-            ScreenInteractorImpl()
+    @Suite("resolveLayout")
+    struct ResolveLayoutTests {
+        @Test("empty screens returns zero layout")
+        func emptyScreens() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase()
+                $0.screenProvider = StubScreenProvider(screens: [])
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == .zero)
         }
 
-        let layout = interactor.resolveLayout()
-        #expect(layout.hostingFrame.width <= layout.windowFrame.width)
-        #expect(layout.hostingFrame.height <= layout.windowFrame.height)
-    }
-
-    @MainActor
-    @Test("default screenSelector is .main")
-    func defaultScreenSelectorIsMain() {
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase()
-        } operation: {
-            ScreenInteractorImpl()
+        @Test(".main selector uses mainScreen")
+        func mainSelector() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .main))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens, mainScreen: smallScreen)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == smallScreen.frame)
         }
 
-        #expect(interactor.screenSelector == .main)
-    }
-
-    @MainActor
-    @Test("screenSelector reflects config value")
-    func screenSelectorReflectsConfig() {
-        let style = AppStyle(screen: .largest)
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase(style: style)
-        } operation: {
-            ScreenInteractorImpl()
+        @Test(".main falls back to first screen when mainScreen is nil")
+        func mainFallback() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .main))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens, mainScreen: nil)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == largeScreen.frame)
         }
 
-        #expect(interactor.screenSelector == .largest)
-    }
-
-    @MainActor
-    @Test("out-of-range index falls back to valid screen — no crash")
-    func outOfRangeIndexDoesNotCrash() {
-        let style = AppStyle(screen: .index(999))
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase(style: style)
-        } operation: {
-            ScreenInteractorImpl()
+        @Test(".primary selector uses first screen")
+        func primarySelector() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .primary))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == largeScreen.frame)
         }
 
-        let layout = interactor.resolveLayout()
-        #expect(layout.windowFrame.width > 0, "fallback screen should have non-zero width")
-    }
-
-    @MainActor
-    @Test("primary selector resolves to first screen")
-    func primarySelector() {
-        let style = AppStyle(screen: .primary)
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase(style: style)
-        } operation: {
-            ScreenInteractorImpl()
+        @Test(".index selects correct screen")
+        func indexSelector() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .index(1)))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == smallScreen.frame)
         }
 
-        let layout = interactor.resolveLayout()
-        #expect(layout.windowFrame.width > 0)
-    }
-
-    @MainActor
-    @Test("smallest selector resolves without crash")
-    func smallestSelector() {
-        let style = AppStyle(screen: .smallest)
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase(style: style)
-        } operation: {
-            ScreenInteractorImpl()
+        @Test(".index out of range falls back to first screen")
+        func indexOutOfRange() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .index(999)))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == largeScreen.frame)
         }
 
-        let layout = interactor.resolveLayout()
-        #expect(layout.windowFrame.width > 0)
-    }
-
-    @MainActor
-    @Test("index 0 resolves to first screen")
-    func indexZero() {
-        let style = AppStyle(screen: .index(0))
-        let interactor = withDependencies {
-            $0.configUseCase = StubConfigUseCase(style: style)
-        } operation: {
-            ScreenInteractorImpl()
+        @Test(".smallest selector picks smallest by area")
+        func smallestSelector() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .smallest))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == smallScreen.frame)
         }
 
-        let layout = interactor.resolveLayout()
-        #expect(layout.windowFrame.width > 0)
+        @Test(".largest selector picks largest by area")
+        func largestSelector() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .largest))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.windowFrame == largeScreen.frame)
+        }
+
+        @Test("hostingFrame is computed from visible frame offset")
+        func hostingFrameComputed() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .primary))
+                $0.screenProvider = StubScreenProvider(screens: [largeScreen])
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.hostingFrame.origin.x == 0)
+            #expect(layout.hostingFrame.origin.y == 25)
+            #expect(layout.hostingFrame.width == 1920)
+            #expect(layout.hostingFrame.height == 1055)
+        }
+
+        @Test("screenOrigin reflects visible frame origin")
+        func screenOriginFromVisibleFrame() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .index(1)))
+                $0.screenProvider = StubScreenProvider(screens: twoScreens)
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let layout = interactor.resolveLayout()
+            #expect(layout.screenOrigin.x == 1920)
+            #expect(layout.screenOrigin.y == 25)
+        }
     }
 }

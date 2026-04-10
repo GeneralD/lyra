@@ -15,3 +15,7 @@ extension ScreenInteractorKey: DependencyKey {
 extension WallpaperInteractorKey: DependencyKey {
     public static let liveValue: any WallpaperInteractor = WallpaperInteractorImpl()
 }
+
+extension ScreenProviderKey: DependencyKey {
+    public static let liveValue: any ScreenProvider = AppKitScreenProvider()
+}
