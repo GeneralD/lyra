@@ -158,15 +158,20 @@ struct TrackHandlerImplTests {
             #expect(info.album == "Best Album")
         }
 
-        @Test("resolve + lyrics uses resolved metadata for lyrics search")
+        @Test("resolve + lyrics passes resolved candidates to lyrics search")
         func resolveAndLyrics() async {
+            let tracker = CandidateTracker()
             let info = await fetchWith(
                 nowPlaying: .stub(title: "Raw", artist: "Raw"),
                 query: TrackQuery(resolve: true, lyrics: true),
                 metadataHandler: { _ in [Track(title: "Resolved", artist: "Resolved", duration: nil)] },
-                lyricsHandler: { _ in LyricsResult(plainLyrics: "Found lyrics") }
+                lyricsHandler: { candidates in
+                    tracker.record(candidates)
+                    return LyricsResult(plainLyrics: "Found lyrics")
+                }
             )
             #expect(info.lyrics == "Found lyrics")
+            #expect(tracker.captured?.first?.title == "Resolved")
         }
     }
 }
@@ -177,6 +182,12 @@ private final class CallTracker: Sendable {
     private let _called = OSAllocatedUnfairLock(initialState: false)
     var wasCalled: Bool { _called.withLock { $0 } }
     func call() { _called.withLock { $0 = true } }
+}
+
+private final class CandidateTracker: Sendable {
+    private let _captured = OSAllocatedUnfairLock<[Track]?>(initialState: nil)
+    var captured: [Track]? { _captured.withLock { $0 } }
+    func record(_ candidates: [Track]) { _captured.withLock { $0 = candidates } }
 }
 
 private func fetchWith(
