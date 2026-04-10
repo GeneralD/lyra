@@ -17,6 +17,7 @@ struct RootCommand: ParsableCommand {
             HealthcheckCommand.self,
             ConfigCommand.self,
             TrackCommand.self,
+            BenchmarkCommand.self,
         ],
         defaultSubcommand: StartCommand.self
     )

@@ -54,6 +54,14 @@ let package = Package(
             ]
         ),
 
+        // ── BenchmarkHandler ──
+        .target(
+            name: "BenchmarkHandler",
+            dependencies: [
+                "Domain",
+            ]
+        ),
+
         // ── ConfigHandler ──
         .target(
             name: "ConfigHandler",
@@ -157,6 +165,7 @@ let package = Package(
                 "VersionHandler",
                 "ServiceHandler",
                 "HealthHandler",
+                "BenchmarkHandler",
                 "TrackHandler",
                 "ConfigHandler",
                 "StandardOutput",
@@ -388,6 +397,13 @@ let package = Package(
                 "LyricsUseCase",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "BenchmarkHandlerTests",
+            dependencies: [
+                "BenchmarkHandler",
+                "Entity",
             ]
         ),
         .testTarget(

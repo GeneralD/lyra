@@ -1,3 +1,4 @@
+import Darwin.POSIX
 import Domain
 import Foundation
 
@@ -95,5 +96,69 @@ public struct PrintStandardOutput: StandardOutput {
         case .success(.found(let path)): write(path)
         case .failure(.failed(let detail)): writeError("Config error: \(detail)")
         }
+    }
+
+    // MARK: - Benchmark
+
+    public func write(_ update: BenchmarkUpdate) {
+        switch update {
+        case .header:
+            setEcho(enabled: false)
+            let header =
+                "Scenario".padding(toLength: 16, withPad: " ", startingAt: 0)
+                + "Duration".padding(toLength: 10, withPad: " ", startingAt: 0)
+                + "CPU(user)".padding(toLength: 11, withPad: " ", startingAt: 0)
+                + "CPU(sys)".padding(toLength: 11, withPad: " ", startingAt: 0)
+                + "RSS(MB)".padding(toLength: 10, withPad: " ", startingAt: 0)
+                + "Peak(MB)"
+            write(header)
+            write(String(repeating: "─", count: header.count))
+
+        case .live(let entry):
+            let row = String(benchmarkRow(entry).prefix(terminalColumns))
+            print("\r\(row)\u{1B}[K", terminator: "")
+            fflush(stdout)
+
+        case .completed(let entry):
+            setEcho(enabled: true)
+            let row = String(benchmarkRow(entry).prefix(terminalColumns))
+            print("\r\(row)\u{1B}[K")
+        }
+    }
+
+    private var terminalColumns: Int {
+        guard isatty(STDOUT_FILENO) != 0 else { return 80 }
+        var ws = winsize()
+        guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0, ws.ws_col > 0 else { return 80 }
+        return Int(ws.ws_col)
+    }
+
+    private func setEcho(enabled: Bool) {
+        guard isatty(STDIN_FILENO) != 0 else { return }
+        var attr = termios()
+        guard tcgetattr(STDIN_FILENO, &attr) == 0 else { return }
+        if enabled {
+            attr.c_lflag |= UInt(ECHO | ICANON)
+        } else {
+            attr.c_lflag &= ~UInt(ECHO | ICANON)
+        }
+        tcsetattr(STDIN_FILENO, TCSANOW, &attr)
+    }
+
+    private func benchmarkRow(_ entry: BenchmarkEntry) -> String {
+        entry.scenario.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)
+            + formatted(seconds: entry.durationSeconds).padding(toLength: 10, withPad: " ", startingAt: 0)
+            + formatted(seconds: entry.cpuUserSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
+            + formatted(seconds: entry.cpuSystemSeconds).padding(toLength: 11, withPad: " ", startingAt: 0)
+            + formatted(megabytes: entry.currentRSSBytes).padding(toLength: 10, withPad: " ", startingAt: 0)
+            + formatted(megabytes: entry.peakRSSBytes)
+    }
+
+    private func formatted(seconds: Double) -> String {
+        String(format: "%.3fs", seconds)
+    }
+
+    private func formatted(megabytes bytes: Int64) -> String {
+        String(format: "%.1f", Double(bytes) / 1_048_576)
     }
 }

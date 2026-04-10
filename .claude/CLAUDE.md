@@ -13,6 +13,9 @@ make build                           # release build via Makefile
 make install                         # install to /usr/local/bin
 make lint                            # check formatting (swift-format)
 make format                          # auto-fix formatting
+make benchmark                       # run CPU/memory benchmarks (release build)
+lyra benchmark                       # measure baselines (idle, cpu_spike, memory_alloc)
+lyra benchmark -d 30 --json          # 30s per scenario, JSON output
 swift .claude/scripts/check-overlay.swift  # verify overlay is rendering
 ```
 
@@ -61,6 +64,7 @@ graph TD
             HealthHandler[HealthHandler]
             TrackHandler[TrackHandler]
             ConfigHandler[ConfigHandler]
+            BenchmarkHandler[BenchmarkHandler]
             StandardOutput[StandardOutput]
         end
 
@@ -153,6 +157,7 @@ graph TD
     style ConfigDataSource fill:#c84,stroke:#333,color:#fff
     style MediaRemoteDataSource fill:#c84,stroke:#333,color:#fff
     style WallpaperDataSource fill:#c84,stroke:#333,color:#fff
+    style BenchmarkHandler fill:#555,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
@@ -184,7 +189,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | Router | `App` | `AppRouter` (pure wireframe), `AppDelegate` |
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
-| Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
+| Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler`, `BenchmarkHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. BenchmarkHandler: CPU/memory measurement via `getrusage`/`task_info`. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
 | StandardOutput | `StandardOutput` | `StandardOutput` protocol (Domain/Misc) + `PrintStandardOutput` impl. CLI commands call `write(_ result:)` for typed results (success → stdout, failure → stderr), `write(_ message:)` for strings, `writeJson` for Encodable. Single source of all CLI message strings |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
@@ -255,6 +260,10 @@ Cache is Repository's responsibility, not DataSource's. DataSources are pure API
 
 **AsyncRunnableCommand vs AsyncParsableCommand**: `@main AsyncParsableCommand` starts Swift's cooperative thread pool and takes ownership of the main thread. `NSApplication.run()` must own the main thread exclusively for SwiftUI rendering. The two are fundamentally incompatible — when both compete, the overlay window is blank. `AsyncRunnableCommand` protocol solves this by keeping `RootCommand` as sync `ParsableCommand` (main thread free for NSApplication) while bridging async subcommands (`TrackCommand`, `HealthcheckCommand`) via `DispatchSemaphore` on a cooperative thread pool thread. `DaemonCommand` stays sync and calls `MainActor.assumeIsolated { app.run() }` directly on the main thread.
 
+**ConfigDataSourceImpl configHome override**: `ConfigDataSourceImpl(configHome:)` accepts an optional config directory path, defaulting to `nil` (reads `XDG_CONFIG_HOME` from environment). Tests inject a temp directory directly to avoid `setenv` race conditions.
+
+**Benchmark command**: `lyra benchmark` measures CPU (user/system via `getrusage`) and memory (RSS via `task_info`) across configurable scenarios: `idle`, `cpu_spike`, `memory_alloc`. Supports `--duration`, `--scenarios`, `--json` flags. Results are typed via `BenchmarkReport` (Entity) and printed via `StandardOutput.write(_:)`.
+
 **HealthCheckable**: Protocol in Domain with `serviceName` + `healthCheck()`. Implemented by `LRCLibAPI`, `MusicBrainzAPI`, `OpenAICompatibleAPI`. `lyra healthcheck` validates config, API connectivity, and AI token validity.
 
 ### Testing Guidelines
@@ -274,6 +283,10 @@ try? await Task.sleep(for: .milliseconds(200))
 ```
 
 This applies to all Combine + Timer + MainActor tests where DecodeEffect, state transitions, or async operations are involved.
+
+**Never use `setenv` in tests.** `setenv` is process-global and Swift Testing runs suites in parallel — concurrent tests clobber each other's environment variables, causing flaky CI failures. Instead, add a constructor parameter (e.g., `ConfigDataSourceImpl(configHome:)`) and inject the value directly.
+
+**Domain module has no Foundation import.** Use `Double` instead of `TimeInterval`, `String` instead of `URL`, etc. in Domain protocol signatures.
 
 **View testing strategy**: SwiftUI Views (body) are not unit-tested. All display logic is pushed to Presenters, which are thoroughly tested. Views are pure rendering with no business logic.
 

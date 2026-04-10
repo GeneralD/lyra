@@ -1,3 +1,4 @@
+import BenchmarkHandler
 import ConfigHandler
 import Dependencies
 import Domain
@@ -40,4 +41,8 @@ extension TrackHandlerKey: DependencyKey {
 
 extension ConfigHandlerKey: DependencyKey {
     public static let liveValue: any ConfigHandler = ConfigHandlerImpl()
+}
+
+extension BenchmarkHandlerKey: DependencyKey {
+    public static let liveValue: any BenchmarkHandler = BenchmarkHandlerImpl()
 }
