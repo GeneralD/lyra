@@ -115,15 +115,22 @@ public struct PrintStandardOutput: StandardOutput {
             write(String(repeating: "─", count: header.count))
 
         case .live(let entry):
-            let padded = benchmarkRow(entry).padding(toLength: 80, withPad: " ", startingAt: 0)
-            print("\r\(padded)", terminator: "")
+            let row = String(benchmarkRow(entry).prefix(terminalColumns))
+            print("\r\(row)\u{1B}[K", terminator: "")
             fflush(stdout)
 
         case .completed(let entry):
             setEcho(enabled: true)
-            let padded = benchmarkRow(entry).padding(toLength: 80, withPad: " ", startingAt: 0)
-            print("\r\(padded)")
+            let row = String(benchmarkRow(entry).prefix(terminalColumns))
+            print("\r\(row)\u{1B}[K")
         }
+    }
+
+    private var terminalColumns: Int {
+        guard isatty(STDOUT_FILENO) != 0 else { return 80 }
+        var ws = winsize()
+        guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0, ws.ws_col > 0 else { return 80 }
+        return Int(ws.ws_col)
     }
 
     private func setEcho(enabled: Bool) {
