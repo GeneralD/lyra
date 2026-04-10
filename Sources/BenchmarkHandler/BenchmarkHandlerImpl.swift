@@ -114,7 +114,7 @@ extension BenchmarkHandlerImpl {
         case .memoryAlloc:
             var buffers: [Data] = []
             let chunkSize = 1_048_576
-            let iterations = Int(duration / 0.1)
+            let iterations = max(1, Int(duration / 0.1))
             for _ in 0..<iterations {
                 guard !Task.isCancelled else { break }
                 buffers.append(Data(repeating: 0xAB, count: chunkSize))
