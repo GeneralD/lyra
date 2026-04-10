@@ -72,19 +72,41 @@ struct ConfigUseCaseTests {
     }
 }
 
+@Test("existingConfigPath delegates to repository")
+func existingConfigPathDelegates() {
+    withDependencies {
+        $0.configRepository = MockConfigRepository(
+            style: .init(), configPath: "/home/user/.config/lyra/config.toml")
+    } operation: {
+        let useCase = ConfigUseCaseImpl()
+        #expect(useCase.existingConfigPath == "/home/user/.config/lyra/config.toml")
+    }
+}
+
+@Test("existingConfigPath returns nil when no config exists")
+func existingConfigPathNil() {
+    withDependencies {
+        $0.configRepository = MockConfigRepository(style: .init(), configPath: nil)
+    } operation: {
+        let useCase = ConfigUseCaseImpl()
+        #expect(useCase.existingConfigPath == nil)
+    }
+}
+
 // MARK: - Mocks
 
 private struct MockConfigRepository: ConfigRepository {
     var style: AppStyle = .init()
     var templateResult: String?
     var writeTemplateResult: String = ""
+    var configPath: String?
 
     func loadAppStyle() -> AppStyle { style }
 
     func validate() -> ConfigValidationResult { .defaults }
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
-    var existingConfigPath: String? { nil }
+    var existingConfigPath: String? { configPath }
 }
 
 private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {

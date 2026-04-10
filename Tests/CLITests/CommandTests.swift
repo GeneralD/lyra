@@ -418,6 +418,46 @@ struct ConfigInitCommandTests {
     }
 }
 
+// MARK: - ConfigEditCommand
+
+@Suite("ConfigEditCommand")
+struct ConfigEditCommandTests {
+    @Test("failure path when config not found throws ExitCode.failure")
+    func configNotFound() {
+        withDependencies {
+            $0.configHandler = StubConfigHandler(
+                pathResult: .failure(.failed(detail: "not found"))
+            )
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            var cmd = ConfigEditCommand()
+            #expect(throws: ExitCode.failure) {
+                try cmd.run()
+            }
+        }
+    }
+}
+
+// MARK: - ConfigOpenCommand
+
+@Suite("ConfigOpenCommand")
+struct ConfigOpenCommandTests {
+    @Test("failure path when config not found throws ExitCode.failure")
+    func configNotFound() {
+        withDependencies {
+            $0.configHandler = StubConfigHandler(
+                pathResult: .failure(.failed(detail: "not found"))
+            )
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            var cmd = ConfigOpenCommand()
+            #expect(throws: ExitCode.failure) {
+                try cmd.run()
+            }
+        }
+    }
+}
+
 // MARK: - TrackCommand
 
 @Suite("TrackCommand")

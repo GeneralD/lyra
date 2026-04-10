@@ -77,6 +77,76 @@ struct PlaybackUseCaseTests {
     }
 }
 
+// MARK: - elapsedTime
+
+@Test("elapsedTime returns nil when rawElapsed is nil")
+func elapsedTimeNilRawElapsed() {
+    let np = NowPlaying(
+        title: "Song", artist: "Artist", artworkData: nil,
+        duration: 200, rawElapsed: nil, playbackRate: 1.0, timestamp: Date()
+    )
+    withDependencies {
+        $0.nowPlayingRepository = MockNowPlayingRepository(infos: [])
+        $0.date.now = Date()
+    } operation: {
+        let useCase = PlaybackUseCaseImpl()
+        #expect(useCase.elapsedTime(for: np) == nil)
+    }
+}
+
+@Test("elapsedTime returns base when timestamp is nil")
+func elapsedTimeNilTimestamp() {
+    let np = NowPlaying(
+        title: "Song", artist: "Artist", artworkData: nil,
+        duration: 200, rawElapsed: 42.0, playbackRate: 1.0, timestamp: nil
+    )
+    withDependencies {
+        $0.nowPlayingRepository = MockNowPlayingRepository(infos: [])
+        $0.date.now = Date()
+    } operation: {
+        let useCase = PlaybackUseCaseImpl()
+        #expect(useCase.elapsedTime(for: np) == 42.0)
+    }
+}
+
+@Test("elapsedTime computes base + rate * elapsed since timestamp")
+func elapsedTimeComputed() {
+    let ts = Date(timeIntervalSinceReferenceDate: 1000)
+    let now = Date(timeIntervalSinceReferenceDate: 1010)
+    let np = NowPlaying(
+        title: "Song", artist: "Artist", artworkData: nil,
+        duration: 200, rawElapsed: 5.0, playbackRate: 1.0, timestamp: ts
+    )
+    withDependencies {
+        $0.nowPlayingRepository = MockNowPlayingRepository(infos: [])
+        $0.date.now = now
+    } operation: {
+        let useCase = PlaybackUseCaseImpl()
+        let result = useCase.elapsedTime(for: np)
+        // 5.0 + 1.0 * (1010 - 1000) = 15.0
+        #expect(result == 15.0)
+    }
+}
+
+@Test("elapsedTime respects playback rate")
+func elapsedTimeWithRate() {
+    let ts = Date(timeIntervalSinceReferenceDate: 1000)
+    let now = Date(timeIntervalSinceReferenceDate: 1010)
+    let np = NowPlaying(
+        title: "Song", artist: "Artist", artworkData: nil,
+        duration: 200, rawElapsed: 5.0, playbackRate: 2.0, timestamp: ts
+    )
+    withDependencies {
+        $0.nowPlayingRepository = MockNowPlayingRepository(infos: [])
+        $0.date.now = now
+    } operation: {
+        let useCase = PlaybackUseCaseImpl()
+        let result = useCase.elapsedTime(for: np)
+        // 5.0 + 2.0 * (1010 - 1000) = 25.0
+        #expect(result == 25.0)
+    }
+}
+
 // MARK: - Mocks
 
 private struct MockNowPlayingRepository: NowPlayingRepository {
