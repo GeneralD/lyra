@@ -172,11 +172,68 @@ struct ConfigRepositoryTests {
     }
 }
 
+@Suite("delegation")
+struct Delegation {
+    @Test("template delegates to dataSource")
+    func templateDelegates() {
+        withDependencies {
+            $0.configDataSource = StubConfigDataSource(templateValue: "# toml template")
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            #expect(repo.template(format: .toml) == "# toml template")
+        }
+    }
+
+    @Test("template returns nil when dataSource returns nil")
+    func templateNil() {
+        withDependencies {
+            $0.configDataSource = StubConfigDataSource(templateValue: nil)
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            #expect(repo.template(format: .toml) == nil)
+        }
+    }
+
+    @Test("writeTemplate delegates to dataSource")
+    func writeTemplateDelegates() throws {
+        try withDependencies {
+            $0.configDataSource = StubConfigDataSource(writeTemplateValue: "/path/config.toml")
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            let path = try repo.writeTemplate(format: .toml, force: false)
+            #expect(path == "/path/config.toml")
+        }
+    }
+
+    @Test("existingConfigPath delegates to dataSource")
+    func existingConfigPathDelegates() {
+        withDependencies {
+            $0.configDataSource = StubConfigDataSource(configPath: "/home/.config/lyra/config.toml")
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            #expect(repo.existingConfigPath == "/home/.config/lyra/config.toml")
+        }
+    }
+
+    @Test("existingConfigPath returns nil when no config exists")
+    func existingConfigPathNil() {
+        withDependencies {
+            $0.configDataSource = StubConfigDataSource()
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            #expect(repo.existingConfigPath == nil)
+        }
+    }
+}
+
 // MARK: - Test helpers
 
 private struct StubConfigDataSource: ConfigDataSource {
     var loadResult: ConfigLoadResult?
     var tryDecodeResult: Result<String, Error> = .success("")
+    var templateValue: String?
+    var writeTemplateValue: String = ""
+    var configPath: String?
 
     func load() -> ConfigLoadResult? { loadResult }
 
@@ -184,9 +241,9 @@ private struct StubConfigDataSource: ConfigDataSource {
         try tryDecodeResult.get()
     }
 
-    func template(format: ConfigFormat) -> String? { nil }
-    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
-    var existingConfigPath: String? { nil }
+    func template(format: ConfigFormat) -> String? { templateValue }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateValue }
+    var existingConfigPath: String? { configPath }
 }
 
 private enum StubError: Error, LocalizedError {
