@@ -400,6 +400,7 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
         .testTarget(
             name: "ProcessHandlerTests",
             dependencies: [

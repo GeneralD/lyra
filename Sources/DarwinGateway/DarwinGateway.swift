@@ -5,8 +5,14 @@ import os
 
 public final class DarwinGateway: @unchecked Sendable {
     private let lockState = OSAllocatedUnfairLock(initialState: LockState())
+    private let lockDirectory: URL
 
-    public init() {}
+    public init(
+        lockDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/lyra")
+    ) {
+        self.lockDirectory = lockDirectory
+    }
 
     deinit {
         _ = lockState.withLock { state in
@@ -92,7 +98,7 @@ extension DarwinGateway: ProcessGateway {
         lockState.withLock { state in
             guard state.fileDescriptor == nil else { return true }
 
-            let lockURL = Self.lockURL
+            let lockURL = lockURL
             let dir = lockURL.deletingLastPathComponent()
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
@@ -114,7 +120,7 @@ extension DarwinGateway: ProcessGateway {
     public var isLocked: Bool {
         if lockState.withLock({ $0.fileDescriptor != nil }) { return false }
 
-        let fd = open(Self.lockURL.path, O_RDONLY | O_CLOEXEC)
+        let fd = open(lockURL.path, O_RDONLY | O_CLOEXEC)
         guard fd >= 0 else { return errno != ENOENT }
         defer { close(fd) }
 
@@ -129,7 +135,7 @@ extension DarwinGateway: ProcessGateway {
             return
         }
 
-        let fd = open(Self.lockURL.path, O_WRONLY | O_CLOEXEC)
+        let fd = open(lockURL.path, O_WRONLY | O_CLOEXEC)
         guard fd >= 0 else { return }
         defer { close(fd) }
 
@@ -233,9 +239,8 @@ extension DarwinGateway: ProcessGateway {
 // MARK: - Private
 
 extension DarwinGateway {
-    private static var lockURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/lyra/lyra.pid")
+    private var lockURL: URL {
+        lockDirectory.appendingPathComponent("lyra.pid")
     }
 }
 
