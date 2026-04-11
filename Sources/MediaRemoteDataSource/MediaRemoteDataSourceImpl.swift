@@ -2,25 +2,34 @@ import Dependencies
 import Domain
 import Files
 import Foundation
+import os
 
 public final class MediaRemoteDataSourceImpl: @unchecked Sendable {
     @Dependency(\.processGateway) private var gateway
 
+    private let lock = OSAllocatedUnfairLock(initialState: false)
     private var iterator: AsyncStream<String>.AsyncIterator?
+    private static let scriptPath: String = ensureScript()
 
     public init() {}
 }
 
 extension MediaRemoteDataSourceImpl: MediaRemoteDataSource {
     public func poll() async -> MediaRemotePollResult {
-        if iterator == nil {
-            let scriptPath = Self.ensureScript()
+        let needsInit = lock.withLock { state in
+            guard !state else { return false }
+            state = true
+            return true
+        }
+        if needsInit {
             let stream = gateway.runStreaming(
-                executable: "/usr/bin/env", arguments: ["swift", scriptPath])
+                executable: "/usr/bin/env", arguments: ["swift", Self.scriptPath])
             iterator = stream.makeAsyncIterator()
         }
 
         guard let line = await iterator?.next() else {
+            lock.withLock { $0 = false }
+            iterator = nil
             return .eof
         }
 
