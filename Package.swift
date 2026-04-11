@@ -54,6 +54,14 @@ let package = Package(
             ]
         ),
 
+        // ── DarwinGateway ──
+        .target(
+            name: "DarwinGateway",
+            dependencies: [
+                "Domain",
+            ]
+        ),
+
         // ── BenchmarkHandler ──
         .target(
             name: "BenchmarkHandler",
@@ -162,6 +170,7 @@ let package = Package(
                 "MediaRemoteDataSource",
                 "WallpaperDataSource",
                 "SQLiteDataStore",
+                "DarwinGateway",
                 "ProcessHandler",
                 "VersionHandler",
                 "ServiceHandler",
