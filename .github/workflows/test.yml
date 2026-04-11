@@ -39,6 +39,7 @@ jobs:
         run: |
           BIN=$(swift build --show-bin-path)
           TEST_BIN="$BIN/lyraPackageTests.xctest/Contents/MacOS/lyraPackageTests"
+          COVERAGE_FILE="$GITHUB_WORKSPACE/coverage.lcov"
           PROFDATA=$(find .build -name 'default.profdata' -print -quit)
           if [[ -z "$PROFDATA" || ! -f "$PROFDATA" ]]; then
             echo "Coverage profile not found under .build (expected default.profdata)."
@@ -53,12 +54,17 @@ jobs:
             -instr-profile "$PROFDATA" \
             -format lcov \
             -ignore-filename-regex '.build|Tests/' \
-            > coverage.lcov
+            > "$COVERAGE_FILE"
+          if [[ ! -f "$COVERAGE_FILE" ]]; then
+            echo "Coverage report not found: $COVERAGE_FILE"
+            exit 1
+          fi
+          echo "COVERAGE_FILE=$COVERAGE_FILE" >> "$GITHUB_ENV"
 
       - name: Upload to Codecov
         if: always()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.lcov
+          files: ${{ env.COVERAGE_FILE }}
           fail_ci_if_error: false
