@@ -1,3 +1,4 @@
+import Dependencies
 import Domain
 import Files
 import Foundation
@@ -6,6 +7,8 @@ public struct ServiceHandlerImpl {
     private let label = "com.generald.lyra"
     private let homebrewLabel = "homebrew.mxcl.lyra"
     private let launchAgentsPath: String
+
+    @Dependency(\.processGateway) private var gateway
 
     public init(launchAgentsPath: String = "~/Library/LaunchAgents") {
         self.launchAgentsPath = NSString(string: launchAgentsPath).expandingTildeInPath
@@ -30,14 +33,14 @@ extension ServiceHandlerImpl: ServiceHandler {
         let uid = getuid()
         let target = "gui/\(uid)"
 
-        runLaunchctl(["bootout", "\(target)/\(label)"])
+        gateway.runLaunchctl(["bootout", "\(target)/\(label)"])
 
         guard let folder = try? launchAgentsFolder,
             let file = try? folder.createFile(named: "\(label).plist"),
             (try? file.write(plistData)) != nil
         else { return .failure(.failed(detail: "Failed to write plist file")) }
 
-        let status = runLaunchctl(["bootstrap", target, file.path])
+        let status = gateway.runLaunchctl(["bootstrap", target, file.path])
         guard status == 0 else { return .failure(.bootstrapFailed(status: status)) }
         return .success(.installed(path: file.path))
     }
@@ -47,7 +50,7 @@ extension ServiceHandlerImpl: ServiceHandler {
             return homebrewPlistFile != nil ? .failure(.managedByHomebrew) : .failure(.notInstalled)
         }
         let uid = getuid()
-        runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
+        gateway.runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
 
         guard (try? file.delete()) != nil else {
             return .failure(.failed(detail: "Failed to delete plist file"))
@@ -78,46 +81,15 @@ extension ServiceHandlerImpl {
 
     private var mintRunPath: String? {
         guard currentExecutablePath.contains("/.mint/") else { return nil }
-        return whichCommand("mint")
+        return gateway.findExecutable("mint")
     }
 
     private var installedPath: String? {
-        whichCommand(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
+        gateway.findExecutable(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
     }
 
     private var currentExecutablePath: String {
         URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL
             .path
-    }
-
-    @discardableResult
-    private func runLaunchctl(_ arguments: [String]) -> Int32 {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        task.arguments = arguments
-        task.standardError = FileHandle.nullDevice
-        guard (try? task.run()) != nil else { return -1 }
-        task.waitUntilExit()
-        return task.terminationStatus
-    }
-
-    private func whichCommand(_ name: String) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = [name]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        guard
-            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !output.isEmpty
-        else { return nil }
-        let resolved = URL(fileURLWithPath: output).standardizedFileURL.path
-        guard FileManager.default.isExecutableFile(atPath: resolved) else { return nil }
-        return resolved
     }
 }

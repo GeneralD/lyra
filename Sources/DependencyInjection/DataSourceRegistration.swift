@@ -15,7 +15,7 @@ extension LyricsDataSourceKey: DependencyKey {
 }
 
 extension MediaRemoteDataSourceKey: DependencyKey {
-    public static let liveValue: any MediaRemoteDataSource = MediaRemoteBridge()
+    public static let liveValue: any MediaRemoteDataSource = MediaRemoteDataSourceImpl()
 }
 
 extension LLMMetadataDataSourceKey: DependencyKey {

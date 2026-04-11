@@ -13,6 +13,19 @@ When adding a new module (Handler, UseCase, Repository, DataSource, etc.):
 5. **Domain protocol** — add `TestDependencyKey` + `DependencyValues` extension
 6. **StandardOutput** — add `write(_ result:)` overload if the module has a CLI result type
 
+## Documentation Updates
+
+- **CLAUDE.md must be updated** when adding/removing modules, changing
+  architecture, or modifying dependency graphs. Specifically check:
+  - Mermaid module dependency graph
+  - Layer Summary table
+  - Key Design Decisions section
+  - Build & Test commands
+- **README.md must be updated** when adding/changing/removing CLI commands
+  or configuration options. Specifically check:
+  - Usage section
+  - Configuration section
+
 For Handler modules specifically:
 - Entity result type (e.g., `BenchmarkReport.swift`)
 - Domain protocol (e.g., `BenchmarkHandler.swift`)

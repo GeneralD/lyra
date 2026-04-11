@@ -7,7 +7,7 @@ import Testing
 
 // MARK: - Test Doubles
 
-private final class MockSampler: ResourceSampler, @unchecked Sendable {
+private final class MockGateway: ProcessGateway, @unchecked Sendable {
     private let lock = NSLock()
     private var snapshots: [ResourceSnapshot]
     private var index = 0
@@ -16,12 +16,28 @@ private final class MockSampler: ResourceSampler, @unchecked Sendable {
         self.snapshots = snapshots
     }
 
-    var current: ResourceSnapshot {
+    var resourceSnapshot: ResourceSnapshot {
         lock.lock()
         defer { lock.unlock() }
         let snap = snapshots[min(index, snapshots.count - 1)]
         index += 1
         return snap
+    }
+
+    // Unused stubs
+    var overlayPIDs: [Int32] { [] }
+    func spawnDaemon(executablePath: String) -> Int32? { nil }
+    func sendSignal(_ pid: Int32, signal: Int32) -> Bool { false }
+    func isRunning(_ pid: Int32) -> Bool { false }
+    func acquireLock() -> Bool { false }
+    var isLocked: Bool { false }
+    func releaseLock() {}
+    func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
+    func findExecutable(_ name: String) -> String? { nil }
+    func run(executable: String, arguments: [String]) -> Int32 { 0 }
+    func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
+        AsyncStream { $0.finish() }
     }
 }
 
@@ -35,10 +51,10 @@ private let afterSpike = ResourceSnapshot(cpuUser: 5.0, cpuSystem: 1.0, peakRSS:
 struct MeasureTests {
     @Test("returns correct CPU delta between baseline and final snapshot")
     func cpuDelta() async throws {
-        let sampler = MockSampler(snapshots: [baseline, afterIdle])
+        let gateway = MockGateway(snapshots: [baseline, afterIdle])
         let entries = await withDependencies {
             $0.continuousClock = ImmediateClock()
-            $0.resourceSampler = sampler
+            $0.processGateway = gateway
         } operation: {
             await BenchmarkHandlerImpl().measure(scenarios: [.idle], duration: 1)
         }
@@ -52,10 +68,10 @@ struct MeasureTests {
     @Test("empty scenarios defaults to all cases")
     func emptyScenariosDefaultsToAll() async {
         let snap = ResourceSnapshot(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0)
-        let sampler = MockSampler(snapshots: [snap])
+        let gateway = MockGateway(snapshots: [snap])
         let entries = await withDependencies {
             $0.continuousClock = ImmediateClock()
-            $0.resourceSampler = sampler
+            $0.processGateway = gateway
         } operation: {
             await BenchmarkHandlerImpl().measure(scenarios: [], duration: 1)
         }
@@ -65,10 +81,10 @@ struct MeasureTests {
 
     @Test("RSS values come from sampler snapshot")
     func rssFromSampler() async throws {
-        let sampler = MockSampler(snapshots: [baseline, afterSpike])
+        let gateway = MockGateway(snapshots: [baseline, afterSpike])
         let entries = await withDependencies {
             $0.continuousClock = ImmediateClock()
-            $0.resourceSampler = sampler
+            $0.processGateway = gateway
         } operation: {
             await BenchmarkHandlerImpl().measure(scenarios: [.cpuSpike], duration: 1)
         }
@@ -86,12 +102,12 @@ struct RunTests {
     @Test("emits header first")
     func headerFirst() async {
         let snap = ResourceSnapshot(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0)
-        let sampler = MockSampler(snapshots: [snap])
+        let gateway = MockGateway(snapshots: [snap])
         var first: BenchmarkUpdate?
 
         await withDependencies {
             $0.continuousClock = ImmediateClock()
-            $0.resourceSampler = sampler
+            $0.processGateway = gateway
         } operation: {
             for await update in BenchmarkHandlerImpl().run(scenarios: [.idle], duration: 1) {
                 first = update
@@ -108,12 +124,12 @@ struct RunTests {
     @Test("emits completed for each scenario")
     func completedPerScenario() async {
         let snap = ResourceSnapshot(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0)
-        let sampler = MockSampler(snapshots: [snap])
+        let gateway = MockGateway(snapshots: [snap])
         var completedCount = 0
 
         await withDependencies {
             $0.continuousClock = ImmediateClock()
-            $0.resourceSampler = sampler
+            $0.processGateway = gateway
         } operation: {
             for await case .completed in BenchmarkHandlerImpl().run(scenarios: [.idle, .cpuSpike], duration: 1) {
                 completedCount += 1
@@ -125,12 +141,12 @@ struct RunTests {
 
     @Test("completed entry has correct CPU delta from sampler")
     func completedCpuDelta() async throws {
-        let sampler = MockSampler(snapshots: [baseline, afterIdle, afterIdle])
+        let gateway = MockGateway(snapshots: [baseline, afterIdle, afterIdle])
         var completed: BenchmarkEntry?
 
         await withDependencies {
             $0.continuousClock = ImmediateClock()
-            $0.resourceSampler = sampler
+            $0.processGateway = gateway
         } operation: {
             for await case .completed(let entry) in BenchmarkHandlerImpl().run(scenarios: [.idle], duration: 1) {
                 completed = entry

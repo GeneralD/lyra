@@ -33,6 +33,7 @@ let package = Package(
             name: "ProcessHandler",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
@@ -41,6 +42,7 @@ let package = Package(
             name: "ServiceHandler",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
             ]
         ),
@@ -51,6 +53,14 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // ── DarwinGateway ──
+        .target(
+            name: "DarwinGateway",
+            dependencies: [
+                "Domain",
             ]
         ),
 
@@ -162,6 +172,7 @@ let package = Package(
                 "MediaRemoteDataSource",
                 "WallpaperDataSource",
                 "SQLiteDataStore",
+                "DarwinGateway",
                 "ProcessHandler",
                 "VersionHandler",
                 "ServiceHandler",
@@ -299,6 +310,7 @@ let package = Package(
             name: "MediaRemoteDataSource",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
             ],
             resources: [.copy("Resources/media-remote-helper.swift")]
@@ -307,6 +319,7 @@ let package = Package(
             name: "WallpaperDataSource",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
             ]
         ),
@@ -387,9 +400,24 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
-        .testTarget(name: "ProcessHandlerTests", dependencies: ["ProcessHandler", "Domain"]),
+        .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
+        .testTarget(
+            name: "ProcessHandlerTests",
+            dependencies: [
+                "ProcessHandler",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(name: "VersionHandlerTests", dependencies: ["VersionHandler"]),
-        .testTarget(name: "ServiceHandlerTests", dependencies: ["ServiceHandler"]),
+        .testTarget(
+            name: "ServiceHandlerTests",
+            dependencies: [
+                "ServiceHandler",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(
             name: "ConfigHandlerTests",
             dependencies: [
@@ -530,9 +558,19 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "MediaRemoteDataSourceTests",
+            dependencies: [
+                "MediaRemoteDataSource",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
             name: "WallpaperDataSourceTests",
             dependencies: [
                 "WallpaperDataSource",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .testTarget(

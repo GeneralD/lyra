@@ -1,7 +1,27 @@
+import Dependencies
+import Domain
 import Foundation
 import Testing
 
 @testable import ServiceHandler
+
+private struct StubGateway: ProcessGateway {
+    var resourceSnapshot: ResourceSnapshot { .init(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0) }
+    var overlayPIDs: [Int32] { [] }
+    func spawnDaemon(executablePath: String) -> Int32? { nil }
+    func sendSignal(_ pid: Int32, signal: Int32) -> Bool { false }
+    func isRunning(_ pid: Int32) -> Bool { false }
+    func acquireLock() -> Bool { false }
+    var isLocked: Bool { false }
+    func releaseLock() {}
+    func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
+    func findExecutable(_ name: String) -> String? { nil }
+    func run(executable: String, arguments: [String]) -> Int32 { 0 }
+    func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
+        AsyncStream { $0.finish() }
+    }
+}
 
 @Suite("ServiceHandlerImpl", .serialized)
 struct ServiceHandlerImplTests {
@@ -19,11 +39,15 @@ struct ServiceHandlerImplTests {
             defer { cleanup(path) }
             try createFile(at: path, named: "homebrew.mxcl.lyra.plist")
 
-            let handler = ServiceHandlerImpl(launchAgentsPath: path)
-            let result = handler.install()
-            guard case .failure(.managedByHomebrew) = result else {
-                Issue.record("Expected .managedByHomebrew, got \(result)")
-                return
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path)
+                let result = handler.install()
+                guard case .failure(.managedByHomebrew) = result else {
+                    Issue.record("Expected .managedByHomebrew, got \(result)")
+                    return
+                }
             }
         }
 
@@ -33,18 +57,20 @@ struct ServiceHandlerImplTests {
             try createDir(path)
             defer { cleanup(path) }
 
-            let handler = ServiceHandlerImpl(launchAgentsPath: path)
-            let result = handler.install()
-            // bootstrap will fail in test environment (no launchd), but plist should be created
-            let plistExists = FileManager.default.fileExists(
-                atPath: "\(path)/com.generald.lyra.plist"
-            )
-            #expect(plistExists)
-            // Result is either .installed or .bootstrapFailed depending on launchctl
-            switch result {
-            case .success(.installed): break  // OK
-            case .failure(.bootstrapFailed): break  // expected in test env
-            default: Issue.record("Unexpected result: \(result)")
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path)
+                let result = handler.install()
+                let plistExists = FileManager.default.fileExists(
+                    atPath: "\(path)/com.generald.lyra.plist"
+                )
+                #expect(plistExists)
+                switch result {
+                case .success(.installed): break
+                case .failure(.bootstrapFailed): break
+                default: Issue.record("Unexpected result: \(result)")
+                }
             }
         }
     }
@@ -62,11 +88,15 @@ struct ServiceHandlerImplTests {
             try createDir(path)
             defer { cleanup(path) }
 
-            let handler = ServiceHandlerImpl(launchAgentsPath: path)
-            let result = handler.uninstall()
-            guard case .failure(.notInstalled) = result else {
-                Issue.record("Expected .notInstalled, got \(result)")
-                return
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path)
+                let result = handler.uninstall()
+                guard case .failure(.notInstalled) = result else {
+                    Issue.record("Expected .notInstalled, got \(result)")
+                    return
+                }
             }
         }
 
@@ -77,11 +107,15 @@ struct ServiceHandlerImplTests {
             defer { cleanup(path) }
             try createFile(at: path, named: "homebrew.mxcl.lyra.plist")
 
-            let handler = ServiceHandlerImpl(launchAgentsPath: path)
-            let result = handler.uninstall()
-            guard case .failure(.managedByHomebrew) = result else {
-                Issue.record("Expected .managedByHomebrew, got \(result)")
-                return
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path)
+                let result = handler.uninstall()
+                guard case .failure(.managedByHomebrew) = result else {
+                    Issue.record("Expected .managedByHomebrew, got \(result)")
+                    return
+                }
             }
         }
 
@@ -92,16 +126,20 @@ struct ServiceHandlerImplTests {
             defer { cleanup(path) }
             try createFile(at: path, named: "com.generald.lyra.plist")
 
-            let handler = ServiceHandlerImpl(launchAgentsPath: path)
-            let result = handler.uninstall()
-            guard case .success(.uninstalled) = result else {
-                Issue.record("Expected .uninstalled, got \(result)")
-                return
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path)
+                let result = handler.uninstall()
+                guard case .success(.uninstalled) = result else {
+                    Issue.record("Expected .uninstalled, got \(result)")
+                    return
+                }
+                let plistExists = FileManager.default.fileExists(
+                    atPath: "\(path)/com.generald.lyra.plist"
+                )
+                #expect(!plistExists)
             }
-            let plistExists = FileManager.default.fileExists(
-                atPath: "\(path)/com.generald.lyra.plist"
-            )
-            #expect(!plistExists)
         }
     }
 }

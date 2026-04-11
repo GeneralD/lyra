@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 
-@testable import ProcessHandler
+@testable import DarwinGateway
 
-@Suite("ProcessLock", .serialized)
-struct ProcessLockTests {
+@Suite("DarwinGateway lock", .serialized)
+struct DarwinGatewayLockTests {
     // MARK: - Normal Behavior
 
     @Suite("acquire")
@@ -16,10 +16,10 @@ struct ProcessLockTests {
 
         @Test("writes holder's PID to file")
         func writesPID() throws {
-            let lock = ProcessLock(directory: tempDir)
+            let lock = DarwinGateway(lockDirectory: tempDir)
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
-            #expect(lock.acquire())
+            #expect(lock.acquireLock())
             let content = try String(contentsOfFile: lockPath, encoding: .utf8)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(content == "\(ProcessInfo.processInfo.processIdentifier)")
@@ -27,11 +27,11 @@ struct ProcessLockTests {
 
         @Test("is idempotent — second call returns true without side effects")
         func idempotent() {
-            let lock = ProcessLock(directory: tempDir)
+            let lock = DarwinGateway(lockDirectory: tempDir)
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
-            #expect(lock.acquire())
-            #expect(lock.acquire())
+            #expect(lock.acquireLock())
+            #expect(lock.acquireLock())
         }
     }
 
@@ -53,8 +53,8 @@ struct ProcessLockTests {
             defer { FlockHelper.terminate(holder) }
             try FlockHelper.waitForLockFile(atPath: lockPath)
 
-            let lock = ProcessLock(directory: tempDir)
-            #expect(!lock.acquire())
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            #expect(!lock.acquireLock())
         }
 
         @Test("isLocked returns true when another process holds the lock")
@@ -66,14 +66,23 @@ struct ProcessLockTests {
             defer { FlockHelper.terminate(holder) }
             try FlockHelper.waitForLockFile(atPath: lockPath)
 
-            let lock = ProcessLock(directory: tempDir)
+            let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(lock.isLocked)
         }
 
         @Test("isLocked returns false when no lock file exists")
         func isLockedNoFile() {
-            let lock = ProcessLock(directory: tempDir)
+            let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(!lock.isLocked)
+        }
+
+        @Test("isLocked returns true when current instance holds the lock")
+        func isLockedForCurrentHolder() {
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            #expect(lock.acquireLock())
+            #expect(lock.isLocked)
         }
     }
 
@@ -97,7 +106,7 @@ struct ProcessLockTests {
             kill(holder.processIdentifier, SIGKILL)
             holder.waitUntilExit()
 
-            let lock = ProcessLock(directory: tempDir)
+            let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(!lock.isLocked)
         }
 
@@ -112,8 +121,8 @@ struct ProcessLockTests {
             kill(holder.processIdentifier, SIGKILL)
             holder.waitUntilExit()
 
-            let lock = ProcessLock(directory: tempDir)
-            #expect(lock.acquire())
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            #expect(lock.acquireLock())
         }
     }
 
@@ -139,8 +148,8 @@ struct ProcessLockTests {
             kill(pid, SIGKILL)
             holder.waitUntilExit()
 
-            let lock = ProcessLock(directory: tempDir)
-            #expect(lock.acquire(), "child must not inherit flock fd")
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            #expect(lock.acquireLock(), "child must not inherit flock fd")
 
             // Clean up orphaned child process
             kill(-pid, SIGKILL)
@@ -158,21 +167,31 @@ struct ProcessLockTests {
 
         @Test("truncates PID file content but preserves the file")
         func truncatesFile() throws {
-            let lock = ProcessLock(directory: tempDir)
+            let lock = DarwinGateway(lockDirectory: tempDir)
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
-            #expect(lock.acquire())
-            lock.cleanup()
+            #expect(lock.acquireLock())
+            lock.releaseLock()
 
             #expect(FileManager.default.fileExists(atPath: lockPath))
             let content = try String(contentsOfFile: lockPath, encoding: .utf8)
             #expect(content.isEmpty)
         }
 
+        @Test("releaseLock lets same instance reacquire")
+        func releaseThenReacquire() {
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            #expect(lock.acquireLock())
+            lock.releaseLock()
+            #expect(lock.acquireLock())
+        }
+
         @Test("does not crash when lock file does not exist")
         func cleanupMissingFile() {
-            let lock = ProcessLock(directory: tempDir)
-            lock.cleanup()
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            lock.releaseLock()
         }
 
         @Test("another process can acquire on same inode after holder exits and cleanup")
@@ -184,11 +203,11 @@ struct ProcessLockTests {
             try FlockHelper.waitForLockFile(atPath: lockPath)
             FlockHelper.terminate(holder)
 
-            let cleaner = ProcessLock(directory: tempDir)
-            cleaner.cleanup()
+            let cleaner = DarwinGateway(lockDirectory: tempDir)
+            cleaner.releaseLock()
 
-            let lock = ProcessLock(directory: tempDir)
-            #expect(lock.acquire())
+            let lock = DarwinGateway(lockDirectory: tempDir)
+            #expect(lock.acquireLock())
         }
     }
 }

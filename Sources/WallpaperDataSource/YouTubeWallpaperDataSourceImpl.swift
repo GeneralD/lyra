@@ -1,7 +1,10 @@
+import Dependencies
 import Domain
 import Foundation
 
 public struct YouTubeWallpaperDataSourceImpl: Sendable {
+    @Dependency(\.processGateway) private var gateway
+
     public init() {}
 }
 
@@ -59,7 +62,7 @@ extension YouTubeWallpaperDataSourceImpl {
     }
 
     func findExecutable(_ name: String) -> String? {
-        findExecutableInPath(name)
+        gateway.findExecutable(name)
     }
 }
 

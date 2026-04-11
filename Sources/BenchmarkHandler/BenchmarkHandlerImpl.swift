@@ -6,7 +6,7 @@ public struct BenchmarkHandlerImpl {
     public init() {}
 
     @Dependency(\.continuousClock) private var clock
-    @Dependency(\.resourceSampler) private var sampler
+    @Dependency(\.processGateway) private var gateway
 }
 
 extension BenchmarkHandlerImpl: BenchmarkHandler {
@@ -29,11 +29,11 @@ extension BenchmarkHandlerImpl: BenchmarkHandler {
     public func measure(scenarios: [BenchmarkScenario], duration: Double) async -> [BenchmarkEntry] {
         let selected = scenarios.isEmpty ? BenchmarkScenario.allCases : scenarios
         return await selected.asyncMap { scenario in
-            let baseline = sampler.current
+            let baseline = gateway.resourceSnapshot
             let elapsed = await clock.measure {
                 await runScenario(scenario, duration: duration)
             }
-            return entry(scenario: scenario, elapsed: elapsed, baseline: baseline, current: sampler.current)
+            return entry(scenario: scenario, elapsed: elapsed, baseline: baseline, current: gateway.resourceSnapshot)
         }
     }
 }
@@ -43,7 +43,7 @@ extension BenchmarkHandlerImpl {
         scenario: BenchmarkScenario, duration: Double,
         continuation: AsyncStream<BenchmarkUpdate>.Continuation
     ) async {
-        let baseline = sampler.current
+        let baseline = gateway.resourceSnapshot
 
         let elapsed: Duration = await clock.measure {
             await withTaskGroup(of: Void.self) { group in
@@ -51,7 +51,7 @@ extension BenchmarkHandlerImpl {
                     await runScenario(scenario, duration: duration)
                 }
 
-                group.addTask { [sampler, clock] in
+                group.addTask { [gateway, clock] in
                     var accumulated: Duration = .zero
                     while !Task.isCancelled {
                         try? await clock.sleep(for: .milliseconds(250))
@@ -61,7 +61,7 @@ extension BenchmarkHandlerImpl {
                             .live(
                                 entry(
                                     scenario: scenario, elapsed: accumulated, baseline: baseline,
-                                    current: sampler.current)))
+                                    current: gateway.resourceSnapshot)))
                     }
                 }
 
@@ -72,7 +72,7 @@ extension BenchmarkHandlerImpl {
         }
 
         continuation.yield(
-            .completed(entry(scenario: scenario, elapsed: elapsed, baseline: baseline, current: sampler.current)))
+            .completed(entry(scenario: scenario, elapsed: elapsed, baseline: baseline, current: gateway.resourceSnapshot)))
     }
 
     private func entry(
