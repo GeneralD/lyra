@@ -103,9 +103,8 @@ private func waitUntil(
         guard ContinuousClock.now < deadline else {
             throw WaitUntilTimeout(timeout: timeout, label: label)
         }
-        await MainActor.run {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
-        }
+        await Task.yield()
+        await MainActor.run {}
     }
 }
 
@@ -116,6 +115,7 @@ private func makeInteractor(
     config: any ConfigUseCase = StubConfigUseCase()
 ) -> TrackInteractorImpl {
     withDependencies {
+        $0.continuousClock = ImmediateClock()
         $0.playbackUseCase = playback
         $0.metadataUseCase = metadata
         $0.lyricsUseCase = lyrics
@@ -142,8 +142,6 @@ struct TrackInteractorRaceTests {
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
         defer { cancellable.cancel() }
-
-        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
 
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
@@ -174,8 +172,6 @@ struct TrackInteractorRaceTests {
             .sink { collector.append($0) }
         defer { cancellable.cancel() }
 
-        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
-
         playback.subject.send(
             NowPlaying(
                 title: "Track A", artist: "Artist A", artworkData: nil,
@@ -191,7 +187,8 @@ struct TrackInteractorRaceTests {
 
         playback.subject.send(nil)
 
-        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
+        await Task.yield()
+        await MainActor.run {}
 
         let afterNil = collector.updates.dropFirst(countBeforeNil)
         #expect(afterNil.isEmpty, "nil NowPlaying should not emit any TrackUpdate — last track stays visible")
@@ -209,8 +206,6 @@ struct TrackInteractorRaceTests {
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
         defer { cancellable.cancel() }
-
-        await MainActor.run { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1)) }
 
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))

@@ -8,6 +8,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
     private let lyricsService: any LyricsUseCase
     private let metadataService: any MetadataUseCase
     private let configService: any ConfigUseCase
+    @Dependency(\.continuousClock) private var clock
 
     private lazy var shared = nowPlayingPublisher.share()
 
@@ -118,6 +119,7 @@ extension TrackInteractorImpl {
         let rawTrack = Track(title: title, artist: artist, duration: info.duration)
         let metadata = metadataService
         let lyrics = lyricsService
+        let clock = self.clock
 
         let artworkData = info.artworkData
         let duration = info.duration
@@ -127,46 +129,66 @@ extension TrackInteractorImpl {
                 Deferred {
                     let subject = PassthroughSubject<TrackUpdate, Never>()
                     nonisolated(unsafe) let unsafeSubject = subject
-                    return subject.handleEvents(receiveSubscription: { _ in
-                        Task { @Sendable in
-                            let candidates = await metadata.resolveCandidates(track: rawTrack)
-                            let resolvedTitle = candidates.first?.title ?? title
-                            let resolvedArtist =
-                                candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 }
-                                ?? artist
+                    var task: Task<Void, Never>?
+                    return subject.handleEvents(
+                        receiveSubscription: { _ in
+                            task = Task { @Sendable in
+                                try? await clock.sleep(for: .milliseconds(300))
+                                guard !Task.isCancelled else {
+                                    unsafeSubject.send(completion: .finished)
+                                    return
+                                }
 
-                            unsafeSubject.send(
-                                TrackUpdate(
-                                    title: resolvedTitle,
-                                    artist: resolvedArtist,
-                                    artworkData: artworkData,
-                                    duration: duration,
-                                    lyricsState: .loading
-                                ))
+                                let candidates = await metadata.resolveCandidates(track: rawTrack)
+                                guard !Task.isCancelled else {
+                                    unsafeSubject.send(completion: .finished)
+                                    return
+                                }
 
-                            let result =
-                                candidates.isEmpty
-                                ? await lyrics.fetchLyrics(track: rawTrack)
-                                : await lyrics.fetchLyrics(candidates: candidates)
+                                let resolvedTitle = candidates.first?.title ?? title
+                                let resolvedArtist =
+                                    candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 }
+                                    ?? artist
 
-                            let finalTitle = result.trackName ?? resolvedTitle
-                            let finalArtist = result.artistName ?? resolvedArtist
-                            let content = lyrics.parseLyricsContent(from: result)
+                                unsafeSubject.send(
+                                    TrackUpdate(
+                                        title: resolvedTitle,
+                                        artist: resolvedArtist,
+                                        artworkData: artworkData,
+                                        duration: duration,
+                                        lyricsState: .loading
+                                    ))
 
-                            unsafeSubject.send(
-                                TrackUpdate(
-                                    title: finalTitle,
-                                    artist: finalArtist,
-                                    artworkData: artworkData,
-                                    duration: duration,
-                                    lyrics: content,
-                                    lyricsState: content != nil ? .resolved : .notFound
-                                ))
-                            unsafeSubject.send(completion: .finished)
+                                let result =
+                                    candidates.isEmpty
+                                    ? await lyrics.fetchLyrics(track: rawTrack)
+                                    : await lyrics.fetchLyrics(candidates: candidates)
+                                guard !Task.isCancelled else {
+                                    unsafeSubject.send(completion: .finished)
+                                    return
+                                }
+
+                                let finalTitle = result.trackName ?? resolvedTitle
+                                let finalArtist = result.artistName ?? resolvedArtist
+                                let content = lyrics.parseLyricsContent(from: result)
+
+                                unsafeSubject.send(
+                                    TrackUpdate(
+                                        title: finalTitle,
+                                        artist: finalArtist,
+                                        artworkData: artworkData,
+                                        duration: duration,
+                                        lyrics: content,
+                                        lyricsState: content != nil ? .resolved : .notFound
+                                    ))
+                                unsafeSubject.send(completion: .finished)
+                            }
+                        },
+                        receiveCancel: {
+                            task?.cancel()
                         }
-                    })
+                    )
                 }
-                .delay(for: .milliseconds(300), scheduler: DispatchQueue.main)
             )
             .eraseToAnyPublisher()
     }
