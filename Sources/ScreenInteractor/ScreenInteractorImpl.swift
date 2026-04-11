@@ -41,7 +41,7 @@ extension ScreenInteractorImpl: ScreenInteractor {
         case .primary:
             return fallback
         case .index(let n):
-            return n < screens.count ? screens[n] : fallback
+            return screens.indices.contains(n) ? screens[n] : fallback
         case .smallest:
             return screens.min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
                 ?? fallback
