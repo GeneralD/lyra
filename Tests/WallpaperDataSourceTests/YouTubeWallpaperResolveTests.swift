@@ -14,8 +14,16 @@ struct YouTubeWallpaperResolveTests {
     func resolveToolMissing() async {
         let dataSource = makeDataSource(gateway: StubGateway(executables: [:]), runner: ProcessRunner(results: []), fileExists: false)
 
-        await #expect(throws: YouTubeDownloadError.self) {
+        do {
             _ = try await dataSource.resolve(location)
+            Issue.record("Expected toolNotFound")
+        } catch let error as YouTubeDownloadError {
+            guard case .toolNotFound = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
         }
     }
 

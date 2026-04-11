@@ -2,6 +2,7 @@ import Combine
 import Dependencies
 import Domain
 import Foundation
+import os
 
 public final class TrackInteractorImpl: @unchecked Sendable {
     private let playbackService: any PlaybackUseCase
@@ -129,63 +130,68 @@ extension TrackInteractorImpl {
                 Deferred {
                     let subject = PassthroughSubject<TrackUpdate, Never>()
                     nonisolated(unsafe) let unsafeSubject = subject
-                    var task: Task<Void, Never>?
+                    let taskLock = OSAllocatedUnfairLock(initialState: Task<Void, Never>?.none)
                     return subject.handleEvents(
                         receiveSubscription: { _ in
-                            task = Task { @Sendable in
-                                try? await clock.sleep(for: .milliseconds(300))
-                                guard !Task.isCancelled else {
+                            taskLock.withLock { task in
+                                task = Task { @Sendable in
+                                    try? await clock.sleep(for: .milliseconds(300))
+                                    guard !Task.isCancelled else {
+                                        unsafeSubject.send(completion: .finished)
+                                        return
+                                    }
+
+                                    let candidates = await metadata.resolveCandidates(track: rawTrack)
+                                    guard !Task.isCancelled else {
+                                        unsafeSubject.send(completion: .finished)
+                                        return
+                                    }
+
+                                    let resolvedTitle = candidates.first?.title ?? title
+                                    let resolvedArtist =
+                                        candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 }
+                                        ?? artist
+
+                                    unsafeSubject.send(
+                                        TrackUpdate(
+                                            title: resolvedTitle,
+                                            artist: resolvedArtist,
+                                            artworkData: artworkData,
+                                            duration: duration,
+                                            lyricsState: .loading
+                                        ))
+
+                                    let result =
+                                        candidates.isEmpty
+                                        ? await lyrics.fetchLyrics(track: rawTrack)
+                                        : await lyrics.fetchLyrics(candidates: candidates)
+                                    guard !Task.isCancelled else {
+                                        unsafeSubject.send(completion: .finished)
+                                        return
+                                    }
+
+                                    let finalTitle = result.trackName ?? resolvedTitle
+                                    let finalArtist = result.artistName ?? resolvedArtist
+                                    let content = lyrics.parseLyricsContent(from: result)
+
+                                    unsafeSubject.send(
+                                        TrackUpdate(
+                                            title: finalTitle,
+                                            artist: finalArtist,
+                                            artworkData: artworkData,
+                                            duration: duration,
+                                            lyrics: content,
+                                            lyricsState: content != nil ? .resolved : .notFound
+                                        ))
                                     unsafeSubject.send(completion: .finished)
-                                    return
                                 }
-
-                                let candidates = await metadata.resolveCandidates(track: rawTrack)
-                                guard !Task.isCancelled else {
-                                    unsafeSubject.send(completion: .finished)
-                                    return
-                                }
-
-                                let resolvedTitle = candidates.first?.title ?? title
-                                let resolvedArtist =
-                                    candidates.first.map(\.artist).flatMap { $0.isEmpty ? nil : $0 }
-                                    ?? artist
-
-                                unsafeSubject.send(
-                                    TrackUpdate(
-                                        title: resolvedTitle,
-                                        artist: resolvedArtist,
-                                        artworkData: artworkData,
-                                        duration: duration,
-                                        lyricsState: .loading
-                                    ))
-
-                                let result =
-                                    candidates.isEmpty
-                                    ? await lyrics.fetchLyrics(track: rawTrack)
-                                    : await lyrics.fetchLyrics(candidates: candidates)
-                                guard !Task.isCancelled else {
-                                    unsafeSubject.send(completion: .finished)
-                                    return
-                                }
-
-                                let finalTitle = result.trackName ?? resolvedTitle
-                                let finalArtist = result.artistName ?? resolvedArtist
-                                let content = lyrics.parseLyricsContent(from: result)
-
-                                unsafeSubject.send(
-                                    TrackUpdate(
-                                        title: finalTitle,
-                                        artist: finalArtist,
-                                        artworkData: artworkData,
-                                        duration: duration,
-                                        lyrics: content,
-                                        lyricsState: content != nil ? .resolved : .notFound
-                                    ))
-                                unsafeSubject.send(completion: .finished)
                             }
                         },
                         receiveCancel: {
-                            task?.cancel()
+                            taskLock.withLock { task in
+                                task?.cancel()
+                                task = nil
+                            }
                         }
                     )
                 }
