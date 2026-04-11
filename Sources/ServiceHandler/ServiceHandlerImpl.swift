@@ -7,11 +7,13 @@ public struct ServiceHandlerImpl {
     private let label = "com.generald.lyra"
     private let homebrewLabel = "homebrew.mxcl.lyra"
     private let launchAgentsPath: String
+    private let executablePathOverride: String?
 
     @Dependency(\.processGateway) private var gateway
 
-    public init(launchAgentsPath: String = "~/Library/LaunchAgents") {
+    public init(launchAgentsPath: String = "~/Library/LaunchAgents", executablePath: String? = nil) {
         self.launchAgentsPath = NSString(string: launchAgentsPath).expandingTildeInPath
+        self.executablePathOverride = executablePath
     }
 }
 
@@ -85,11 +87,12 @@ extension ServiceHandlerImpl {
     }
 
     private var installedPath: String? {
-        gateway.findExecutable(URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent)
+        gateway.findExecutable(URL(fileURLWithPath: currentExecutablePath).lastPathComponent)
     }
 
     private var currentExecutablePath: String {
-        URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL
+        URL(fileURLWithPath: executablePathOverride ?? Bundle.main.executablePath ?? CommandLine.arguments[0])
+            .standardizedFileURL
             .path
     }
 }

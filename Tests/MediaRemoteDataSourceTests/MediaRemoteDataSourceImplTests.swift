@@ -50,6 +50,42 @@ struct MediaRemoteDataSourceImplTests {
         }
     }
 
+    @Test("poll returns noInfo for invalid JSON")
+    func pollReturnsNoInfoForInvalidJSON() async {
+        let gateway = StreamingGateway(streamPlans: [
+            ["{not-json}"]
+        ])
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl()
+            let result = await dataSource.poll()
+            guard case .noInfo = result else {
+                Issue.record("Expected .noInfo, got \(result)")
+                return
+            }
+        }
+    }
+
+    @Test("poll returns noInfo for empty line")
+    func pollReturnsNoInfoForEmptyLine() async {
+        let gateway = StreamingGateway(streamPlans: [
+            [""]
+        ])
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl()
+            let result = await dataSource.poll()
+            guard case .noInfo = result else {
+                Issue.record("Expected .noInfo, got \(result)")
+                return
+            }
+        }
+    }
+
     @Test("poll restarts stream after eof")
     func pollRestartsAfterEof() async {
         let gateway = StreamingGateway(streamPlans: [

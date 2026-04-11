@@ -6,6 +6,7 @@ import Testing
 @testable import ServiceHandler
 
 private struct StubGateway: ProcessGateway {
+    var executables: [String: String] = [:]
     var resourceSnapshot: ResourceSnapshot { .init(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0) }
     var overlayPIDs: [Int32] { [] }
     func spawnDaemon(executablePath: String) -> Int32? { nil }
@@ -15,7 +16,7 @@ private struct StubGateway: ProcessGateway {
     var isLocked: Bool { false }
     func releaseLock() {}
     func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
-    func findExecutable(_ name: String) -> String? { nil }
+    func findExecutable(_ name: String) -> String? { executables[name] }
     func run(executable: String, arguments: [String]) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
@@ -71,6 +72,77 @@ struct ServiceHandlerImplTests {
                 case .failure(.bootstrapFailed): break
                 default: Issue.record("Unexpected result: \(result)")
                 }
+            }
+        }
+
+        @Test("writes current executable when not installed via mint or PATH")
+        func usesCurrentExecutablePath() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+
+            let executablePath = "/tmp/lyra"
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(
+                    launchAgentsPath: path,
+                    executablePath: executablePath
+                )
+                let result = handler.install()
+                guard let programArguments = try? readProgramArguments(from: path) else {
+                    Issue.record("Failed to read ProgramArguments from generated plist")
+                    return
+                }
+                #expect(result == .success(.installed(path: "\(path)/com.generald.lyra.plist")))
+                #expect(programArguments == [executablePath, "daemon"])
+            }
+        }
+
+        @Test("writes mint invocation when current executable is under .mint")
+        func usesMintProgramArguments() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+
+            withDependencies {
+                $0.processGateway = StubGateway(executables: ["mint": "/opt/homebrew/bin/mint"])
+            } operation: {
+                let handler = ServiceHandlerImpl(
+                    launchAgentsPath: path,
+                    executablePath: "/Users/test/.mint/bin/lyra"
+                )
+                let result = handler.install()
+                guard let programArguments = try? readProgramArguments(from: path) else {
+                    Issue.record("Failed to read ProgramArguments from generated plist")
+                    return
+                }
+                #expect(result == .success(.installed(path: "\(path)/com.generald.lyra.plist")))
+                #expect(programArguments == ["/opt/homebrew/bin/mint", "run", "GeneralD/lyra", "daemon"])
+            }
+        }
+
+        @Test("prefers installed executable found on PATH")
+        func usesInstalledExecutableFromPath() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+
+            let executablePath = "/Applications/Lyra.app/Contents/MacOS/lyra"
+            withDependencies {
+                $0.processGateway = StubGateway(executables: ["lyra": "/usr/local/bin/lyra"])
+            } operation: {
+                let handler = ServiceHandlerImpl(
+                    launchAgentsPath: path,
+                    executablePath: executablePath
+                )
+                let result = handler.install()
+                guard let programArguments = try? readProgramArguments(from: path) else {
+                    Issue.record("Failed to read ProgramArguments from generated plist")
+                    return
+                }
+                #expect(result == .success(.installed(path: "\(path)/com.generald.lyra.plist")))
+                #expect(programArguments == ["/usr/local/bin/lyra", "daemon"])
             }
         }
     }
@@ -162,4 +234,13 @@ private func createFile(at dir: String, named name: String) throws {
 
 private func cleanup(_ path: String) {
     try? FileManager.default.removeItem(atPath: path)
+}
+
+private func readProgramArguments(from launchAgentsPath: String) throws -> [String] {
+    let plistPath = "\(launchAgentsPath)/com.generald.lyra.plist"
+    let data = try Data(contentsOf: URL(fileURLWithPath: plistPath))
+    let plist = try #require(
+        PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+    )
+    return try #require(plist["ProgramArguments"] as? [String])
 }
