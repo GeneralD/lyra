@@ -4,8 +4,17 @@ import Foundation
 
 public struct LLMMetadataDataSourceImpl {
     @Dependency(\.configDataSource) private var configDataSource
+    let requestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    public init() {}
+    public init() {
+        self.init { request in
+            try await URLSession.shared.data(for: request)
+        }
+    }
+
+    init(requestPerformer: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)) {
+        self.requestPerformer = requestPerformer
+    }
 }
 
 extension LLMMetadataDataSourceImpl: MetadataDataSource {
@@ -28,7 +37,7 @@ extension LLMMetadataDataSourceImpl {
         let data: Data
         let urlResponse: URLResponse
         do {
-            (data, urlResponse) = try await URLSession.shared.data(for: request)
+            (data, urlResponse) = try await requestPerformer(request)
         } catch {
             fputs("lyra: AI extraction failed: \(error)\n", stderr)
             return nil

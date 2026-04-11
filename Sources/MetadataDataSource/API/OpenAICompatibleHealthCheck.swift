@@ -23,7 +23,7 @@ extension OpenAICompatibleAPI: HealthCheckable {
 
         let start = ContinuousClock.now
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await requestPerformer(request)
             let elapsed = ContinuousClock.now - start
             let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
             guard let http = response as? HTTPURLResponse else {

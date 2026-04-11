@@ -451,6 +451,13 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .testTarget(
+            name: "StandardOutputTests",
+            dependencies: [
+                "StandardOutput",
+                "Domain",
+            ]
+        ),
         .testTarget(name: "ViewsTests", dependencies: ["Views", "Domain"]),
         .testTarget(
             name: "PresentersTests",

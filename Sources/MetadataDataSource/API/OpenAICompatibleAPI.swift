@@ -3,9 +3,23 @@ import Foundation
 
 public struct OpenAICompatibleAPI: Sendable {
     let config: AIEndpoint
+    let requestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     public init(config: AIEndpoint) {
+        self.init(
+            config: config,
+            requestPerformer: { request in
+                try await URLSession.shared.data(for: request)
+            }
+        )
+    }
+
+    init(
+        config: AIEndpoint,
+        requestPerformer: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    ) {
         self.config = config
+        self.requestPerformer = requestPerformer
     }
 }
 

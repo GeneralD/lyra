@@ -6,14 +6,22 @@ public struct WallpaperToolChecker: HealthCheckable {
     private let toolName: String
     private let severity: Severity
     private let installHint: String
+    private let executableFinder: @Sendable (String) -> String?
 
     enum Severity { case required, optional }
 
-    private init(serviceName: String, toolName: String, severity: Severity, installHint: String? = nil) {
+    private init(
+        serviceName: String,
+        toolName: String,
+        severity: Severity,
+        installHint: String? = nil,
+        executableFinder: @escaping @Sendable (String) -> String? = findExecutableInPath
+    ) {
         self.serviceName = serviceName
         self.toolName = toolName
         self.severity = severity
         self.installHint = installHint ?? "brew install \(toolName)"
+        self.executableFinder = executableFinder
     }
 
     public func healthCheck() async -> HealthCheckResult {
@@ -29,7 +37,7 @@ public struct WallpaperToolChecker: HealthCheckable {
     }
 
     private func findExecutable(_ name: String) -> String? {
-        findExecutableInPath(name)
+        executableFinder(name)
     }
 }
 
@@ -56,8 +64,27 @@ extension WallpaperToolChecker {
     /// Returns checkers for YouTube wallpaper tools.
     /// yt-dlp is checked first; if not found, uvx is checked as alternative.
     public static func youtubeCheckers() -> [WallpaperToolChecker] {
+        youtubeCheckers(findExecutableInPath: findExecutableInPath)
+    }
+
+    static func youtubeCheckers(findExecutableInPath: @escaping @Sendable (String) -> String?) -> [WallpaperToolChecker] {
         let hasYtdlp = findExecutableInPath("yt-dlp") != nil
         let downloadChecker: WallpaperToolChecker = hasYtdlp ? .ytdlp : .uvx
-        return [downloadChecker, .ffmpeg]
+        return [
+            WallpaperToolChecker(
+                serviceName: downloadChecker.serviceName,
+                toolName: downloadChecker.toolName,
+                severity: downloadChecker.severity,
+                installHint: downloadChecker.installHint,
+                executableFinder: findExecutableInPath
+            ),
+            WallpaperToolChecker(
+                serviceName: ffmpeg.serviceName,
+                toolName: ffmpeg.toolName,
+                severity: ffmpeg.severity,
+                installHint: ffmpeg.installHint,
+                executableFinder: findExecutableInPath
+            ),
+        ]
     }
 }

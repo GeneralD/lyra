@@ -3,7 +3,20 @@ import Domain
 import Foundation
 
 public struct MusicBrainzMetadataDataSourceImpl {
-    public init() {}
+    let searchRecording: @Sendable (MusicBrainzAPI) async -> MusicBrainzResponse?
+
+    public init() {
+        self.init { api in
+            await AF.request(api)
+                .validate(statusCode: 200..<300)
+                .serializingDecodable(MusicBrainzResponse.self)
+                .response.value
+        }
+    }
+
+    init(searchRecording: @escaping @Sendable (MusicBrainzAPI) async -> MusicBrainzResponse?) {
+        self.searchRecording = searchRecording
+    }
 }
 
 extension MusicBrainzMetadataDataSourceImpl: Sendable {}
@@ -19,7 +32,7 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
             .searchRecording(title: normalized, artist: normalizedArtist, duration: nil),
             .searchRecording(title: normalized, artist: nil, duration: nil),
         ] {
-            guard let response: MusicBrainzResponse = await musicbrainz(query) else { continue }
+            guard let response = await searchRecording(query) else { continue }
             let candidates = matchRecordings(from: response, regex: regex)
             guard !candidates.isEmpty else { continue }
             return candidates
@@ -30,7 +43,7 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
 }
 
 extension MusicBrainzMetadataDataSourceImpl {
-    fileprivate func matchRecordings(from response: MusicBrainzResponse, regex: RegexMetadataDataSourceImpl) -> [MusicBrainzMetadata] {
+    func matchRecordings(from response: MusicBrainzResponse, regex: RegexMetadataDataSourceImpl) -> [MusicBrainzMetadata] {
         var candidates: [MusicBrainzMetadata] = []
         for recording in response.recordings {
             guard let artistName = recording.artistName else { continue }
@@ -46,12 +59,5 @@ extension MusicBrainzMetadataDataSourceImpl {
             }
         }
         return candidates
-    }
-
-    fileprivate func musicbrainz<T: Decodable & Sendable>(_ api: MusicBrainzAPI) async -> T? {
-        await AF.request(api)
-            .validate(statusCode: 200..<300)
-            .serializingDecodable(T.self)
-            .response.value
     }
 }
