@@ -11,7 +11,11 @@ public struct ServiceHandlerImpl {
 
     @Dependency(\.processGateway) private var gateway
 
-    public init(launchAgentsPath: String = "~/Library/LaunchAgents", executablePath: String? = nil) {
+    public init(launchAgentsPath: String = "~/Library/LaunchAgents") {
+        self.init(launchAgentsPath: launchAgentsPath, executablePath: nil)
+    }
+
+    init(launchAgentsPath: String = "~/Library/LaunchAgents", executablePath: String? = nil) {
         self.launchAgentsPath = NSString(string: launchAgentsPath).expandingTildeInPath
         self.executablePathOverride = executablePath
     }

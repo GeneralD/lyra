@@ -16,7 +16,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(locked: true)
             } operation: {
-                let result = ProcessHandlerImpl().start()
+                let result = makeHandler().start()
                 guard case .failure(.alreadyRunning) = result else {
                     Issue.record("Expected .alreadyRunning")
                     return
@@ -29,7 +29,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(pids: [12345])
             } operation: {
-                let result = ProcessHandlerImpl().start()
+                let result = makeHandler().start()
                 guard case .failure(.alreadyRunning) = result else {
                     Issue.record("Expected .alreadyRunning")
                     return
@@ -42,7 +42,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: nil)
             } operation: {
-                let result = ProcessHandlerImpl().start()
+                let result = makeHandler().start()
                 guard case .failure(.spawnFailed) = result else {
                     Issue.record("Expected .spawnFailed, got \(result)")
                     return
@@ -55,7 +55,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: 42)
             } operation: {
-                let result = ProcessHandlerImpl().start()
+                let result = makeHandler().start()
                 guard case .failure(.daemonExitedImmediately) = result else {
                     Issue.record("Expected .daemonExitedImmediately, got \(result)")
                     return
@@ -68,7 +68,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: 42, runningPIDs: [42])
             } operation: {
-                let result = ProcessHandlerImpl().start()
+                let result = makeHandler().start()
                 guard case .success(.started(let pid)) = result else {
                     Issue.record("Expected .started, got \(result)")
                     return
@@ -87,7 +87,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway()
             } operation: {
-                let result = ProcessHandlerImpl().stop()
+                let result = makeHandler().stop()
                 guard case .success(.notRunning) = result else {
                     Issue.record("Expected .notRunning")
                     return
@@ -101,7 +101,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = spy
             } operation: {
-                let result = ProcessHandlerImpl().stop()
+                let result = makeHandler().stop()
                 guard case .success(.notRunning) = result else {
                     Issue.record("Expected .notRunning")
                     return
@@ -120,7 +120,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = spy
             } operation: {
-                let result = ProcessHandlerImpl().stop()
+                let result = makeHandler().stop()
                 #expect(result == .success(.stopped))
             }
             #expect(spy.sentSignals == [.init(pid: 42, signal: SIGTERM)])
@@ -137,7 +137,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = spy
             } operation: {
-                let result = ProcessHandlerImpl().stop()
+                let result = makeHandler().stop()
                 #expect(result == .success(.stopped))
             }
             #expect(spy.sentSignals == [.init(pid: 42, signal: SIGTERM), .init(pid: 42, signal: SIGKILL)])
@@ -155,7 +155,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = spy
             } operation: {
-                let result = ProcessHandlerImpl().stop()
+                let result = makeHandler().stop()
                 #expect(result == .failure(.lockReleaseTimedOut))
             }
             #expect(spy.releaseLockCalled)
@@ -172,7 +172,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(pids: [99], locked: true, runningPIDs: [99])
             } operation: {
-                let result = ProcessHandlerImpl().restart()
+                let result = makeHandler().restart()
                 guard case .failure(.stopFailed) = result else {
                     Issue.record("Expected .stopFailed, got \(result)")
                     return
@@ -190,7 +190,7 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(acquireResult: true)
             } operation: {
-                #expect(ProcessHandlerImpl().acquireDaemonLock())
+                #expect(makeHandler().acquireDaemonLock())
             }
         }
 
@@ -199,10 +199,19 @@ struct ProcessHandlerImplTests {
             withDependencies {
                 $0.processGateway = StubProcessGateway(acquireResult: false)
             } operation: {
-                #expect(!ProcessHandlerImpl().acquireDaemonLock())
+                #expect(!makeHandler().acquireDaemonLock())
             }
         }
     }
+}
+
+private func makeHandler() -> ProcessHandlerImpl {
+    ProcessHandlerImpl(
+        startupDelayMicroseconds: 0,
+        pollDelayMicroseconds: 0,
+        maxPollingAttempts: 20,
+        sleepMicroseconds: { _ in }
+    )
 }
 
 // MARK: - Stubs
