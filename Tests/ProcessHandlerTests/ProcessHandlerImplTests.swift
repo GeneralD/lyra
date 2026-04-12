@@ -76,12 +76,36 @@ struct ProcessHandlerImplTests {
                 #expect(pid == 42)
             }
         }
+
+        @Test("default sleep closure path still starts daemon")
+        func defaultSleepClosureStart() {
+            withDependencies {
+                $0.processGateway = StubProcessGateway(spawnResult: 42, runningPIDs: [42])
+            } operation: {
+                let result = ProcessHandlerImpl(
+                    startupDelayMicroseconds: 0,
+                    pollDelayMicroseconds: 0,
+                    maxPollingAttempts: 1
+                ).start()
+                #expect(result == .success(.started(pid: 42)))
+            }
+        }
     }
 
     // MARK: - stop
 
     @Suite("stop")
     struct Stop {
+        @Test("public init returns notRunning on stop when no process exists")
+        func publicInitSmoke() {
+            withDependencies {
+                $0.processGateway = StubProcessGateway()
+            } operation: {
+                let result = ProcessHandlerImpl().stop()
+                #expect(result == .success(.notRunning))
+            }
+        }
+
         @Test("returns notRunning when no PIDs and lock is free")
         func noPidsNoLock() {
             withDependencies {
@@ -178,6 +202,19 @@ struct ProcessHandlerImplTests {
                     return
                 }
             }
+        }
+
+        @Test("restarts successfully when stop and start both succeed")
+        func success() {
+            let spy = RestartSuccessProcessGateway()
+            withDependencies {
+                $0.processGateway = spy
+            } operation: {
+                let result = makeHandler().restart()
+                #expect(result == .success(.started(pid: 84)))
+            }
+            #expect(spy.sentSignals == [.init(pid: 42, signal: SIGTERM)])
+            #expect(spy.releaseLockCalled)
         }
     }
 
@@ -286,6 +323,68 @@ private final class SpyProcessGateway: ProcessGateway, @unchecked Sendable {
             locked = false
         }
     }
+    func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
+    func findExecutable(_ name: String) -> String? { nil }
+    func run(executable: String, arguments: [String]) -> Int32 { 0 }
+    func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
+        AsyncStream { $0.finish() }
+    }
+}
+
+private final class RestartSuccessProcessGateway: ProcessGateway, @unchecked Sendable {
+    struct SignalCall: Equatable {
+        let pid: Int32
+        let signal: Int32
+    }
+
+    private enum Phase {
+        case runningExisting
+        case stopped
+        case restarted
+    }
+
+    private var phase: Phase = .runningExisting
+    private(set) var releaseLockCalled = false
+    private(set) var sentSignals: [SignalCall] = []
+
+    var resourceSnapshot: ResourceSnapshot { .init(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0) }
+    var overlayPIDs: [Int32] {
+        switch phase {
+        case .runningExisting: [42]
+        case .stopped, .restarted: []
+        }
+    }
+
+    func spawnDaemon(executablePath: String) -> Int32? {
+        phase = .restarted
+        return 84
+    }
+
+    func sendSignal(_ pid: Int32, signal: Int32) -> Bool {
+        sentSignals.append(.init(pid: pid, signal: signal))
+        return true
+    }
+
+    func isRunning(_ pid: Int32) -> Bool {
+        switch (phase, pid) {
+        case (.runningExisting, 42):
+            return false
+        case (.restarted, 84):
+            return true
+        default:
+            return false
+        }
+    }
+
+    func acquireLock() -> Bool { false }
+    var isLocked: Bool { phase == .runningExisting }
+
+    func releaseLock() {
+        releaseLockCalled = true
+        phase = .stopped
+    }
+
     func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
     func findExecutable(_ name: String) -> String? { nil }
     func run(executable: String, arguments: [String]) -> Int32 { 0 }
