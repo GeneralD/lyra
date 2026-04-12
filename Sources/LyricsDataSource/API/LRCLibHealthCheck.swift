@@ -5,6 +5,14 @@ extension LRCLibAPI: HealthCheckable {
     public var serviceName: String { "LRCLIB API" }
 
     public func healthCheck() async -> HealthCheckResult {
+        await healthCheck { request in
+            try await URLSession.shared.data(for: request)
+        }
+    }
+
+    func healthCheck(
+        requestPerformer: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    ) async -> HealthCheckResult {
         guard let url = URL(string: Self.baseURL + "/search?q=test") else {
             return HealthCheckResult(status: .fail, detail: "invalid URL")
         }
@@ -14,7 +22,7 @@ extension LRCLibAPI: HealthCheckable {
 
         let start = ContinuousClock.now
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await requestPerformer(request)
             let elapsed = ContinuousClock.now - start
             let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
             guard let http = response as? HTTPURLResponse,

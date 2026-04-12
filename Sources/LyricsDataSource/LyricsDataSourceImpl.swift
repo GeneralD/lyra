@@ -3,7 +3,22 @@ import Domain
 import Foundation
 
 public struct LyricsDataSourceImpl {
-    public init() {}
+    private let requestPerformer: @Sendable (URLRequest) async throws -> Data
+
+    public init() {
+        self.init { request in
+            try await AF.request(request)
+                .validate(statusCode: 200..<300)
+                .serializingData()
+                .value
+        }
+    }
+
+    init(
+        requestPerformer: @escaping @Sendable (URLRequest) async throws -> Data
+    ) {
+        self.requestPerformer = requestPerformer
+    }
 }
 
 extension LyricsDataSourceImpl: LyricsDataSource {
@@ -20,9 +35,12 @@ extension LyricsDataSourceImpl: LyricsDataSource {
 
 extension LyricsDataSourceImpl {
     fileprivate func lrclib<T: Decodable & Sendable>(_ type: T.Type, from api: LRCLibAPI) async -> T? {
-        await AF.request(api)
-            .validate(statusCode: 200..<300)
-            .serializingDecodable(type)
-            .response.value
+        do {
+            let request = try api.asURLRequest()
+            let data = try await requestPerformer(request)
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            return nil
+        }
     }
 }
