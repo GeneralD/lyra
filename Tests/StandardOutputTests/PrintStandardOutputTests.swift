@@ -1,3 +1,4 @@
+import Darwin
 import Darwin.POSIX
 import Domain
 import Foundation
@@ -226,6 +227,31 @@ struct PrintStandardOutputTests {
         #expect(completed.contains("cpu_spike"))
         #expect(completed.contains("5.0"))
     }
+
+    @Test("public init benchmark path works with tty streams")
+    func publicInitBenchmarkWithTTY() throws {
+        let entry = BenchmarkEntry(
+            scenario: .cpuSpike,
+            durationSeconds: 1.234,
+            cpuUserSeconds: 0.5,
+            cpuSystemSeconds: 0.25,
+            peakRSSBytes: 5_242_880,
+            currentRSSBytes: 2_621_440
+        )
+
+        _ = try withPseudoTTY(redirectStdin: true, redirectStdout: true) {
+            let output = PrintStandardOutput()
+            output.write(.header)
+            output.write(.live(entry))
+            output.write(.completed(entry))
+        }
+    }
+
+    @Test("public init writeError path does not crash")
+    func publicInitWriteErrorSmoke() {
+        let output = PrintStandardOutput()
+        output.writeError("stderr smoke")
+    }
 }
 
 private final class OutputRecorder: @unchecked Sendable {
@@ -279,4 +305,57 @@ private func captureOutput(_ operation: (PrintStandardOutput) throws -> Void) th
     let recorder = OutputRecorder()
     try operation(recorder.makeOutput())
     return (recorder.stdout, recorder.stderr)
+}
+
+private func withPseudoTTY(
+    redirectStdin: Bool,
+    redirectStdout: Bool,
+    columns: UInt16 = 120,
+    _ operation: () throws -> Void
+) throws -> String {
+    var master: Int32 = -1
+    var slave: Int32 = -1
+    var window = winsize(ws_row: 24, ws_col: columns, ws_xpixel: 0, ws_ypixel: 0)
+    guard openpty(&master, &slave, nil, nil, &window) == 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+
+    let savedStdin = dup(STDIN_FILENO)
+    let savedStdout = dup(STDOUT_FILENO)
+    guard savedStdin >= 0, savedStdout >= 0 else {
+        _ = close(master)
+        _ = close(slave)
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+
+    defer {
+        _ = dup2(savedStdin, STDIN_FILENO)
+        _ = dup2(savedStdout, STDOUT_FILENO)
+        _ = close(savedStdin)
+        _ = close(savedStdout)
+        _ = close(master)
+        _ = close(slave)
+    }
+
+    if redirectStdin {
+        guard dup2(slave, STDIN_FILENO) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+    if redirectStdout {
+        guard dup2(slave, STDOUT_FILENO) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    try operation()
+    fflush(stdout)
+
+    _ = dup2(savedStdout, STDOUT_FILENO)
+    _ = dup2(savedStdin, STDIN_FILENO)
+    _ = close(slave)
+    slave = -1
+
+    let data = FileHandle(fileDescriptor: master, closeOnDealloc: false).readDataToEndOfFile()
+    return String(data: data, encoding: .utf8) ?? ""
 }
