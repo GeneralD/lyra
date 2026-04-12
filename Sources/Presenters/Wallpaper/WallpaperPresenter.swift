@@ -17,15 +17,17 @@ public final class WallpaperPresenter: ObservableObject {
     private var isSeeking: Bool = false
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
+    private var loadTask: Task<Void, Never>?
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
     public init() {}
 
     public func start() {
+        loadTask?.cancel()
         isLoading = true
         let interactor = self.interactor
-        Task { [weak self] in
+        loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let state = try? await interactor.resolveWallpaper()
             wallpaperURL = state?.url
@@ -37,6 +39,8 @@ public final class WallpaperPresenter: ObservableObject {
     }
 
     public func stop() {
+        loadTask?.cancel()
+        loadTask = nil
         player?.pause()
         endTimeObserver.map { player?.removeTimeObserver($0) }
         loopObserver.map(NotificationCenter.default.removeObserver)
@@ -103,5 +107,9 @@ extension WallpaperPresenter {
         ) { [weak self] _ in
             Task { @MainActor in self?.player?.play() }
         }
+    }
+
+    func waitForLoad() async {
+        await loadTask?.value
     }
 }
