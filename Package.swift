@@ -465,6 +465,7 @@ let package = Package(
             dependencies: [
                 "App",
                 "Presenters",
+                "Views",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

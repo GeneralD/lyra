@@ -1,22 +1,70 @@
+import AppKit
 import Dependencies
 import Presenters
 import Views
+
+@MainActor
+protocol AppWindowing: AnyObject {
+    func orderOut(_ sender: Any?)
+    func close()
+}
+
+extension AppWindow: AppWindowing {}
+
+@MainActor
+protocol DisplayLinkDriving: AnyObject {
+    func start(in window: any AppWindowing)
+    func stop()
+}
+
+extension DisplayLinkDriver: DisplayLinkDriving {
+    func start(in window: any AppWindowing) {
+        guard let window = window as? NSWindow else { return }
+        start(in: window)
+    }
+}
 
 /// Wireframe: creates Presenters, builds window, manages lifecycle.
 @MainActor
 public final class AppRouter {
     private let bootstrap: AppDependencyBootstrap
+    private let windowFactory: @MainActor (AppPresenter, WallpaperPresenter, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any AppWindowing
+    private let displayLinkDriverFactory: @MainActor (@escaping @MainActor () -> Void) -> any DisplayLinkDriving
     private var appPresenter: AppPresenter?
     private var headerPresenter: HeaderPresenter?
     private var lyricsPresenter: LyricsPresenter?
     private var wallpaperPresenter: WallpaperPresenter?
     private var ripplePresenter: RipplePresenter?
 
-    private var appWindow: AppWindow?
-    private var displayLinkDriver: DisplayLinkDriver?
+    private var appWindow: (any AppWindowing)?
+    private var displayLinkDriver: (any DisplayLinkDriving)?
 
-    public init(launchEnvironment: AppLaunchEnvironment = .current) {
+    public convenience init(launchEnvironment: AppLaunchEnvironment = .current) {
+        self.init(
+            launchEnvironment: launchEnvironment,
+            windowFactory: { appPresenter, wallpaperPresenter, headerPresenter, lyricsPresenter, ripplePresenter in
+                AppWindow(
+                    appPresenter: appPresenter,
+                    wallpaperPresenter: wallpaperPresenter,
+                    headerPresenter: headerPresenter,
+                    lyricsPresenter: lyricsPresenter,
+                    ripplePresenter: ripplePresenter
+                )
+            },
+            displayLinkDriverFactory: { onFrame in
+                DisplayLinkDriver(onFrame: onFrame)
+            }
+        )
+    }
+
+    init(
+        launchEnvironment: AppLaunchEnvironment,
+        windowFactory: @escaping @MainActor (AppPresenter, WallpaperPresenter, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any AppWindowing,
+        displayLinkDriverFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any DisplayLinkDriving
+    ) {
         self.bootstrap = AppDependencyBootstrap(launchEnvironment: launchEnvironment)
+        self.windowFactory = windowFactory
+        self.displayLinkDriverFactory = displayLinkDriverFactory
     }
 
     public func start() {
@@ -40,16 +88,16 @@ public final class AppRouter {
         ripplePresenter.start()
         wallpaperPresenter.start()
 
-        let window = AppWindow(
-            appPresenter: appPresenter,
-            wallpaperPresenter: wallpaperPresenter,
-            headerPresenter: headerPresenter,
-            lyricsPresenter: lyricsPresenter,
-            ripplePresenter: ripplePresenter
+        let window = windowFactory(
+            appPresenter,
+            wallpaperPresenter,
+            headerPresenter,
+            lyricsPresenter,
+            ripplePresenter
         )
         appWindow = window
 
-        let driver = DisplayLinkDriver { [weak self] in
+        let driver = displayLinkDriverFactory { [weak self] in
             self?.ripplePresenter?.idle()
             self?.lyricsPresenter?.updateActiveLineTick()
         }
