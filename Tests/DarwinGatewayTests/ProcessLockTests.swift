@@ -134,17 +134,19 @@ struct DarwinGatewayLockTests {
             .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/child")
 
         private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
+        private var childReadyPath: String { tempDir.appendingPathComponent("child-ready").path }
 
         @Test("killing holder releases lock even when its child process is still alive")
         func childDoesNotInheritLock() throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
-            let holder = try FlockHelper.launchHolderWithChild(lockPath: lockPath)
+            let holder = try FlockHelper.launchHolderWithChild(lockPath: lockPath, childReadyPath: childReadyPath)
             let pid = holder.processIdentifier
             try FlockHelper.waitForLockFile(atPath: lockPath)
+            try FlockHelper.waitForFile(atPath: childReadyPath)
 
-            // Kill only the parent — child stays alive
+            // Kill only the parent after the child has crossed an exec boundary.
             kill(pid, SIGKILL)
             holder.waitUntilExit()
 
@@ -232,7 +234,7 @@ enum FlockHelper {
         return process
     }
 
-    static func launchHolderWithChild(lockPath: String) throws -> Process {
+    static func launchHolderWithChild(lockPath: String, childReadyPath: String) throws -> Process {
         let script = """
             use Fcntl qw(:flock);
             use POSIX qw(setpgid);
@@ -242,13 +244,13 @@ enum FlockHelper {
             syswrite($fh, "$$\\n");
             my $pid = fork();
             if ($pid == 0) {
-                exec("sleep", "600");
+                exec("/bin/sh", "-c", 'echo ready > "$1"; exec sleep 600', "sh", $ARGV[1]);
             }
             sleep(600);
             """
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = ["-e", script, lockPath]
+        process.arguments = ["-e", script, lockPath, childReadyPath]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
@@ -267,6 +269,20 @@ enum FlockHelper {
             if let content = try? String(contentsOfFile: path, encoding: .utf8),
                 !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
+                return
+            }
+            guard Date() < deadline else {
+                struct Timeout: Error {}
+                throw Timeout()
+            }
+            usleep(50_000)
+        }
+    }
+
+    static func waitForFile(atPath path: String, timeout: Double = 30) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            if FileManager.default.fileExists(atPath: path) {
                 return
             }
             guard Date() < deadline else {

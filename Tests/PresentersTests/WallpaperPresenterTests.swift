@@ -24,16 +24,6 @@ private enum StubError: Error {
     case resolveFailed
 }
 
-// MARK: - Helpers
-
-@MainActor
-private func waitUntilLoaded(_ presenter: WallpaperPresenter, timeout: Duration = .seconds(2)) async {
-    let deadline = ContinuousClock.now + timeout
-    while presenter.isLoading, ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
 // MARK: - Tests
 
 @Suite("WallpaperPresenter")
@@ -52,7 +42,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntilLoaded(presenter)
+                await presenter.waitForLoad()
 
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 5.0)
@@ -69,7 +59,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntilLoaded(presenter)
+                await presenter.waitForLoad()
 
                 #expect(presenter.wallpaperURL == nil)
                 #expect(presenter.startTime == nil)
@@ -86,7 +76,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntilLoaded(presenter)
+                await presenter.waitForLoad()
 
                 #expect(presenter.wallpaperURL == nil)
                 #expect(presenter.isLoading == false)
@@ -104,7 +94,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntilLoaded(presenter)
+                await presenter.waitForLoad()
                 #expect(presenter.wallpaperURL == url)
 
                 presenter.stop()
@@ -123,7 +113,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntilLoaded(presenter)
+                await presenter.waitForLoad()
 
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 10.0)

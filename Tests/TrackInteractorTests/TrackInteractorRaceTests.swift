@@ -26,16 +26,6 @@ private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
     func elapsedTime(for np: NowPlaying) -> TimeInterval? { np.rawElapsed }
 }
 
-private struct DelayedMetadataUseCase: MetadataUseCase, Sendable {
-    let delay: Duration
-
-    func resolve(track: Track) async -> Track? { nil }
-    func resolveCandidates(track: Track) async -> [Track] {
-        try? await Task.sleep(for: delay)
-        return [track]
-    }
-}
-
 private struct InstantMetadataUseCase: MetadataUseCase, Sendable {
     func resolve(track: Track) async -> Track? { nil }
     func resolveCandidates(track: Track) async -> [Track] { [] }
@@ -67,8 +57,15 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
 // MARK: - Helpers
 
 private final class UpdateCollector: @unchecked Sendable {
+    private struct Waiter {
+        let id: UUID
+        let predicate: @Sendable (TrackUpdate) -> Bool
+        let continuation: CheckedContinuation<TrackUpdate, Never>
+    }
+
     private let lock = NSLock()
     private var _updates: [TrackUpdate] = []
+    private var waiters: [Waiter] = []
 
     var updates: [TrackUpdate] {
         lock.withLock { _updates }
@@ -79,32 +76,42 @@ private final class UpdateCollector: @unchecked Sendable {
     }
 
     func append(_ update: TrackUpdate) {
-        lock.withLock { _updates.append(update) }
+        let matchedContinuations = lock.withLock { () -> [CheckedContinuation<TrackUpdate, Never>] in
+            _updates.append(update)
+            let matched = waiters.filter { $0.predicate(update) }
+            waiters.removeAll { waiter in
+                matched.contains { $0.id == waiter.id }
+            }
+            return matched.map(\.continuation)
+        }
+
+        for continuation in matchedContinuations {
+            continuation.resume(returning: update)
+        }
     }
 
     func contains(where predicate: (TrackUpdate) -> Bool) -> Bool {
         lock.withLock { _updates.contains(where: predicate) }
     }
-}
 
-private struct WaitUntilTimeout: Error, CustomStringConvertible {
-    let timeout: Duration
-    let label: String
-    var description: String { "Timed out after \(timeout) waiting for \(label)" }
-}
-
-private func waitUntil(
-    timeout: Duration = .seconds(5),
-    _ label: String = "condition",
-    condition: @Sendable () -> Bool
-) async throws {
-    let deadline = ContinuousClock.now + timeout
-    while !condition() {
-        guard ContinuousClock.now < deadline else {
-            throw WaitUntilTimeout(timeout: timeout, label: label)
+    func waitFor(predicate: @escaping @Sendable (TrackUpdate) -> Bool) async -> TrackUpdate {
+        if let existing = lock.withLock({ _updates.first(where: predicate) }) {
+            return existing
         }
-        await Task.yield()
-        await MainActor.run {}
+        let waiterID = UUID()
+        return await withCheckedContinuation { continuation in
+            let existing = lock.withLock { () -> TrackUpdate? in
+                if let existing = _updates.first(where: predicate) {
+                    return existing
+                }
+                waiters.append(Waiter(id: waiterID, predicate: predicate, continuation: continuation))
+                return nil
+            }
+
+            if let existing {
+                continuation.resume(returning: existing)
+            }
+        }
     }
 }
 
@@ -112,10 +119,11 @@ private func makeInteractor(
     playback: StubPlaybackUseCase,
     metadata: any MetadataUseCase = InstantMetadataUseCase(),
     lyrics: any LyricsUseCase = StubLyricsUseCase(),
-    config: any ConfigUseCase = StubConfigUseCase()
+    config: any ConfigUseCase = StubConfigUseCase(),
+    clock: any Clock<Duration> = ImmediateClock()
 ) -> TrackInteractorImpl {
     withDependencies {
-        $0.continuousClock = ImmediateClock()
+        $0.continuousClock = clock
         $0.playbackUseCase = playback
         $0.metadataUseCase = metadata
         $0.lyricsUseCase = lyrics
@@ -133,10 +141,8 @@ struct TrackInteractorRaceTests {
     @Test("rapid track change cancels stale resolution — only latest track emits resolved")
     func rapidTrackChangeCancelsStale() async throws {
         let playback = StubPlaybackUseCase()
-        let interactor = makeInteractor(
-            playback: playback,
-            metadata: DelayedMetadataUseCase(delay: .milliseconds(500))
-        )
+        let clock = TestClock<Duration>()
+        let interactor = makeInteractor(playback: playback, clock: clock)
 
         let collector = UpdateCollector()
         let cancellable = interactor.trackChange
@@ -146,15 +152,16 @@ struct TrackInteractorRaceTests {
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil("Track A loading") {
-            collector.contains { $0.title == "Track A" && $0.lyricsState == .loading }
+        _ = await collector.waitFor { update in
+            update.title == "Track A" && update.lyricsState == .loading
         }
 
         playback.subject.send(
             NowPlaying(title: "Track B", artist: "Artist B", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil("Track B resolved") {
-            collector.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        await clock.advance(by: .milliseconds(300))
+        _ = await collector.waitFor { update in
+            update.title == "Track B" && (update.lyricsState == .resolved || update.lyricsState == .notFound)
         }
 
         let resolved = collector.updates.filter { $0.lyricsState == .resolved || $0.lyricsState == .notFound }
@@ -165,7 +172,8 @@ struct TrackInteractorRaceTests {
     @Test("nil NowPlaying does not emit TrackUpdate — last track info is retained")
     func nilNowPlayingKeepsLastTrack() async throws {
         let playback = StubPlaybackUseCase()
-        let interactor = makeInteractor(playback: playback)
+        let clock = TestClock<Duration>()
+        let interactor = makeInteractor(playback: playback, clock: clock)
 
         let collector = UpdateCollector()
         let cancellable = interactor.trackChange
@@ -177,8 +185,9 @@ struct TrackInteractorRaceTests {
                 title: "Track A", artist: "Artist A", artworkData: nil,
                 duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil("Track A resolved") {
-            collector.contains { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        await clock.advance(by: .milliseconds(300))
+        _ = await collector.waitFor { update in
+            update.title == "Track A" && (update.lyricsState == .resolved || update.lyricsState == .notFound)
         }
 
         #expect(!collector.updates.isEmpty, "Track A should have emitted before nil")
@@ -197,10 +206,8 @@ struct TrackInteractorRaceTests {
     @Test("track A loading emits but resolved does not when B arrives quickly")
     func staleLoadingVisibleButResolvedCancelled() async throws {
         let playback = StubPlaybackUseCase()
-        let interactor = makeInteractor(
-            playback: playback,
-            metadata: DelayedMetadataUseCase(delay: .milliseconds(500))
-        )
+        let clock = TestClock<Duration>()
+        let interactor = makeInteractor(playback: playback, clock: clock)
 
         let collector = UpdateCollector()
         let cancellable = interactor.trackChange
@@ -210,19 +217,24 @@ struct TrackInteractorRaceTests {
         playback.subject.send(
             NowPlaying(title: "Track A", artist: "Artist A", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil("Track A loading") {
-            collector.contains { $0.title == "Track A" && $0.lyricsState == .loading }
+        _ = await collector.waitFor { update in
+            update.title == "Track A" && update.lyricsState == .loading
         }
 
         playback.subject.send(
             NowPlaying(title: "Track B", artist: "Artist B", artworkData: nil, duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        try await waitUntil("Track B resolved") {
-            collector.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        await clock.advance(by: .milliseconds(300))
+        _ = await collector.waitFor { update in
+            update.title == "Track B" && (update.lyricsState == .resolved || update.lyricsState == .notFound)
         }
 
         let resolvedA = collector.updates.filter { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         #expect(resolvedA.isEmpty, "Track A resolution must be cancelled by switchToLatest")
+        #expect(
+            collector.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) },
+            "Track B should still resolve"
+        )
     }
 
     // MARK: - Volume mute deduplication

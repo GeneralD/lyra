@@ -3,9 +3,57 @@ import Domain
 import Foundation
 
 public struct PrintStandardOutput: StandardOutput {
-    public init() {}
-    public func write(_ message: String) { print(message) }
-    public func writeError(_ message: String) { fputs(message + "\n", stderr) }
+    private let stdoutPrinter: @Sendable (String, String) -> Void
+    private let stderrPrinter: @Sendable (String) -> Void
+    private let stdoutFlusher: @Sendable () -> Void
+    private let terminalColumnsProvider: @Sendable () -> Int
+    private let echoSetter: @Sendable (Bool) -> Void
+
+    public init() {
+        self.stdoutPrinter = { message, terminator in
+            print(message, terminator: terminator)
+        }
+        self.stderrPrinter = { message in
+            fputs(message, stderr)
+        }
+        self.stdoutFlusher = {
+            fflush(stdout)
+        }
+        self.terminalColumnsProvider = {
+            guard isatty(STDOUT_FILENO) != 0 else { return 80 }
+            var ws = winsize()
+            guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0, ws.ws_col > 0 else { return 80 }
+            return Int(ws.ws_col)
+        }
+        self.echoSetter = { enabled in
+            guard isatty(STDIN_FILENO) != 0 else { return }
+            var attr = termios()
+            guard tcgetattr(STDIN_FILENO, &attr) == 0 else { return }
+            if enabled {
+                attr.c_lflag |= UInt(ECHO | ICANON)
+            } else {
+                attr.c_lflag &= ~UInt(ECHO | ICANON)
+            }
+            tcsetattr(STDIN_FILENO, TCSANOW, &attr)
+        }
+    }
+
+    init(
+        stdoutPrinter: @escaping @Sendable (String, String) -> Void,
+        stderrPrinter: @escaping @Sendable (String) -> Void,
+        stdoutFlusher: @escaping @Sendable () -> Void,
+        terminalColumnsProvider: @escaping @Sendable () -> Int,
+        echoSetter: @escaping @Sendable (Bool) -> Void
+    ) {
+        self.stdoutPrinter = stdoutPrinter
+        self.stderrPrinter = stderrPrinter
+        self.stdoutFlusher = stdoutFlusher
+        self.terminalColumnsProvider = terminalColumnsProvider
+        self.echoSetter = echoSetter
+    }
+
+    public func write(_ message: String) { stdoutPrinter(message, "\n") }
+    public func writeError(_ message: String) { stderrPrinter(message + "\n") }
 
     public func writeJson(_ value: some Encodable & Sendable) {
         let encoder = JSONEncoder()
@@ -116,33 +164,22 @@ public struct PrintStandardOutput: StandardOutput {
 
         case .live(let entry):
             let row = String(benchmarkRow(entry).prefix(terminalColumns))
-            print("\r\(row)\u{1B}[K", terminator: "")
-            fflush(stdout)
+            stdoutPrinter("\r\(row)\u{1B}[K", "")
+            stdoutFlusher()
 
         case .completed(let entry):
             setEcho(enabled: true)
             let row = String(benchmarkRow(entry).prefix(terminalColumns))
-            print("\r\(row)\u{1B}[K")
+            stdoutPrinter("\r\(row)\u{1B}[K", "\n")
         }
     }
 
     private var terminalColumns: Int {
-        guard isatty(STDOUT_FILENO) != 0 else { return 80 }
-        var ws = winsize()
-        guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0, ws.ws_col > 0 else { return 80 }
-        return Int(ws.ws_col)
+        terminalColumnsProvider()
     }
 
     private func setEcho(enabled: Bool) {
-        guard isatty(STDIN_FILENO) != 0 else { return }
-        var attr = termios()
-        guard tcgetattr(STDIN_FILENO, &attr) == 0 else { return }
-        if enabled {
-            attr.c_lflag |= UInt(ECHO | ICANON)
-        } else {
-            attr.c_lflag &= ~UInt(ECHO | ICANON)
-        }
-        tcsetattr(STDIN_FILENO, TCSANOW, &attr)
+        echoSetter(enabled)
     }
 
     private func benchmarkRow(_ entry: BenchmarkEntry) -> String {

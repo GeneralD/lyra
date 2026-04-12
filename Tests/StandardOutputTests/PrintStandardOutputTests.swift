@@ -1,3 +1,4 @@
+import Darwin
 import Darwin.POSIX
 import Domain
 import Foundation
@@ -7,11 +8,9 @@ import Testing
 
 @Suite("PrintStandardOutput", .serialized)
 struct PrintStandardOutputTests {
-    private let output = PrintStandardOutput()
-
     @Test("write sends plain messages to stdout")
     func writeMessage() throws {
-        let stdout = try captureStdout {
+        let stdout = try captureStdout { output in
             output.write("hello")
         }
         #expect(stdout == "hello\n")
@@ -19,7 +18,7 @@ struct PrintStandardOutputTests {
 
     @Test("writeError sends errors to stderr")
     func writeError() throws {
-        let stderr = try captureStderr {
+        let stderr = try captureStderr { output in
             output.writeError("boom")
         }
         #expect(stderr == "boom\n")
@@ -32,7 +31,7 @@ struct PrintStandardOutputTests {
             let a: String
         }
 
-        let stdout = try captureStdout {
+        let stdout = try captureStdout { output in
             output.writeJson(Payload(z: 2, a: "x"))
         }
 
@@ -43,19 +42,19 @@ struct PrintStandardOutputTests {
 
     @Test("write start results maps each branch to expected output")
     func writeStartResults() throws {
-        let started = try captureStdout {
+        let started = try captureStdout { output in
             output.write(.success(.started(pid: 42)))
         }
-        let alreadyRunning = try captureStderr {
+        let alreadyRunning = try captureStderr { output in
             output.write(.failure(.alreadyRunning))
         }
-        let daemonExited = try captureStderr {
+        let daemonExited = try captureStderr { output in
             output.write(.failure(.daemonExitedImmediately))
         }
-        let spawnFailed = try captureStderr {
+        let spawnFailed = try captureStderr { output in
             output.write(.failure(.spawnFailed(detail: "detail")))
         }
-        let stopFailed = try captureStderr {
+        let stopFailed = try captureStderr { output in
             output.write(.failure(.stopFailed))
         }
 
@@ -68,13 +67,13 @@ struct PrintStandardOutputTests {
 
     @Test("write stop results maps each branch to expected output")
     func writeStopResults() throws {
-        let stopped = try captureStdout {
+        let stopped = try captureStdout { output in
             output.write(.success(.stopped))
         }
-        let notRunning = try captureStdout {
+        let notRunning = try captureStdout { output in
             output.write(.success(.notRunning))
         }
-        let timedOut = try captureStderr {
+        let timedOut = try captureStderr { output in
             output.write(.failure(.lockReleaseTimedOut))
         }
 
@@ -85,16 +84,16 @@ struct PrintStandardOutputTests {
 
     @Test("write service install results maps each branch to expected output")
     func writeServiceInstallResults() throws {
-        let installed = try captureStdout {
+        let installed = try captureStdout { output in
             output.write(.success(.installed(path: "/tmp/lyra.plist")) as ServiceInstallResult)
         }
-        let homebrew = try captureStderr {
+        let homebrew = try captureStderr { output in
             output.write(.failure(.managedByHomebrew) as ServiceInstallResult)
         }
-        let bootstrap = try captureStderr {
+        let bootstrap = try captureStderr { output in
             output.write(.failure(.bootstrapFailed(status: 5)) as ServiceInstallResult)
         }
-        let failed = try captureStderr {
+        let failed = try captureStderr { output in
             output.write(.failure(.failed(detail: "write failed")) as ServiceInstallResult)
         }
 
@@ -106,16 +105,16 @@ struct PrintStandardOutputTests {
 
     @Test("write service uninstall results maps each branch to expected output")
     func writeServiceUninstallResults() throws {
-        let uninstalled = try captureStdout {
+        let uninstalled = try captureStdout { output in
             output.write(.success(.uninstalled) as ServiceUninstallResult)
         }
-        let homebrew = try captureStderr {
+        let homebrew = try captureStderr { output in
             output.write(.failure(.managedByHomebrew) as ServiceUninstallResult)
         }
-        let notInstalled = try captureStderr {
+        let notInstalled = try captureStderr { output in
             output.write(.failure(.notInstalled) as ServiceUninstallResult)
         }
-        let failed = try captureStderr {
+        let failed = try captureStderr { output in
             output.write(.failure(.failed(detail: "delete failed")) as ServiceUninstallResult)
         }
 
@@ -127,7 +126,7 @@ struct PrintStandardOutputTests {
 
     @Test("write health report prints entries and success summary")
     func writeHealthSuccess() throws {
-        let stdout = try captureStdout {
+        let stdout = try captureStdout { output in
             output.write(
                 .success(
                     HealthCheckPassed(entries: [
@@ -150,7 +149,7 @@ struct PrintStandardOutputTests {
 
     @Test("write health report prints failures to stderr")
     func writeHealthFailure() throws {
-        let captured = try captureOutput {
+        let captured = try captureOutput { output in
             output.write(
                 .failure(
                     HealthCheckFailed(entries: [
@@ -173,16 +172,16 @@ struct PrintStandardOutputTests {
 
     @Test("write config results map success and failure output")
     func writeConfigResults() throws {
-        let created = try captureStdout {
+        let created = try captureStdout { output in
             output.write(.success(.created(path: "/tmp/config.toml")))
         }
-        let configError = try captureStderr {
+        let configError = try captureStderr { output in
             output.write(.failure(.failed(detail: "bad config")) as ConfigWriteResult)
         }
-        let found = try captureStdout {
+        let found = try captureStdout { output in
             output.write(.success(.found(path: "/tmp/config.toml")))
         }
-        let pathError = try captureStderr {
+        let pathError = try captureStderr { output in
             output.write(.failure(.failed(detail: "missing")) as ConfigPathResult)
         }
 
@@ -194,7 +193,7 @@ struct PrintStandardOutputTests {
 
     @Test("write benchmark header prints table headings")
     func writeBenchmarkHeader() throws {
-        let stdout = try captureStdout {
+        let stdout = try captureStdout { output in
             output.write(.header)
         }
 
@@ -214,10 +213,10 @@ struct PrintStandardOutputTests {
             currentRSSBytes: 2_621_440
         )
 
-        let live = try captureStdout {
+        let live = try captureStdout { output in
             output.write(.live(entry))
         }
-        let completed = try captureStdout {
+        let completed = try captureStdout { output in
             output.write(.completed(entry))
         }
 
@@ -228,140 +227,135 @@ struct PrintStandardOutputTests {
         #expect(completed.contains("cpu_spike"))
         #expect(completed.contains("5.0"))
     }
+
+    @Test("public init benchmark path works with tty streams")
+    func publicInitBenchmarkWithTTY() throws {
+        let entry = BenchmarkEntry(
+            scenario: .cpuSpike,
+            durationSeconds: 1.234,
+            cpuUserSeconds: 0.5,
+            cpuSystemSeconds: 0.25,
+            peakRSSBytes: 5_242_880,
+            currentRSSBytes: 2_621_440
+        )
+
+        _ = try withPseudoTTY(redirectStdin: true, redirectStdout: true) {
+            let output = PrintStandardOutput()
+            output.write(.header)
+            output.write(.live(entry))
+            output.write(.completed(entry))
+        }
+    }
+
+    @Test("public init writeError path does not crash")
+    func publicInitWriteErrorSmoke() {
+        let output = PrintStandardOutput()
+        output.writeError("stderr smoke")
+    }
 }
 
-private func captureStdout(_ operation: () throws -> Void) throws -> String {
-    try capture(fileDescriptor: STDOUT_FILENO, stream: stdout, operation)
+private final class OutputRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var capturedStdout = ""
+    private var capturedStderr = ""
+
+    var stdout: String { lock.withLock { capturedStdout } }
+    var stderr: String { lock.withLock { capturedStderr } }
+
+    func makeOutput(terminalColumns: Int = 80) -> PrintStandardOutput {
+        PrintStandardOutput(
+            stdoutPrinter: { [weak self] message, terminator in
+                self?.appendStdout(message + terminator)
+            },
+            stderrPrinter: { [weak self] message in
+                self?.appendStderr(message)
+            },
+            stdoutFlusher: {},
+            terminalColumnsProvider: { terminalColumns },
+            echoSetter: { _ in }
+        )
+    }
+
+    private func appendStdout(_ chunk: String) {
+        lock.withLock {
+            capturedStdout += chunk
+        }
+    }
+
+    private func appendStderr(_ chunk: String) {
+        lock.withLock {
+            capturedStderr += chunk
+        }
+    }
 }
 
-private func captureStderr(_ operation: () throws -> Void) throws -> String {
-    try capture(fileDescriptor: STDERR_FILENO, stream: stderr, operation)
+private func captureStdout(_ operation: (PrintStandardOutput) throws -> Void) throws -> String {
+    let recorder = OutputRecorder()
+    try operation(recorder.makeOutput())
+    return recorder.stdout
 }
 
-private func captureOutput(_ operation: () throws -> Void) throws -> (stdout: String, stderr: String) {
-    let stdoutPipe = try makePipe()
-    let stderrPipe = try makePipe()
-    var savedStdout = dup(STDOUT_FILENO)
-    guard savedStdout >= 0 else {
-        _ = close(stdoutPipe.readFD)
-        _ = close(stdoutPipe.writeFD)
-        _ = close(stderrPipe.readFD)
-        _ = close(stderrPipe.writeFD)
-        throw currentPOSIXError()
-    }
-    var savedStderr = dup(STDERR_FILENO)
-    guard savedStderr >= 0 else {
-        let error = currentPOSIXError()
-        _ = close(savedStdout)
-        _ = close(stdoutPipe.readFD)
-        _ = close(stdoutPipe.writeFD)
-        _ = close(stderrPipe.readFD)
-        _ = close(stderrPipe.writeFD)
-        throw error
-    }
-    defer {
-        if savedStdout >= 0 { _ = close(savedStdout) }
-        if savedStderr >= 0 { _ = close(savedStderr) }
-    }
-
-    fflush(stdout)
-    fflush(stderr)
-    guard dup2(stdoutPipe.writeFD, STDOUT_FILENO) >= 0 else {
-        _ = close(stdoutPipe.readFD)
-        _ = close(stdoutPipe.writeFD)
-        _ = close(stderrPipe.readFD)
-        _ = close(stderrPipe.writeFD)
-        throw currentPOSIXError()
-    }
-    guard dup2(stderrPipe.writeFD, STDERR_FILENO) >= 0 else {
-        let error = currentPOSIXError()
-        _ = dup2(savedStdout, STDOUT_FILENO)
-        _ = close(stdoutPipe.readFD)
-        _ = close(stdoutPipe.writeFD)
-        _ = close(stderrPipe.readFD)
-        _ = close(stderrPipe.writeFD)
-        throw error
-    }
-
-    do {
-        try operation()
-    } catch {
-        fflush(stdout)
-        fflush(stderr)
-        _ = dup2(savedStdout, STDOUT_FILENO)
-        _ = dup2(savedStderr, STDERR_FILENO)
-        _ = close(stdoutPipe.writeFD)
-        _ = close(stderrPipe.writeFD)
-        _ = close(stdoutPipe.readFD)
-        _ = close(stderrPipe.readFD)
-        throw error
-    }
-
-    fflush(stdout)
-    fflush(stderr)
-    _ = dup2(savedStdout, STDOUT_FILENO)
-    _ = dup2(savedStderr, STDERR_FILENO)
-    _ = close(stdoutPipe.writeFD)
-    _ = close(stderrPipe.writeFD)
-
-    let stdoutData = FileHandle(fileDescriptor: stdoutPipe.readFD, closeOnDealloc: true).readDataToEndOfFile()
-    let stderrData = FileHandle(fileDescriptor: stderrPipe.readFD, closeOnDealloc: true).readDataToEndOfFile()
-    return (
-        String(data: stdoutData, encoding: .utf8) ?? "",
-        String(data: stderrData, encoding: .utf8) ?? ""
-    )
+private func captureStderr(_ operation: (PrintStandardOutput) throws -> Void) throws -> String {
+    let recorder = OutputRecorder()
+    try operation(recorder.makeOutput())
+    return recorder.stderr
 }
 
-private func capture(
-    fileDescriptor: Int32,
-    stream: UnsafeMutablePointer<FILE>,
+private func captureOutput(_ operation: (PrintStandardOutput) throws -> Void) throws -> (stdout: String, stderr: String) {
+    let recorder = OutputRecorder()
+    try operation(recorder.makeOutput())
+    return (recorder.stdout, recorder.stderr)
+}
+
+private func withPseudoTTY(
+    redirectStdin: Bool,
+    redirectStdout: Bool,
+    columns: UInt16 = 120,
     _ operation: () throws -> Void
 ) throws -> String {
-    let (readFD, writeFD) = try makePipe()
-    let savedFD = dup(fileDescriptor)
-    guard savedFD >= 0 else {
-        let error = currentPOSIXError()
-        _ = close(readFD)
-        _ = close(writeFD)
-        throw error
-    }
-    defer { _ = close(savedFD) }
-
-    fflush(stream)
-    guard dup2(writeFD, fileDescriptor) >= 0 else {
-        let error = currentPOSIXError()
-        _ = close(readFD)
-        _ = close(writeFD)
-        throw error
+    var master: Int32 = -1
+    var slave: Int32 = -1
+    var window = winsize(ws_row: 24, ws_col: columns, ws_xpixel: 0, ws_ypixel: 0)
+    guard openpty(&master, &slave, nil, nil, &window) == 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 
-    do {
-        try operation()
-    } catch {
-        fflush(stream)
-        _ = dup2(savedFD, fileDescriptor)
-        _ = close(writeFD)
-        _ = close(readFD)
-        throw error
+    let savedStdin = dup(STDIN_FILENO)
+    let savedStdout = dup(STDOUT_FILENO)
+    guard savedStdin >= 0, savedStdout >= 0 else {
+        _ = close(master)
+        _ = close(slave)
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 
-    fflush(stream)
-    _ = dup2(savedFD, fileDescriptor)
-    _ = close(writeFD)
+    defer {
+        _ = dup2(savedStdin, STDIN_FILENO)
+        _ = dup2(savedStdout, STDOUT_FILENO)
+        _ = close(savedStdin)
+        _ = close(savedStdout)
+        _ = close(master)
+        _ = close(slave)
+    }
 
-    let data = FileHandle(fileDescriptor: readFD, closeOnDealloc: true).readDataToEndOfFile()
+    if redirectStdin {
+        guard dup2(slave, STDIN_FILENO) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+    if redirectStdout {
+        guard dup2(slave, STDOUT_FILENO) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    try operation()
+    fflush(stdout)
+
+    _ = dup2(savedStdout, STDOUT_FILENO)
+    _ = dup2(savedStdin, STDIN_FILENO)
+    _ = close(slave)
+    slave = -1
+
+    let data = FileHandle(fileDescriptor: master, closeOnDealloc: false).readDataToEndOfFile()
     return String(data: data, encoding: .utf8) ?? ""
-}
-
-private func makePipe() throws -> (readFD: Int32, writeFD: Int32) {
-    let readWrite = UnsafeMutablePointer<Int32>.allocate(capacity: 2)
-    defer { readWrite.deallocate() }
-    guard pipe(readWrite) == 0 else {
-        throw currentPOSIXError()
-    }
-    return (readWrite[0], readWrite[1])
-}
-
-private func currentPOSIXError() -> POSIXError {
-    POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 }
