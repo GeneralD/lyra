@@ -76,6 +76,12 @@ extension DecodeEffectState {
         targetText = text
         lockedIndices = []
         completionHandler = onComplete
+        if duration <= 0 {
+            updateDisplay(text)
+            finish()
+            return
+        }
+
         updateDisplay(pool.random(count: text.count))
 
         let totalChars = text.count

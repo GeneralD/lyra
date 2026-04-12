@@ -24,6 +24,7 @@ public final class WallpaperPresenter: ObservableObject {
 
     public func start() {
         isLoading = true
+        let interactor = self.interactor
         Task { [weak self] in
             guard let self else { return }
             let state = try? await interactor.resolveWallpaper()
