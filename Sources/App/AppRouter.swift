@@ -19,7 +19,10 @@ protocol DisplayLinkDriving: AnyObject {
 
 extension DisplayLinkDriver: DisplayLinkDriving {
     func start(in window: any AppWindowing) {
-        guard let window = window as? NSWindow else { return }
+        guard let window = window as? NSWindow else {
+            assertionFailure("DisplayLinkDriver requires an NSWindow-backed AppWindowing")
+            return
+        }
         start(in: window)
     }
 }
@@ -68,44 +71,48 @@ public final class AppRouter {
     }
 
     public func start() {
-        let appPresenter = make { AppPresenter() }
-        let headerPresenter = make { HeaderPresenter() }
-        let lyricsPresenter = make { LyricsPresenter() }
-        let wallpaperPresenter = make { WallpaperPresenter() }
-        self.appPresenter = appPresenter
-        self.headerPresenter = headerPresenter
-        self.lyricsPresenter = lyricsPresenter
-        self.wallpaperPresenter = wallpaperPresenter
+        guard appWindow == nil, displayLinkDriver == nil else { return }
 
-        appPresenter.start()
-        let ripplePresenter = make {
-            RipplePresenter(screenOrigin: appPresenter.layout.screenOrigin)
+        withBootstrap {
+            let appPresenter = AppPresenter()
+            let headerPresenter = HeaderPresenter()
+            let lyricsPresenter = LyricsPresenter()
+            let wallpaperPresenter = WallpaperPresenter()
+            self.appPresenter = appPresenter
+            self.headerPresenter = headerPresenter
+            self.lyricsPresenter = lyricsPresenter
+            self.wallpaperPresenter = wallpaperPresenter
+
+            appPresenter.start()
+            let ripplePresenter = RipplePresenter(screenOrigin: appPresenter.layout.screenOrigin)
+            self.ripplePresenter = ripplePresenter
+
+            headerPresenter.start()
+            lyricsPresenter.start()
+            ripplePresenter.start()
+            wallpaperPresenter.start()
+
+            let window = windowFactory(
+                appPresenter,
+                wallpaperPresenter,
+                headerPresenter,
+                lyricsPresenter,
+                ripplePresenter
+            )
+            appWindow = window
+
+            let driver = displayLinkDriverFactory { [weak self] in
+                self?.ripplePresenter?.idle()
+                self?.lyricsPresenter?.updateActiveLineTick()
+            }
+            self.displayLinkDriver = driver
+            driver.start(in: window)
         }
-        self.ripplePresenter = ripplePresenter
-
-        headerPresenter.start()
-        lyricsPresenter.start()
-        ripplePresenter.start()
-        wallpaperPresenter.start()
-
-        let window = windowFactory(
-            appPresenter,
-            wallpaperPresenter,
-            headerPresenter,
-            lyricsPresenter,
-            ripplePresenter
-        )
-        appWindow = window
-
-        let driver = displayLinkDriverFactory { [weak self] in
-            self?.ripplePresenter?.idle()
-            self?.lyricsPresenter?.updateActiveLineTick()
-        }
-        self.displayLinkDriver = driver
-        driver.start(in: window)
     }
 
     public func stop() {
+        guard appWindow != nil || displayLinkDriver != nil else { return }
+
         headerPresenter?.stop()
         lyricsPresenter?.stop()
         wallpaperPresenter?.stop()
@@ -113,10 +120,16 @@ public final class AppRouter {
         displayLinkDriver?.stop()
         appWindow?.orderOut(nil)
         appWindow?.close()
+        displayLinkDriver = nil
         appWindow = nil
+        ripplePresenter = nil
+        wallpaperPresenter = nil
+        lyricsPresenter = nil
+        headerPresenter = nil
+        appPresenter = nil
     }
 
-    private func make<T>(_ operation: () -> T) -> T {
+    private func withBootstrap<T>(_ operation: () -> T) -> T {
         withDependencies {
             bootstrap.apply(to: &$0)
         } operation: {

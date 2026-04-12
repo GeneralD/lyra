@@ -1,10 +1,12 @@
 import Foundation
 
 public struct AppLaunchEnvironment: Sendable, Equatable {
-    private static let uiTestModeKey = "LYRA_UI_TEST_MODE"
-    private static let lyricsTitleKey = "LYRA_UI_TEST_TITLE"
-    private static let lyricsArtistKey = "LYRA_UI_TEST_ARTIST"
-    private static let lyricsLinesKey = "LYRA_UI_TEST_LYRICS"
+    public enum Keys {
+        public static let uiTestMode = "LYRA_UI_TEST_MODE"
+        public static let lyricsTitle = "LYRA_UI_TEST_TITLE"
+        public static let lyricsArtist = "LYRA_UI_TEST_ARTIST"
+        public static let lyricsLines = "LYRA_UI_TEST_LYRICS"
+    }
 
     public let isUITestMode: Bool
     public let title: String
@@ -12,10 +14,10 @@ public struct AppLaunchEnvironment: Sendable, Equatable {
     public let lyricsLines: [String]
 
     public init(environment: [String: String]) {
-        isUITestMode = Self.parseBoolean(environment[Self.uiTestModeKey])
-        title = environment[Self.lyricsTitleKey] ?? "UI Test Song"
-        artist = environment[Self.lyricsArtistKey] ?? "UI Test Artist"
-        lyricsLines = Self.parseLyrics(environment[Self.lyricsLinesKey])
+        isUITestMode = Self.parseBoolean(environment[Keys.uiTestMode])
+        title = environment[Keys.lyricsTitle] ?? "UI Test Song"
+        artist = environment[Keys.lyricsArtist] ?? "UI Test Artist"
+        lyricsLines = Self.parseLyrics(environment[Keys.lyricsLines])
     }
 
     public static var current: Self {

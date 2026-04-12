@@ -8,16 +8,27 @@ import Views
 
 @testable import App
 
+@MainActor
+private func waitUntil(
+    timeout: Duration = .seconds(3),
+    condition: @escaping @MainActor () -> Bool
+) async {
+    let deadline = ContinuousClock.now + timeout
+    while !condition(), ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}
+
 @Suite("AppLaunchEnvironment")
 struct AppLaunchEnvironmentTests {
     @Test("parses UI test launch environment and lyrics lines")
     func parsesEnvironment() {
         let environment = AppLaunchEnvironment(
             environment: [
-                "LYRA_UI_TEST_MODE": "true",
-                "LYRA_UI_TEST_TITLE": "Test Song",
-                "LYRA_UI_TEST_ARTIST": "Test Artist",
-                "LYRA_UI_TEST_LYRICS": "Line 1\nLine 2\n\nLine 3",
+                AppLaunchEnvironment.Keys.uiTestMode: "true",
+                AppLaunchEnvironment.Keys.lyricsTitle: "Test Song",
+                AppLaunchEnvironment.Keys.lyricsArtist: "Test Artist",
+                AppLaunchEnvironment.Keys.lyricsLines: "Line 1\nLine 2\n\nLine 3",
             ]
         )
 
@@ -37,47 +48,12 @@ struct AppLaunchEnvironmentTests {
         #expect(environment.lyricsLines == ["First UI test lyric", "Second UI test lyric"])
     }
 
-    @Test("reads current process environment and trims empty lyrics")
-    func currentEnvironment() {
-        let keys = [
-            "LYRA_UI_TEST_MODE",
-            "LYRA_UI_TEST_TITLE",
-            "LYRA_UI_TEST_ARTIST",
-            "LYRA_UI_TEST_LYRICS",
-        ]
-        let original = keys.reduce(into: [String: String?]()) { result, key in
-            result[key] = ProcessInfo.processInfo.environment[key]
-        }
-
-        defer {
-            for key in keys {
-                if let value = original[key] ?? nil {
-                    setenv(key, value, 1)
-                } else {
-                    unsetenv(key)
-                }
-            }
-        }
-
-        setenv("LYRA_UI_TEST_MODE", "YES", 1)
-        setenv("LYRA_UI_TEST_TITLE", "Current Song", 1)
-        setenv("LYRA_UI_TEST_ARTIST", "Current Artist", 1)
-        setenv("LYRA_UI_TEST_LYRICS", " \n\n Current Line \n ", 1)
-
-        let environment = AppLaunchEnvironment.current
-
-        #expect(environment.isUITestMode)
-        #expect(environment.title == "Current Song")
-        #expect(environment.artist == "Current Artist")
-        #expect(environment.lyricsLines == ["Current Line"])
-    }
-
     @Test("falls back to default lyrics when parsed lines are empty")
     func defaultsForEmptyLyrics() {
         let environment = AppLaunchEnvironment(
             environment: [
-                "LYRA_UI_TEST_MODE": "on",
-                "LYRA_UI_TEST_LYRICS": " \n \n",
+                AppLaunchEnvironment.Keys.uiTestMode: "on",
+                AppLaunchEnvironment.Keys.lyricsLines: " \n \n",
             ]
         )
 
@@ -94,10 +70,10 @@ struct AppDependencyBootstrapTests {
         let bootstrap = AppDependencyBootstrap(
             launchEnvironment: .init(
                 environment: [
-                    "LYRA_UI_TEST_MODE": "1",
-                    "LYRA_UI_TEST_TITLE": "Bootstrap Song",
-                    "LYRA_UI_TEST_ARTIST": "Bootstrap Artist",
-                    "LYRA_UI_TEST_LYRICS": "Alpha\nBeta",
+                    AppLaunchEnvironment.Keys.uiTestMode: "1",
+                    AppLaunchEnvironment.Keys.lyricsTitle: "Bootstrap Song",
+                    AppLaunchEnvironment.Keys.lyricsArtist: "Bootstrap Artist",
+                    AppLaunchEnvironment.Keys.lyricsLines: "Alpha\nBeta",
                 ]
             )
         )
@@ -115,8 +91,12 @@ struct AppDependencyBootstrapTests {
 
         headerPresenter.start()
         lyricsPresenter.start()
-        await Task.yield()
-        await Task.yield()
+        await waitUntil {
+            headerPresenter.displayTitle == "Bootstrap Song"
+                && headerPresenter.displayArtist == "Bootstrap Artist"
+                && lyricsPresenter.displayLyricLines == ["Alpha", "Beta"]
+                && lyricsPresenter.lyricsState == .success(.plain(["Alpha", "Beta"]))
+        }
 
         #expect(headerPresenter.displayTitle == "Bootstrap Song")
         #expect(headerPresenter.displayArtist == "Bootstrap Artist")
@@ -129,9 +109,9 @@ struct AppDependencyBootstrapTests {
         let bootstrap = AppDependencyBootstrap(
             launchEnvironment: .init(
                 environment: [
-                    "LYRA_UI_TEST_MODE": "true",
-                    "LYRA_UI_TEST_TITLE": "Layout Song",
-                    "LYRA_UI_TEST_ARTIST": "Layout Artist",
+                    AppLaunchEnvironment.Keys.uiTestMode: "true",
+                    AppLaunchEnvironment.Keys.lyricsTitle: "Layout Song",
+                    AppLaunchEnvironment.Keys.lyricsArtist: "Layout Artist",
                 ]
             )
         )
@@ -194,10 +174,10 @@ struct AppRouterTests {
         let router = AppRouter(
             launchEnvironment: .init(
                 environment: [
-                    "LYRA_UI_TEST_MODE": "true",
-                    "LYRA_UI_TEST_TITLE": "Router Song",
-                    "LYRA_UI_TEST_ARTIST": "Router Artist",
-                    "LYRA_UI_TEST_LYRICS": "One\nTwo",
+                    AppLaunchEnvironment.Keys.uiTestMode: "true",
+                    AppLaunchEnvironment.Keys.lyricsTitle: "Router Song",
+                    AppLaunchEnvironment.Keys.lyricsArtist: "Router Artist",
+                    AppLaunchEnvironment.Keys.lyricsLines: "One\nTwo",
                 ]
             ),
             windowFactory: { _, _, _, _, _ in window },
@@ -208,8 +188,13 @@ struct AppRouterTests {
         )
 
         router.start()
-        await Task.yield()
-        await Task.yield()
+        await waitUntil {
+            let headerPresenter: HeaderPresenter? = value(named: "headerPresenter", from: router)
+            let lyricsPresenter: LyricsPresenter? = value(named: "lyricsPresenter", from: router)
+            return headerPresenter?.displayTitle == "Router Song"
+                && headerPresenter?.displayArtist == "Router Artist"
+                && lyricsPresenter?.displayLyricLines == ["One", "Two"]
+        }
 
         let appPresenter: AppPresenter? = value(named: "appPresenter", from: router)
         let headerPresenter: HeaderPresenter? = value(named: "headerPresenter", from: router)
@@ -235,6 +220,38 @@ struct AppRouterTests {
         #expect(window.orderOutCallCount == 1)
         #expect(window.closeCallCount == 1)
         #expect(driver.stopCallCount == 1)
+    }
+
+    @Test("start ignores duplicate calls and stop clears router state")
+    func startIsIdempotent() {
+        let window = SpyWindow()
+        let driver = SpyDisplayLinkDriver()
+
+        let router = AppRouter(
+            launchEnvironment: .init(environment: [AppLaunchEnvironment.Keys.uiTestMode: "true"]),
+            windowFactory: { _, _, _, _, _ in window },
+            displayLinkDriverFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        router.start()
+
+        #expect(driver.startCallCount == 1)
+        #expect(value(named: "appPresenter", from: router) as AppPresenter? != nil)
+
+        router.stop()
+
+        #expect(driver.stopCallCount == 1)
+        #expect(!hasValue(named: "appPresenter", from: router))
+        #expect(!hasValue(named: "headerPresenter", from: router))
+        #expect(!hasValue(named: "lyricsPresenter", from: router))
+        #expect(!hasValue(named: "wallpaperPresenter", from: router))
+        #expect(!hasValue(named: "ripplePresenter", from: router))
+        #expect(!hasValue(named: "displayLinkDriver", from: router))
+        #expect(!hasValue(named: "appWindow", from: router))
     }
 
     private final class SpyWindow: AppWindowing {
@@ -310,10 +327,10 @@ struct AccessibilityHooksTests {
         let bootstrap = AppDependencyBootstrap(
             launchEnvironment: .init(
                 environment: [
-                    "LYRA_UI_TEST_MODE": "true",
-                    "LYRA_UI_TEST_TITLE": "Accessible Song",
-                    "LYRA_UI_TEST_ARTIST": "Accessible Artist",
-                    "LYRA_UI_TEST_LYRICS": "First\nSecond",
+                    AppLaunchEnvironment.Keys.uiTestMode: "true",
+                    AppLaunchEnvironment.Keys.lyricsTitle: "Accessible Song",
+                    AppLaunchEnvironment.Keys.lyricsArtist: "Accessible Artist",
+                    AppLaunchEnvironment.Keys.lyricsLines: "First\nSecond",
                 ]
             )
         )
@@ -343,8 +360,10 @@ struct AccessibilityHooksTests {
         lyricsPresenter.start()
         overlayRipplePresenter.start()
         ripplePresenter.start()
-        await Task.yield()
-        await Task.yield()
+        await waitUntil {
+            headerPresenter.displayTitle == "Accessible Song"
+                && lyricsPresenter.displayLyricLines == ["First", "Second"]
+        }
 
         render(HeaderView(presenter: headerPresenter), size: CGSize(width: 600, height: 120))
         render(LyricsColumnView(presenter: lyricsPresenter), size: CGSize(width: 600, height: 300))

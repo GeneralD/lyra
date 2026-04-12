@@ -59,4 +59,4 @@ If a command needs streaming output, iterate the stream and call output methods 
 ## Testing Constraints
 
 - **Never use `setenv`** — process-global, races with Swift Testing parallel execution. Inject values via constructor parameters instead.
-- **UI tests require bootstrap, not in-memory overrides.** `XCUIApplication` launches the app in a separate process, so unit-test style `withDependencies` overrides do not cross the process boundary. Select any fixture graph at app startup (launch arguments/environment in `AppDelegate`/`AppRouter`), and keep UI-test branching out of presenters and views.
+- **UI tests require bootstrap, not in-memory overrides.** `XCUIApplication` launches the app in a separate process, so unit-test-style `withDependencies` overrides do not cross the process boundary. Select any fixture graph at app startup (launch arguments/environment in `AppDelegate`/`AppRouter`), and keep UI-test branching out of presenters and views.
