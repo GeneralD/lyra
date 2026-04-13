@@ -120,6 +120,29 @@ struct MusicBrainzMetadataDataSourceImplTests {
         #expect(secondArtist == nil)
     }
 
+    @Test("resolve falls back when first query returns only artistless recordings")
+    func resolveFallsBackOnArtistlessRecordings() async {
+        let calls = LockedCalls()
+        let sut = MusicBrainzMetadataDataSourceImpl { api in
+            await calls.append(api)
+            let index = await calls.count
+            if index == 1 {
+                return MusicBrainzResponse(recordings: [
+                    MusicBrainzRecording(id: "1", title: "Song", length: nil, artistCredit: [])
+                ])
+            }
+            return MusicBrainzResponse(recordings: [
+                MusicBrainzRecording(id: "2", title: "Song", length: nil, artistCredit: [ArtistCredit(name: "Artist")])
+            ])
+        }
+
+        let result = await sut.resolve(track: Track(title: "Song", artist: "Artist"))
+
+        #expect(result.count >= 1)
+        #expect(result.first?.musicbrainzId == "2")
+        #expect(await calls.count == 2)
+    }
+
     @Test("resolve returns empty when all lookups fail")
     func resolveReturnsEmpty() async {
         let sut = MusicBrainzMetadataDataSourceImpl { _ in nil }

@@ -1,3 +1,4 @@
+import Files
 import Foundation
 import GRDB
 import Testing
@@ -78,6 +79,20 @@ struct DatabaseManagerMigrationTests {
                 )
             }
         }
+    }
+
+    @Test("file-based init creates database at custom path")
+    func fileBased() throws {
+        let tmp = try Folder.temporary.createSubfolder(named: UUID().uuidString)
+        defer { try? tmp.delete() }
+
+        let db = try DatabaseManager(cacheFolder: tmp)
+        let tables = try db.dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        }
+        #expect(tables.contains("lrclib_tracks"))
+        #expect(tables.contains("wallpaper_cache"))
+        #expect(tmp.containsFile(named: "database"))
     }
 
     @Test("migrations are idempotent — running on same DB twice does not error")

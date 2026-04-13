@@ -2,7 +2,17 @@ import Domain
 import Foundation
 
 public struct RemoteWallpaperDataSourceImpl: Sendable {
-    public init() {}
+    private let downloadPerformer: @Sendable (URL) async throws -> (URL, URLResponse)
+
+    public init() {
+        self.init { url in
+            try await URLSession.shared.download(from: url)
+        }
+    }
+
+    init(downloadPerformer: @escaping @Sendable (URL) async throws -> (URL, URLResponse)) {
+        self.downloadPerformer = downloadPerformer
+    }
 }
 
 extension RemoteWallpaperDataSourceImpl: WallpaperDataSource {
@@ -12,7 +22,7 @@ extension RemoteWallpaperDataSourceImpl: WallpaperDataSource {
         let cache = try WallpaperCache()
         let tempPath = cache.tempPath(for: location.url)
 
-        let (tempURL, response) = try await URLSession.shared.download(from: location.url)
+        let (tempURL, response) = try await downloadPerformer(location.url)
 
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             try? FileManager.default.removeItem(at: tempURL)
