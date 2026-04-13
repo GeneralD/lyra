@@ -360,6 +360,12 @@ struct AccessibilityHooksTests {
         lyricsPresenter.start()
         overlayRipplePresenter.start()
         ripplePresenter.start()
+        defer {
+            ripplePresenter.stop()
+            overlayRipplePresenter.stop()
+            lyricsPresenter.stop()
+            headerPresenter.stop()
+        }
         await waitUntil {
             headerPresenter.displayTitle == "Accessible Song"
                 && lyricsPresenter.displayLyricLines == ["First", "Second"]
