@@ -17,7 +17,7 @@ Optional: `major`, `minor`, or `patch`. If omitted, auto-detect from recent chan
 
 ## Version File
 
-The single source of truth is `Sources/CLI/Resources/version.txt` — a plain text file containing only a semver string (e.g., `2.2.1`). If the project uses a different path, search for `version.txt` or a file containing a semver pattern.
+The single source of truth is `Sources/VersionHandler/Resources/version.txt` — a plain text file containing only a semver string (e.g., `2.2.1`). If the project uses a different path, search for `version.txt` or a file containing a semver pattern.
 
 ## Procedure
 
