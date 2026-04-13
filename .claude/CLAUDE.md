@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Keep the repository root `AGENTS.md` in sync when build/test commands,
+architecture boundaries, or workflow rules change. Codex uses `AGENTS.md` as
+its project entrypoint, while this file remains the long-form reference.
+
 ## Build & Test
 
 ```sh
