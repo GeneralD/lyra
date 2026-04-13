@@ -5,10 +5,10 @@ import GRDB
 public final class DatabaseManager: Sendable {
     public let dbQueue: DatabaseQueue
 
-    public init() throws {
-        let lyraCache = try Self.lyraCacheFolder()
-        let dbPath = lyraCache.path + "database"
-        dbQueue = try DatabaseQueue(path: dbPath)
+    public init(cacheFolder: Folder? = nil) throws {
+        let lyra = try cacheFolder ?? Folder.defaultCache.createSubfolderIfNeeded(withName: "lyra")
+        let file = try lyra.createFileIfNeeded(withName: "database")
+        dbQueue = try DatabaseQueue(path: file.path)
         try migrator.migrate(dbQueue)
     }
 
@@ -16,16 +16,6 @@ public final class DatabaseManager: Sendable {
     public init(inMemory: Bool) throws {
         dbQueue = try DatabaseQueue()
         try migrator.migrate(dbQueue)
-    }
-
-    private static func lyraCacheFolder() throws -> Folder {
-        let envCache = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]?.trimmingCharacters(
-            in: .whitespacesAndNewlines)
-        let cachePath =
-            (envCache?.isEmpty == false) ? envCache! : "\(Folder.home.path).cache"
-        let lyraPath = "\(cachePath)/lyra"
-        try FileManager.default.createDirectory(atPath: lyraPath, withIntermediateDirectories: true)
-        return try Folder(path: lyraPath)
     }
 
     private var migrator: DatabaseMigrator {
@@ -89,11 +79,7 @@ public final class DatabaseManager: Sendable {
         }
 
         migrator.registerMigration("v1_removeLegacyCache") { _ in
-            let envCache = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]?.trimmingCharacters(
-                in: .whitespacesAndNewlines)
-            let cachePath =
-                (envCache?.isEmpty == false) ? envCache! : "\(Folder.home.path).cache"
-            try? Folder(path: cachePath).subfolder(named: "now-playing").delete()
+            try? Folder.defaultCache.subfolder(named: "now-playing").delete()
         }
 
         return migrator

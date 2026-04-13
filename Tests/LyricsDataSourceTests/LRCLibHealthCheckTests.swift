@@ -45,6 +45,20 @@ struct LRCLibHealthCheckTests {
         #expect(result.latency != nil)
     }
 
+    @Test("healthCheck reports non-HTTP response as HTTP -1")
+    func healthCheckNonHTTPResponse() async {
+        let result = await api.healthCheck { request in
+            let response = URLResponse(
+                url: try #require(request.url),
+                mimeType: nil, expectedContentLength: 0, textEncodingName: nil
+            )
+            return (Data(), response)
+        }
+
+        #expect(result.status == .fail)
+        #expect(result.detail == "HTTP -1")
+    }
+
     @Test("healthCheck reports request errors")
     func healthCheckError() async {
         let result = await api.healthCheck { _ in

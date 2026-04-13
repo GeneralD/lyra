@@ -63,6 +63,31 @@ struct LyricsDataSourceImplTests {
         #expect(result == nil)
     }
 
+    @Test("get returns result when only synced lyrics exist")
+    func getReturnsSyncedOnly() async {
+        let dataSource = LyricsDataSourceImpl { _ in
+            try JSONEncoder().encode(
+                LyricsResult(trackName: "Song", artistName: "Artist", plainLyrics: nil, syncedLyrics: "[00:00.00]Line")
+            )
+        }
+
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+
+        #expect(result?.syncedLyrics == "[00:00.00]Line")
+        #expect(result?.plainLyrics == nil)
+    }
+
+    @Test("get returns nil when request performer throws")
+    func getReturnsNilOnRequestError() async {
+        let dataSource = LyricsDataSourceImpl { _ in
+            throw LyricsDataSourceStubError()
+        }
+
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+
+        #expect(result == nil)
+    }
+
     @Test("get returns nil when response is not decodable")
     func getReturnsNilOnInvalidJSON() async {
         let dataSource = LyricsDataSourceImpl { _ in
