@@ -1,3 +1,4 @@
+import Dependencies
 import Domain
 import Foundation
 import Testing
@@ -56,113 +57,163 @@ struct DecodeEffectStateTests {
     @MainActor
     @Test("set updates displayText immediately")
     func setUpdatesDisplay() {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 0))
-        state.set("Hello")
-        #expect(state.displayText == "Hello")
-        #expect(state.isAnimating == false)
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 0))
+            state.set("Hello")
+            #expect(state.displayText == "Hello")
+            #expect(!state.isAnimating)
+        }
     }
 
     @MainActor
     @Test("decode with empty text completes immediately")
     func decodeEmptyText() {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 0))
-        var completed = false
-        state.decode(to: "") { completed = true }
-        #expect(completed)
-        #expect(state.displayText == "")
-        #expect(state.isAnimating == false)
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 0))
+            var completed = false
+            state.decode(to: "") { completed = true }
+            #expect(completed)
+            #expect(state.displayText == "")
+            #expect(!state.isAnimating)
+        }
     }
 
     @MainActor
     @Test("stop cancels animation")
     func stopCancels() {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 1.0))
-        state.startLoading()
-        #expect(state.isAnimating == true)
-        state.stop()
-        #expect(state.isAnimating == false)
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0))
+            state.startLoading()
+            #expect(state.isAnimating)
+            state.stop()
+            #expect(!state.isAnimating)
+        }
     }
 
     @MainActor
     @Test("startLoading sets isAnimating and displayText")
     func startLoadingSetsState() {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
-        state.startLoading(placeholderLength: 8)
-        #expect(state.isAnimating == true)
-        #expect(state.displayText.count == 8)
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            state.startLoading(placeholderLength: 8)
+            #expect(state.isAnimating)
+            #expect(state.displayText.count == 8)
+            state.stop()
+        }
     }
 
     @MainActor
     @Test("onUpdate callback is called on set")
     func onUpdateCallback() {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 0))
-        var received: String?
-        state.onUpdate = { received = $0 }
-        state.set("Test")
-        #expect(received == "Test")
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 0))
+            var received: String?
+            state.onUpdate = { received = $0 }
+            state.set("Test")
+            #expect(received == "Test")
+        }
     }
 
     @MainActor
-    @Test("decode with duration 0 completes via timer")
-    func decodeWithZeroDuration() async {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 0, charsets: [.latin]))
-        var completed = false
-        state.decode(to: "AB") { completed = true }
-
-        // Timer-based, wait for RunLoop
-        let deadline = ContinuousClock.now + .seconds(2)
-        while !completed, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+    @Test("decode with duration 0 completes immediately")
+    func decodeWithZeroDuration() {
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 0, charsets: [.latin]))
+            var completed = false
+            state.decode(to: "AB") { completed = true }
+            #expect(completed)
+            #expect(state.displayText == "AB")
         }
-        #expect(completed)
-        #expect(state.displayText == "AB")
     }
 
     @MainActor
     @Test("startLoading uses default placeholder length of 12")
     func startLoadingDefaultLength() {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
-        state.startLoading()
-        #expect(state.isAnimating)
-        #expect(state.displayText.count == 12)
-        state.stop()
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            state.startLoading()
+            #expect(state.isAnimating)
+            #expect(state.displayText.count == 12)
+            state.stop()
+        }
     }
 
     @MainActor
     @Test("startLoading timer randomizes display text on tick")
     func startLoadingTicksRandomize() async {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
-        state.startLoading(placeholderLength: 6)
-        let initial = state.displayText
+        let testClock = TestClock()
+        await withDependencies {
+            $0.continuousClock = testClock
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            state.startLoading(placeholderLength: 6)
+            let initial = state.displayText
 
-        // Wait for at least one timer tick (interval: 0.05s)
-        let deadline = ContinuousClock.now + .seconds(2)
-        while state.displayText == initial, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+            // Let the loading task reach its first clock.sleep
+            await Task.yield()
+            await testClock.advance(by: .milliseconds(50))
+
+            #expect(state.displayText.count == 6)
+            #expect(state.displayText != initial, "timer should have randomized display text")
+            state.stop()
         }
-
-        // Display text should have changed due to tickLoading
-        #expect(state.displayText.count == 6)
-        #expect(state.displayText != initial, "timer should have randomized display text")
-        state.stop()
     }
 
     @MainActor
     @Test("decode with non-zero duration animates then completes")
     func decodeWithNonZeroDuration() async {
-        let state = DecodeEffectState(config: DecodeEffect(duration: 0.1, charsets: [.latin]))
-        var completed = false
-        state.decode(to: "Test") { completed = true }
+        await withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 0.1, charsets: [.latin]))
+            var completed = false
+            state.decode(to: "Test") { completed = true }
 
-        #expect(state.isAnimating)
+            #expect(state.isAnimating)
 
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !completed, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(30))
+            // Await the internal task to let ImmediateClock-driven loop complete
+            await state.task?.value
+
+            #expect(completed)
+            #expect(state.displayText == "Test")
+            #expect(!state.isAnimating)
         }
+    }
 
-        #expect(completed)
-        #expect(state.displayText == "Test")
-        #expect(!state.isAnimating)
+    @MainActor
+    @Test("stop prevents decode completion callback")
+    func stopPreventsCallback() async {
+        let testClock = TestClock()
+        await withDependencies {
+            $0.continuousClock = testClock
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            var completed = false
+            state.decode(to: "Test") { completed = true }
+
+            // Let the task reach its first sleep
+            await Task.yield()
+
+            state.stop()
+            // Advance past the animation duration — callback must not fire
+            await testClock.advance(by: .seconds(2))
+
+            #expect(!completed)
+            #expect(!state.isAnimating)
+        }
     }
 }
