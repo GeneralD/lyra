@@ -69,12 +69,14 @@ struct DecodeEffectStateTests {
 
     @MainActor
     @Test("decode with empty text completes immediately")
-    func decodeEmptyText() async {
-        await withDependencies {
+    func decodeEmptyText() {
+        withDependencies {
             $0.continuousClock = ImmediateClock()
         } operation: {
             let state = DecodeEffectState(config: DecodeEffect(duration: 0))
-            await state.decode(to: "")
+            var completed = false
+            state.decode(to: "") { completed = true }
+            #expect(completed)
             #expect(state.displayText == "")
             #expect(!state.isAnimating)
         }
@@ -124,14 +126,15 @@ struct DecodeEffectStateTests {
 
     @MainActor
     @Test("decode with duration 0 completes immediately")
-    func decodeWithZeroDuration() async {
-        await withDependencies {
+    func decodeWithZeroDuration() {
+        withDependencies {
             $0.continuousClock = ImmediateClock()
         } operation: {
             let state = DecodeEffectState(config: DecodeEffect(duration: 0, charsets: [.latin]))
-            await state.decode(to: "AB")
+            var completed = false
+            state.decode(to: "AB") { completed = true }
+            #expect(completed)
             #expect(state.displayText == "AB")
-            #expect(!state.isAnimating)
         }
     }
 
@@ -177,12 +180,39 @@ struct DecodeEffectStateTests {
             $0.continuousClock = ImmediateClock()
         } operation: {
             let state = DecodeEffectState(config: DecodeEffect(duration: 0.1, charsets: [.latin]))
+            var completed = false
+            state.decode(to: "Test") { completed = true }
 
-            #expect(!state.isAnimating)
+            #expect(state.isAnimating)
 
-            await state.decode(to: "Test")
+            // Await the internal task to let ImmediateClock-driven loop complete
+            await state.task?.value
 
+            #expect(completed)
             #expect(state.displayText == "Test")
+            #expect(!state.isAnimating)
+        }
+    }
+
+    @MainActor
+    @Test("stop prevents decode completion callback")
+    func stopPreventsCallback() async {
+        let testClock = TestClock()
+        await withDependencies {
+            $0.continuousClock = testClock
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            var completed = false
+            state.decode(to: "Test") { completed = true }
+
+            // Let the task reach its first sleep
+            await Task.yield()
+
+            state.stop()
+            // Advance past the animation duration — callback must not fire
+            await testClock.advance(by: .seconds(2))
+
+            #expect(!completed)
             #expect(!state.isAnimating)
         }
     }

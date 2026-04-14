@@ -75,8 +75,7 @@ extension HeaderPresenter {
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
         }
-        Task { [weak self] in
-            await effect.decode(to: text)
+        effect.decode(to: text) { [weak self] in
             self?.titleState = .success(text)
         }
     }
@@ -93,8 +92,7 @@ extension HeaderPresenter {
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText
         }
-        Task { [weak self] in
-            await effect.decode(to: text)
+        effect.decode(to: text) { [weak self] in
             self?.artistState = .success(text)
         }
     }

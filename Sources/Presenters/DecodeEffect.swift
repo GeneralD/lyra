@@ -43,7 +43,7 @@ final class DecodeEffectState {
     var onUpdate: ((String) -> Void)?
     private var targetText: String = ""
     private var lockedIndices: Set<Int> = []
-    private var task: Task<Void, Never>?
+    private(set) var task: Task<Void, Never>?
     private let duration: Double
     private let pool: CharacterPool
     @Dependency(\.continuousClock) private var clock
@@ -70,7 +70,7 @@ extension DecodeEffectState {
         }
     }
 
-    func decode(to text: String) async {
+    func decode(to text: String, onComplete: (() -> Void)? = nil) {
         stop()
         isAnimating = true
         targetText = text
@@ -79,6 +79,7 @@ extension DecodeEffectState {
         guard duration > 0 else {
             updateDisplay(text)
             finish()
+            onComplete?()
             return
         }
 
@@ -88,31 +89,37 @@ extension DecodeEffectState {
         guard totalChars > 0 else {
             updateDisplay(text)
             finish()
+            onComplete?()
             return
         }
 
-        let interval: Double = 0.03
-        var elapsed: Double = 0
-        while !Task.isCancelled {
-            try? await clock.sleep(for: .milliseconds(30))
-            guard !Task.isCancelled else { break }
-            elapsed += interval
-            let progress = min(elapsed / duration, 1.0)
-            let easedProgress = progress * progress * progress
-            let targetLocked = Int(easedProgress * Double(totalChars))
+        let clock = self.clock
+        let animationDuration = duration
+        task = Task { [weak self] in
+            var elapsed: Double = 0
+            let interval: Double = 0.03
+            while !Task.isCancelled {
+                try? await clock.sleep(for: .milliseconds(30))
+                guard let self, !Task.isCancelled else { return }
+                elapsed += interval
+                let progress = min(elapsed / animationDuration, 1.0)
+                let easedProgress = progress * progress * progress
+                let targetLocked = Int(easedProgress * Double(totalChars))
 
-            while lockedIndices.count < targetLocked {
-                let remaining = (0..<totalChars).filter { !lockedIndices.contains($0) }
-                guard let idx = remaining.randomElement() else { break }
-                lockedIndices.insert(idx)
+                while lockedIndices.count < targetLocked {
+                    let remaining = (0..<totalChars).filter { !lockedIndices.contains($0) }
+                    guard let idx = remaining.randomElement() else { break }
+                    lockedIndices.insert(idx)
+                }
+
+                tickDecode()
+
+                guard lockedIndices.count >= totalChars else { continue }
+                updateDisplay(targetText)
+                finish()
+                onComplete?()
+                return
             }
-
-            tickDecode()
-
-            guard lockedIndices.count >= totalChars else { continue }
-            updateDisplay(targetText)
-            finish()
-            return
         }
     }
 

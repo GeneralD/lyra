@@ -164,11 +164,11 @@ extension LyricsPresenter {
 
         displayLyricLines = texts.map { _ in " " }
 
+        let effects = lyricEffects
         for (index, text) in texts.enumerated() {
-            Task { [weak self] in
-                await self?.lyricEffects[index].decode(to: text)
+            effects[index].decode(to: text) { [weak self] in
                 guard let self else { return }
-                guard lyricEffects.allSatisfy({ !$0.isAnimating }) else { return }
+                guard effects.allSatisfy({ !$0.isAnimating }) else { return }
                 lyricsState = .success(content)
             }
         }
