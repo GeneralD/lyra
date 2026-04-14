@@ -1,3 +1,4 @@
+import Dependencies
 import Domain
 import Foundation
 
@@ -42,20 +43,14 @@ final class DecodeEffectState {
     var onUpdate: ((String) -> Void)?
     private var targetText: String = ""
     private var lockedIndices: Set<Int> = []
-    private var timer: Timer?
-    private var completionHandler: (() -> Void)?
+    private var task: Task<Void, Never>?
     private let duration: Double
     private let pool: CharacterPool
+    @Dependency(\.continuousClock) private var clock
 
     init(config: DecodeEffect) {
         self.duration = config.duration
         self.pool = CharacterPool(charsets: config.charsets)
-    }
-
-    deinit {
-        // Timer only weakly references self via [weak self] in closures,
-        // so it will fire harmlessly after dealloc. No explicit invalidation
-        // needed — callers are responsible for calling stop() before release.
     }
 }
 
@@ -65,18 +60,23 @@ extension DecodeEffectState {
         isAnimating = true
         updateDisplay(pool.random(count: placeholderLength))
 
-        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tickLoading() }
+        let clock = self.clock
+        task = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await clock.sleep(for: .milliseconds(50))
+                guard let self, !Task.isCancelled else { break }
+                tickLoading()
+            }
         }
     }
 
-    func decode(to text: String, onComplete: (() -> Void)? = nil) {
+    func decode(to text: String) async {
         stop()
         isAnimating = true
         targetText = text
         lockedIndices = []
-        completionHandler = onComplete
-        if duration <= 0 {
+
+        guard duration > 0 else {
             updateDisplay(text)
             finish()
             return
@@ -91,29 +91,28 @@ extension DecodeEffectState {
             return
         }
 
-        var elapsed: Double = 0
         let interval: Double = 0.03
-        let animationDuration = duration
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                elapsed += interval
-                let progress = min(elapsed / animationDuration, 1.0)
-                let easedProgress = progress * progress * progress
-                let targetLocked = Int(easedProgress * Double(totalChars))
+        var elapsed: Double = 0
+        while !Task.isCancelled {
+            try? await clock.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled else { break }
+            elapsed += interval
+            let progress = min(elapsed / duration, 1.0)
+            let easedProgress = progress * progress * progress
+            let targetLocked = Int(easedProgress * Double(totalChars))
 
-                while self.lockedIndices.count < targetLocked {
-                    let remaining = (0..<totalChars).filter { !self.lockedIndices.contains($0) }
-                    guard let idx = remaining.randomElement() else { break }
-                    self.lockedIndices.insert(idx)
-                }
-
-                self.tickDecode()
-
-                guard self.lockedIndices.count >= totalChars else { return }
-                self.updateDisplay(self.targetText)
-                self.finish()
+            while lockedIndices.count < targetLocked {
+                let remaining = (0..<totalChars).filter { !lockedIndices.contains($0) }
+                guard let idx = remaining.randomElement() else { break }
+                lockedIndices.insert(idx)
             }
+
+            tickDecode()
+
+            guard lockedIndices.count >= totalChars else { continue }
+            updateDisplay(targetText)
+            finish()
+            return
         }
     }
 
@@ -123,18 +122,15 @@ extension DecodeEffectState {
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        task?.cancel()
+        task = nil
         isAnimating = false
     }
 }
 
 extension DecodeEffectState {
     fileprivate func finish() {
-        let handler = completionHandler
-        completionHandler = nil
         stop()
-        handler?()
     }
 
     fileprivate func updateDisplay(_ text: String) {
