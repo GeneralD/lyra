@@ -1,3 +1,4 @@
+import CoreGraphics
 import Dependencies
 import Presenters
 import Views
@@ -59,7 +60,9 @@ public final class AppRouter {
             self.wallpaperPresenter = wallpaperPresenter
 
             appPresenter.start()
-            let ripplePresenter = RipplePresenter(screenOrigin: appPresenter.layout.screenOrigin)
+            let layout = appPresenter.layout
+            let ripplePresenter = RipplePresenter(
+                screenRect: CGRect(origin: layout.screenOrigin, size: layout.hostingFrame.size))
             self.ripplePresenter = ripplePresenter
 
             headerPresenter.start()

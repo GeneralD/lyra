@@ -6,17 +6,34 @@ import Foundation
 @MainActor
 public final class RipplePresenter: ObservableObject {
     public private(set) var rippleState: RippleState?
-    public let screenOrigin: CGPoint
+    public var screenOrigin: CGPoint { screenRect.origin }
+    private var screenRect: CGRect
+    private var mouseInScreen = false
     private var mouseMonitor: Any?
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
-    public init(screenOrigin: CGPoint = .zero) {
-        self.screenOrigin = screenOrigin
+    public init(screenRect: CGRect = .zero) {
+        self.screenRect = screenRect
     }
 
     public var isEnabled: Bool { interactor.rippleConfig.enabled }
     public var rippleConfig: RippleStyle { interactor.rippleConfig }
+
+    // MARK: - Mouse handling
+
+    public func handleMouseLocation(_ point: CGPoint) {
+        guard screenRect.width > 0, screenRect.height > 0, screenRect.contains(point) else {
+            mouseInScreen = false
+            return
+        }
+        mouseInScreen = true
+        rippleState?.update(screenPoint: point)
+    }
+
+    public func updateScreenRect(_ rect: CGRect) {
+        screenRect = rect
+    }
 
     // MARK: - Ripple drawing data
 
@@ -59,7 +76,8 @@ public final class RipplePresenter: ObservableObject {
         guard config.enabled else { return }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             Task { @MainActor in
-                self?.rippleState?.update(screenPoint: NSEvent.mouseLocation)
+                guard let self else { return }
+                self.handleMouseLocation(NSEvent.mouseLocation)
             }
         }
     }
@@ -71,6 +89,7 @@ public final class RipplePresenter: ObservableObject {
 
     /// Called from DisplayLink at frame rate.
     public func idle() {
+        guard mouseInScreen else { return }
         rippleState?.idle()
     }
 }

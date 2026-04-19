@@ -162,7 +162,7 @@ struct RipplePresenterTests {
             withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
             } operation: {
-                let presenter = RipplePresenter(screenOrigin: .zero)
+                let presenter = RipplePresenter()
                 presenter.start()
 
                 // Trigger a ripple via mouse move
@@ -183,7 +183,7 @@ struct RipplePresenterTests {
             withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 0.1))
             } operation: {
-                let presenter = RipplePresenter(screenOrigin: .zero)
+                let presenter = RipplePresenter()
                 presenter.start()
 
                 presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
@@ -204,7 +204,7 @@ struct RipplePresenterTests {
             withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: config)
             } operation: {
-                let presenter = RipplePresenter(screenOrigin: .zero)
+                let presenter = RipplePresenter()
                 presenter.start()
 
                 presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
@@ -220,11 +220,11 @@ struct RipplePresenterTests {
         @MainActor
         @Test("screen origin offsets are applied to commands")
         func screenOriginOffset() {
-            let origin = CGPoint(x: 100, y: 200)
+            let screenRect = CGRect(x: 100, y: 200, width: 1920, height: 1080)
             withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
             } operation: {
-                let presenter = RipplePresenter(screenOrigin: origin)
+                let presenter = RipplePresenter(screenRect: screenRect)
                 presenter.start()
 
                 presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
