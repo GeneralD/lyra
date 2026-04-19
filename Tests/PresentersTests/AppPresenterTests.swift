@@ -155,4 +155,140 @@ struct AppPresenterTests {
         presenter.stop()
         // No crash or infinite loop — polling task is cancelled
     }
+
+    @MainActor
+    @Test("bind(ripplePresenter:) pushes current rippleRect on subscription")
+    func bindRippleInitial() async {
+        let layout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+            hostingFrame: CGRect(x: 0, y: 0, width: 1920, height: 1040),
+            screenOrigin: CGPoint(x: 100, y: 40)
+        )
+
+        final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
+            var screenSelector: ScreenSelector = .main
+            var screenDebounce: Double = 5
+            var layoutToReturn: ScreenLayout
+            init(layout: ScreenLayout) { layoutToReturn = layout }
+            func resolveLayout() -> ScreenLayout { layoutToReturn }
+        }
+
+        let interactor = MutableInteractor(layout: layout)
+        let (presenter, ripple) = withDependencies {
+            $0.screenInteractor = interactor
+        } operation: {
+            (AppPresenter(), RipplePresenter())
+        }
+
+        presenter.bind(ripplePresenter: ripple)
+        presenter.start()
+
+        // screenOrigin (100, 40), size 1920x1040 → ripple rect matches
+        #expect(ripple.screenOrigin == CGPoint(x: 100, y: 40))
+    }
+
+    @MainActor
+    @Test("bind(ripplePresenter:) forwards subsequent layout changes")
+    func bindRippleForwardsUpdates() async {
+        let initial = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+            hostingFrame: CGRect(x: 0, y: 0, width: 1920, height: 1040),
+            screenOrigin: CGPoint(x: 0, y: 40)
+        )
+        let updated = ScreenLayout(
+            windowFrame: CGRect(x: 1920, y: 0, width: 1920, height: 1080),
+            hostingFrame: CGRect(x: 0, y: 0, width: 1920, height: 1040),
+            screenOrigin: CGPoint(x: 1920, y: 40)
+        )
+
+        final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
+            var screenSelector: ScreenSelector = .main
+            var screenDebounce: Double = 5
+            var layoutToReturn: ScreenLayout
+            init(layout: ScreenLayout) { layoutToReturn = layout }
+            func resolveLayout() -> ScreenLayout { layoutToReturn }
+        }
+
+        let interactor = MutableInteractor(layout: initial)
+        let (presenter, ripple) = withDependencies {
+            $0.screenInteractor = interactor
+        } operation: {
+            (AppPresenter(), RipplePresenter())
+        }
+
+        presenter.bind(ripplePresenter: ripple)
+        presenter.start()
+        #expect(ripple.screenOrigin == CGPoint(x: 0, y: 40))
+
+        interactor.layoutToReturn = updated
+        presenter.recalculateLayout()
+
+        #expect(ripple.screenOrigin == CGPoint(x: 1920, y: 40))
+    }
+
+    @MainActor
+    @Test("onWindowFrameChange fires only when windowFrame actually changes")
+    func onWindowFrameChangeDedups() async {
+        let first = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let sameFrame = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+            hostingFrame: CGRect(x: 0, y: 0, width: 1920, height: 1040)
+        )
+        let different = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 2560, height: 1440))
+
+        final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
+            var screenSelector: ScreenSelector = .main
+            var screenDebounce: Double = 5
+            var layoutToReturn: ScreenLayout
+            init(layout: ScreenLayout) { layoutToReturn = layout }
+            func resolveLayout() -> ScreenLayout { layoutToReturn }
+        }
+
+        let interactor = MutableInteractor(layout: first)
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+        } operation: {
+            AppPresenter()
+        }
+
+        final class Counter: @unchecked Sendable {
+            var count = 0
+        }
+        let counter = Counter()
+
+        presenter.start()
+        // Subscribe after start so the current layout is dropped.
+        presenter.onWindowFrameChange { _ in counter.count += 1 }
+
+        // Same windowFrame (different hostingFrame) → deduped.
+        interactor.layoutToReturn = sameFrame
+        presenter.recalculateLayout()
+
+        // Different windowFrame → fires.
+        interactor.layoutToReturn = different
+        presenter.recalculateLayout()
+
+        // Give the DispatchQueue.main scheduling a tick to flush.
+        let deadline = ContinuousClock.now + .seconds(1)
+        while counter.count < 1, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(counter.count == 1)
+    }
+
+    @MainActor
+    @Test("stop() releases bindings")
+    func stopReleasesBindings() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let (presenter, ripple) = withDependencies {
+            $0.screenInteractor = StubScreenInteractor(layoutToReturn: layout)
+        } operation: {
+            (AppPresenter(), RipplePresenter())
+        }
+
+        presenter.bind(ripplePresenter: ripple)
+        presenter.start()
+        presenter.stop()
+        // No assertion — exercises the cancellables.removeAll() branch.
+    }
 }
