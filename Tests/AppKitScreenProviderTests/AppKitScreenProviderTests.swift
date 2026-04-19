@@ -24,6 +24,31 @@ struct AppKitScreenProviderTests {
         #expect(provider.mainScreen?.visibleFrame == NSScreen.main?.visibleFrame)
     }
 
+    @MainActor
+    @Test("windowOccupancy returns a non-negative value for a real screen")
+    func windowOccupancyForRealScreen() {
+        let provider = AppKitScreenProvider()
+        guard let screen = provider.mainScreen else { return }
+
+        // Exercises the full delegation path: CGWindowList enumeration,
+        // filtering, CG→AppKit conversion, and area-sum occupancy math.
+        // Value may exceed 1 due to overlapping windows double-counting —
+        // we only assert it's finite and non-negative.
+        let occupancy = provider.windowOccupancy(for: screen)
+        #expect(occupancy >= 0)
+        #expect(occupancy.isFinite)
+    }
+
+    @MainActor
+    @Test("windowOccupancy of a zero-area synthetic screen is 1")
+    func windowOccupancyZeroScreen() {
+        let provider = AppKitScreenProvider()
+        let zero = ScreenInfo(frame: .zero, visibleFrame: .zero)
+
+        // Delegates to ScreenInfo.occupancy which short-circuits to 1 on zero area.
+        #expect(provider.windowOccupancy(for: zero) == 1)
+    }
+
     @Suite("flippedToAppKit")
     struct FlippedToAppKit {
         @Test("flips y relative to primary height")
