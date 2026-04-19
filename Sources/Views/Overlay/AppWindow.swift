@@ -55,6 +55,12 @@ public final class AppWindow: NSWindow {
                 self?.attachPlayer(player)
             }
 
+        // Presenter owns the Combine wiring; AppWindow only reacts with AppKit side-effects.
+        appPresenter.bind(ripplePresenter: ripplePresenter)
+        appPresenter.onWindowFrameChange { [weak self] _ in
+            self?.recalculateLayout()
+        }
+
         orderFront(nil)
 
         screenObserver = NotificationCenter.default.addObserver(

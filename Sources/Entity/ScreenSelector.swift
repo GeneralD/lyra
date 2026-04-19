@@ -4,6 +4,7 @@ public enum ScreenSelector {
     case index(Int)
     case smallest
     case largest
+    case vacant
 }
 
 extension ScreenSelector: Sendable {}
@@ -22,6 +23,7 @@ extension ScreenSelector: Decodable {
         case "primary": self = .primary
         case "smallest": self = .smallest
         case "largest": self = .largest
+        case "vacant": self = .vacant
         default: self = .main
         }
     }
@@ -36,6 +38,7 @@ extension ScreenSelector: Encodable {
         case .index(let n): try container.encode(n)
         case .smallest: try container.encode("smallest")
         case .largest: try container.encode("largest")
+        case .vacant: try container.encode("vacant")
         }
     }
 }

@@ -14,6 +14,10 @@ extension ScreenInteractorImpl: ScreenInteractor {
         configService.appStyle.screen
     }
 
+    public var screenDebounce: Double {
+        configService.appStyle.screenDebounce
+    }
+
     public func resolveLayout() -> ScreenLayout {
         guard let screen = resolveScreen() else { return .init() }
 
@@ -47,6 +51,9 @@ extension ScreenInteractorImpl: ScreenInteractor {
                 ?? fallback
         case .largest:
             return screens.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+                ?? fallback
+        case .vacant:
+            return screens.min { screenProvider.windowOccupancy(for: $0) < screenProvider.windowOccupancy(for: $1) }
                 ?? fallback
         }
     }

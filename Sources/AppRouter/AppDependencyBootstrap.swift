@@ -38,6 +38,7 @@ import Foundation
 
     private struct UITestScreenInteractor: ScreenInteractor {
         var screenSelector: ScreenSelector { .main }
+        var screenDebounce: Double { 5 }
 
         func resolveLayout() -> ScreenLayout {
             .init(

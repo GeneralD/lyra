@@ -34,6 +34,7 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 idle: config.ripple.idle.value
             ),
             screen: config.screen,
+            screenDebounce: config.screenDebounce.value,
             wallpaper: config.wallpaper.map { WallpaperStyle(location: $0.location, start: $0.start, end: $0.end) },
             configDir: result.configDir,
             ai: config.ai.map { AIEndpoint(endpoint: $0.endpoint, model: $0.model, apiKey: $0.apiKey) }

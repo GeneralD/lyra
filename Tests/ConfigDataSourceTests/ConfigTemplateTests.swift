@@ -53,6 +53,7 @@ struct ConfigTemplateTests {
         // swift-format-ignore
         let expected = """
 screen = 'main'
+screen_debounce = 5.0
 
 [artwork]
 opacity = 1.0
@@ -157,6 +158,7 @@ spacing = 6.0
     "radius" : 60
   },
   "screen" : "main",
+  "screen_debounce" : 5,
   "text" : {
     "artist" : {
       "color" : "#FFFFFFD9",

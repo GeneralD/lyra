@@ -2,6 +2,7 @@ import Dependencies
 
 public protocol ScreenInteractor: Sendable {
     var screenSelector: ScreenSelector { get }
+    var screenDebounce: Double { get }
     func resolveLayout() -> ScreenLayout
 }
 
@@ -18,5 +19,6 @@ extension DependencyValues {
 
 private struct UnimplementedScreenInteractor: ScreenInteractor {
     var screenSelector: ScreenSelector { .main }
+    var screenDebounce: Double { 5 }
     func resolveLayout() -> ScreenLayout { .init() }
 }

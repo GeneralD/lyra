@@ -107,6 +107,7 @@ Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `screen` | string / int | `"main"` | Which display to use (see [Screen selection](#screen-selection)) |
+| `screen_debounce` | number | `5` | Seconds between re-evaluations in `"vacant"` mode |
 | `wallpaper` | string | — | Video wallpaper. Local path, HTTP(S) URL, or YouTube URL (see [Wallpaper](#wallpaper)) |
 | `includes` | array | — | TOML-only: list of additional TOML files to merge (ignored for `config.json`; paths relative to config dir or absolute) |
 
@@ -197,6 +198,7 @@ Optional LLM-based song title and artist extraction via any OpenAI-compatible AP
 | `"primary"` | Primary display (menu bar screen) |
 | `"smallest"` | Smallest display by area |
 | `"largest"` | Largest display by area |
+| `"vacant"` | Least-occupied display (auto-migrates every `screen_debounce` seconds) |
 | `0`, `1`, … | Display by index |
 
 ### Wallpaper
