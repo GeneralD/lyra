@@ -108,7 +108,7 @@ struct StartCommandTests {
             $0.processHandler = StubProcessHandler(startResult: .success(.started(pid: 123)))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = StartCommand()
+            let cmd = StartCommand()
             try cmd.run()
         }
     }
@@ -119,7 +119,7 @@ struct StartCommandTests {
             $0.processHandler = StubProcessHandler(startResult: .failure(.alreadyRunning))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = StartCommand()
+            let cmd = StartCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -134,7 +134,7 @@ struct StartCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = StartCommand()
+            let cmd = StartCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -152,7 +152,7 @@ struct StopCommandTests {
             $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = StopCommand()
+            let cmd = StopCommand()
             try cmd.run()
         }
     }
@@ -163,7 +163,7 @@ struct StopCommandTests {
             $0.processHandler = StubProcessHandler(stopResult: .success(.notRunning))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = StopCommand()
+            let cmd = StopCommand()
             try cmd.run()
         }
     }
@@ -174,7 +174,7 @@ struct StopCommandTests {
             $0.processHandler = StubProcessHandler(stopResult: .failure(.lockReleaseTimedOut))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = StopCommand()
+            let cmd = StopCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -192,7 +192,7 @@ struct RestartCommandTests {
             $0.processHandler = StubProcessHandler(restartResult: .success(.started(pid: 99)))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = RestartCommand()
+            let cmd = RestartCommand()
             try cmd.run()
         }
     }
@@ -203,7 +203,7 @@ struct RestartCommandTests {
             $0.processHandler = StubProcessHandler(restartResult: .failure(.stopFailed))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = RestartCommand()
+            let cmd = RestartCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -229,7 +229,7 @@ struct HealthcheckCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = HealthcheckCommand()
+            let cmd = HealthcheckCommand()
             try await cmd.run()
         }
     }
@@ -248,7 +248,7 @@ struct HealthcheckCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = HealthcheckCommand()
+            let cmd = HealthcheckCommand()
             await #expect(throws: ExitCode.failure) {
                 try await cmd.run()
             }
@@ -269,7 +269,7 @@ struct ServiceInstallCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ServiceInstallCommand()
+            let cmd = ServiceInstallCommand()
             try cmd.run()
         }
     }
@@ -281,7 +281,7 @@ struct ServiceInstallCommandTests {
             $0.serviceHandler = StubServiceHandler()
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ServiceInstallCommand()
+            let cmd = ServiceInstallCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -297,7 +297,7 @@ struct ServiceInstallCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ServiceInstallCommand()
+            let cmd = ServiceInstallCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -318,7 +318,7 @@ struct ServiceUninstallCommandTests {
             $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ServiceUninstallCommand()
+            let cmd = ServiceUninstallCommand()
             try cmd.run()
         }
     }
@@ -332,7 +332,7 @@ struct ServiceUninstallCommandTests {
             $0.processHandler = StubProcessHandler()
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ServiceUninstallCommand()
+            let cmd = ServiceUninstallCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -348,7 +348,7 @@ struct ServiceUninstallCommandTests {
             $0.processHandler = StubProcessHandler(stopResult: .failure(.lockReleaseTimedOut))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ServiceUninstallCommand()
+            let cmd = ServiceUninstallCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -366,7 +366,7 @@ struct ConfigTemplateCommandTests {
             $0.configHandler = StubConfigHandler(templateResult: "# toml template")
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = try ConfigTemplateCommand.parse([])
+            let cmd = try ConfigTemplateCommand.parse([])
             try cmd.run()
         }
     }
@@ -377,7 +377,7 @@ struct ConfigTemplateCommandTests {
             $0.configHandler = StubConfigHandler(templateResult: nil)
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = try ConfigTemplateCommand.parse([])
+            let cmd = try ConfigTemplateCommand.parse([])
             #expect(throws: ValidationError.self) {
                 try cmd.run()
             }
@@ -397,7 +397,7 @@ struct ConfigInitCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = try ConfigInitCommand.parse([])
+            let cmd = try ConfigInitCommand.parse([])
             try cmd.run()
         }
     }
@@ -410,7 +410,7 @@ struct ConfigInitCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = try ConfigInitCommand.parse([])
+            let cmd = try ConfigInitCommand.parse([])
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -430,7 +430,7 @@ struct ConfigEditCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ConfigEditCommand()
+            let cmd = ConfigEditCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -450,7 +450,7 @@ struct ConfigOpenCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = ConfigOpenCommand()
+            let cmd = ConfigOpenCommand()
             #expect(throws: ExitCode.failure) {
                 try cmd.run()
             }
@@ -470,7 +470,7 @@ struct TrackCommandTests {
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
-            var cmd = try TrackCommand.parse([])
+            let cmd = try TrackCommand.parse([])
             try await cmd.run()
         }
     }
@@ -499,7 +499,7 @@ struct BenchmarkCommandTests {
             $0.benchmarkHandler = StubBenchmarkHandler()
             $0.standardOutput = spy
         } operation: {
-            var cmd = try BenchmarkCommand.parse(["--json"])
+            let cmd = try BenchmarkCommand.parse(["--json"])
             try await cmd.run()
         }
         #expect(spy.writtenJsonCount == 1)
@@ -512,7 +512,7 @@ struct BenchmarkCommandTests {
             $0.benchmarkHandler = StubBenchmarkHandler()
             $0.standardOutput = spy
         } operation: {
-            var cmd = try BenchmarkCommand.parse([])
+            let cmd = try BenchmarkCommand.parse([])
             try await cmd.run()
         }
         #expect(spy.writtenBenchmarkUpdates.contains { if case .header = $0 { true } else { false } })

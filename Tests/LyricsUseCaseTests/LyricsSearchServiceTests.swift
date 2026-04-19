@@ -21,7 +21,6 @@ struct LyricsSearchServiceTests {
                 ])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
-                let lyricsService = LyricsUseCaseImpl()
                 let metadataService = MetadataUseCaseImpl()
                 let result = await metadataService.resolve(track: Track(title: "raw", artist: "raw"))
                 #expect(result?.title == "LLM Title")
@@ -35,7 +34,6 @@ struct LyricsSearchServiceTests {
                 $0.metadataRepository = StubMetadataRepository(candidates: [])
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
-                let lyricsService = LyricsUseCaseImpl()
                 let metadataService = MetadataUseCaseImpl()
                 let result = await metadataService.resolve(track: Track(title: "raw", artist: "raw"))
                 #expect(result == nil)
@@ -51,7 +49,6 @@ struct LyricsSearchServiceTests {
                 }
                 $0.lyricsRepository = NoopLyricsRepository()
             } operation: {
-                let lyricsService = LyricsUseCaseImpl()
                 let metadataService = MetadataUseCaseImpl()
                 _ = await metadataService.resolve(track: Track(title: "raw", artist: "raw"))
                 #expect(callCount == 1)
@@ -75,7 +72,6 @@ struct LyricsSearchServiceTests {
                 ])
             } operation: {
                 let lyricsService = LyricsUseCaseImpl()
-                let metadataService = MetadataUseCaseImpl()
                 _ = await lyricsService.fetchLyrics(track: Track(title: "zzz_unique_zzz", artist: "channel"))
 
                 let cachedResult = await writable.read(title: "zzz_unique_zzz", artist: "channel")
@@ -98,7 +94,6 @@ struct LyricsSearchServiceTests {
                 ])
             } operation: {
                 let lyricsService = LyricsUseCaseImpl()
-                let metadataService = MetadataUseCaseImpl()
                 let result = await lyricsService.fetchLyrics(track: Track(title: "zzz_no_match_zzz", artist: "zzz_no_match_zzz"))
                 #expect(result == .empty)
             }
@@ -118,7 +113,6 @@ struct LyricsSearchServiceTests {
                     Track(title: "Correct Title", artist: "Correct Artist")
                 ])
             } operation: {
-                let lyricsService = LyricsUseCaseImpl()
                 let metadataService = MetadataUseCaseImpl()
 
                 let metadata = await metadataService.resolve(track: Track(title: "zzz_test_zzz", artist: "zzz_test_zzz"))

@@ -11,8 +11,8 @@ struct CompletionCommandTests {
     }
 
     @Test("bash completion outputs non-empty script")
-    func bashCompletion() throws {
-        try withKnownIssue("bash completion output is intermittently flaky", isIntermittent: true) {
+    func bashCompletion() {
+        withKnownIssue("bash completion output is intermittently flaky", isIntermittent: true) {
             let output = try run(arguments: ["completion", "bash"])
             #expect(output.contains("complete"))
         }
