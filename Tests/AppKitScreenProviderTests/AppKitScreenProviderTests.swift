@@ -24,14 +24,14 @@ struct AppKitScreenProviderTests {
         #expect(provider.mainScreen?.visibleFrame == NSScreen.main?.visibleFrame)
     }
 
-    @Suite("cgToAppKit")
-    struct CGToAppKit {
+    @Suite("flippedToAppKit")
+    struct FlippedToAppKit {
         @Test("flips y relative to primary height")
         func flipsYRelativeToPrimary() {
             let primaryHeight: CGFloat = 1080
             let cgRect = CGRect(x: 100, y: 0, width: 200, height: 300)
 
-            let appKitRect = AppKitScreenProvider.cgToAppKit(cgRect, primaryHeight: primaryHeight)
+            let appKitRect = cgRect.flippedToAppKit(primaryHeight: primaryHeight)
 
             #expect(appKitRect.origin.x == 100)
             #expect(appKitRect.origin.y == 780)  // 1080 - 0 - 300
@@ -44,7 +44,7 @@ struct AppKitScreenProviderTests {
             let primaryHeight: CGFloat = 1000
             let cgRect = CGRect(x: 0, y: 0, width: 50, height: 50)
 
-            let r = AppKitScreenProvider.cgToAppKit(cgRect, primaryHeight: primaryHeight)
+            let r = cgRect.flippedToAppKit(primaryHeight: primaryHeight)
 
             #expect(r.origin == CGPoint(x: 0, y: 950))
         }
@@ -55,7 +55,7 @@ struct AppKitScreenProviderTests {
             // Window on a display stacked below primary: CG y > primaryHeight
             let cgRect = CGRect(x: 0, y: 1080, width: 1920, height: 1080)
 
-            let r = AppKitScreenProvider.cgToAppKit(cgRect, primaryHeight: primaryHeight)
+            let r = cgRect.flippedToAppKit(primaryHeight: primaryHeight)
 
             // AppKit y = 1080 - 1080 - 1080 = -1080 (below primary in AppKit)
             #expect(r.origin.y == -1080)
@@ -64,8 +64,8 @@ struct AppKitScreenProviderTests {
 
         @Test("rect size is preserved")
         func sizePreserved() {
-            let r = AppKitScreenProvider.cgToAppKit(
-                CGRect(x: 42, y: 123, width: 321, height: 234), primaryHeight: 2000)
+            let r = CGRect(x: 42, y: 123, width: 321, height: 234)
+                .flippedToAppKit(primaryHeight: 2000)
 
             #expect(r.size == CGSize(width: 321, height: 234))
         }
@@ -82,8 +82,7 @@ struct AppKitScreenProviderTests {
 
         @Test("returns 0 when no windows overlap the screen")
         func noOverlap() {
-            let occupancy = AppKitScreenProvider.occupancy(
-                of: secondaryScreen,
+            let occupancy = secondaryScreen.occupancy(
                 windows: [CGRect(x: 0, y: 0, width: 500, height: 500)])
 
             #expect(occupancy == 0)
@@ -91,8 +90,7 @@ struct AppKitScreenProviderTests {
 
         @Test("returns 1 when a window fully covers the screen")
         func fullyCovered() {
-            let occupancy = AppKitScreenProvider.occupancy(
-                of: mainScreen,
+            let occupancy = mainScreen.occupancy(
                 windows: [CGRect(x: 0, y: 0, width: 1920, height: 1080)])
 
             #expect(occupancy == 1)
@@ -101,8 +99,7 @@ struct AppKitScreenProviderTests {
         @Test("returns fraction for partial overlap")
         func partialOverlap() {
             // 960 x 1080 = half of 1920 x 1080
-            let occupancy = AppKitScreenProvider.occupancy(
-                of: mainScreen,
+            let occupancy = mainScreen.occupancy(
                 windows: [CGRect(x: 0, y: 0, width: 960, height: 1080)])
 
             #expect(abs(occupancy - 0.5) < 0.0001)
@@ -112,8 +109,7 @@ struct AppKitScreenProviderTests {
         func sumsMultipleWindows() {
             // Two identical half-screen windows — each contributes 0.5, sum is 1.0.
             // The implementation approximates coverage by area sum, not by geometric union.
-            let occupancy = AppKitScreenProvider.occupancy(
-                of: mainScreen,
+            let occupancy = mainScreen.occupancy(
                 windows: [
                     CGRect(x: 0, y: 0, width: 960, height: 1080),
                     CGRect(x: 0, y: 0, width: 960, height: 1080),
@@ -125,8 +121,7 @@ struct AppKitScreenProviderTests {
         @Test("only counts the intersecting portion")
         func clipsToScreen() {
             // Window spans both displays, but only half lands on secondary
-            let occupancy = AppKitScreenProvider.occupancy(
-                of: secondaryScreen,
+            let occupancy = secondaryScreen.occupancy(
                 windows: [CGRect(x: 960, y: 0, width: 1920, height: 1080)])
 
             // Intersection with secondary (x: 1920..3840) is x: 1920..2880 → 960 x 1080
@@ -137,8 +132,7 @@ struct AppKitScreenProviderTests {
         func zeroScreenArea() {
             let zeroScreen = ScreenInfo(frame: .zero, visibleFrame: .zero)
 
-            let occupancy = AppKitScreenProvider.occupancy(
-                of: zeroScreen,
+            let occupancy = zeroScreen.occupancy(
                 windows: [CGRect(x: 0, y: 0, width: 100, height: 100)])
 
             #expect(occupancy == 1)
@@ -146,7 +140,7 @@ struct AppKitScreenProviderTests {
 
         @Test("returns 0 for an empty window list")
         func noWindows() {
-            let occupancy = AppKitScreenProvider.occupancy(of: mainScreen, windows: [])
+            let occupancy = mainScreen.occupancy(windows: [])
 
             #expect(occupancy == 0)
         }
