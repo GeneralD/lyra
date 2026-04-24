@@ -524,6 +524,74 @@ struct WallpaperPresenterTests {
                 #expect(presenter.wallpaperURL == urlBefore)
             }
         }
+
+        @MainActor
+        @Test("handleItemCompletion on multiple items advances to next item")
+        func multiItemCompletionAdvances() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                await presenter.handleItemCompletion(seekStart: .zero)
+
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+
+        @MainActor
+        @Test("handleLoopBoundary on multiple items advances instead of seeking")
+        func multiItemLoopBoundaryAdvances() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let player = SpyAVPlayer()
+            let seekStart = CMTime(seconds: 1, preferredTimescale: 600)
+            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+
+                await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperURL == b.url)
+                #expect(player.seekTimes.isEmpty)  // no manual seek — advance instead
+            }
+        }
+    }
+
+    @Suite("SystemRandomSource")
+    struct SystemRandomSourceTests {
+        @Test("returns values in [0, count)")
+        func withinRange() {
+            let source = SystemRandomSource()
+            for count in 1...32 {
+                for _ in 0..<50 {
+                    let value = source.next(below: count)
+                    #expect(value >= 0)
+                    #expect(value < count)
+                }
+            }
+        }
+
+        @Test("returns 0 when count is 1")
+        func singleValue() {
+            let source = SystemRandomSource()
+            for _ in 0..<10 {
+                #expect(source.next(below: 1) == 0)
+            }
+        }
     }
 
     @Suite("sleep / wake observation")
