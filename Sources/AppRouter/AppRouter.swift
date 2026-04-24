@@ -19,9 +19,15 @@ public final class AppRouter {
     private var appWindow: (any OverlayWindow)?
     private var frameScheduler: (any FrameScheduler)?
 
+    static func defaultFrameSchedulerFactory(
+        onFrame: @escaping @MainActor () -> Void
+    ) -> any FrameScheduler {
+        DisplayLinkDriver(onFrame: onFrame)
+    }
+
     public convenience init(launchEnvironment: AppLaunchEnvironment = .current) {
         self.init(
-            launchEnvironment: launchEnvironment,
+            bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
             windowFactory: { layout, headerPresenter, lyricsPresenter, ripplePresenter in
                 AppWindow(
                     initialLayout: layout,
@@ -30,18 +36,28 @@ public final class AppRouter {
                     ripplePresenter: ripplePresenter
                 )
             },
-            frameSchedulerFactory: { onFrame in
-                DisplayLinkDriver(onFrame: onFrame)
-            }
+            frameSchedulerFactory: Self.defaultFrameSchedulerFactory
         )
     }
 
-    init(
+    convenience init(
         launchEnvironment: AppLaunchEnvironment,
         windowFactory: @escaping @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
     ) {
-        self.bootstrap = AppDependencyBootstrap(launchEnvironment: launchEnvironment)
+        self.init(
+            bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
+            windowFactory: windowFactory,
+            frameSchedulerFactory: frameSchedulerFactory
+        )
+    }
+
+    init(
+        bootstrap: AppDependencyBootstrap,
+        windowFactory: @escaping @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any OverlayWindow,
+        frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
+    ) {
+        self.bootstrap = bootstrap
         self.windowFactory = windowFactory
         self.frameSchedulerFactory = frameSchedulerFactory
     }
@@ -72,6 +88,7 @@ public final class AppRouter {
 
             let window = windowFactory(layout, headerPresenter, lyricsPresenter, ripplePresenter)
             appWindow = window
+            window.show()
 
             appPresenter.bind(ripplePresenter: ripplePresenter)
             appPresenter.onWindowFrameChange { [weak window] layout in
@@ -91,23 +108,26 @@ public final class AppRouter {
     }
 
     public func stop() {
-        guard appWindow != nil || frameScheduler != nil else { return }
-
         appPresenter?.stop()
+        defer { appPresenter = nil }
+
         headerPresenter?.stop()
+        defer { headerPresenter = nil }
+
         lyricsPresenter?.stop()
+        defer { lyricsPresenter = nil }
+
         wallpaperPresenter?.stop()
+        defer { wallpaperPresenter = nil }
+
         ripplePresenter?.stop()
+        defer { ripplePresenter = nil }
+
         frameScheduler?.stop()
-        appWindow?.orderOut(nil)
+        defer { frameScheduler = nil }
+
         appWindow?.close()
-        frameScheduler = nil
         appWindow = nil
-        ripplePresenter = nil
-        wallpaperPresenter = nil
-        lyricsPresenter = nil
-        headerPresenter = nil
-        appPresenter = nil
     }
 
     private func withBootstrap<T>(_ operation: () -> T) -> T {

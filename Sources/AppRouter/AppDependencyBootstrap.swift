@@ -5,19 +5,29 @@ import Foundation
 
 #if DEBUG
     struct AppDependencyBootstrap {
-        let launchEnvironment: AppLaunchEnvironment
+        private let applyDependencies: (inout DependencyValues) -> Void
+
+        init(launchEnvironment: AppLaunchEnvironment) {
+            self.init { dependencies in
+                guard launchEnvironment.isUITestMode else { return }
+
+                let fixture = UITestLyricsFixture(
+                    title: launchEnvironment.title,
+                    artist: launchEnvironment.artist,
+                    lyricsLines: launchEnvironment.lyricsLines
+                )
+                dependencies.screenInteractor = UITestScreenInteractor()
+                dependencies.trackInteractor = UITestTrackInteractor(fixture: fixture)
+                dependencies.wallpaperInteractor = UITestWallpaperInteractor()
+            }
+        }
+
+        init(apply applyDependencies: @escaping (inout DependencyValues) -> Void) {
+            self.applyDependencies = applyDependencies
+        }
 
         func apply(to dependencies: inout DependencyValues) {
-            guard launchEnvironment.isUITestMode else { return }
-
-            let fixture = UITestLyricsFixture(
-                title: launchEnvironment.title,
-                artist: launchEnvironment.artist,
-                lyricsLines: launchEnvironment.lyricsLines
-            )
-            dependencies.screenInteractor = UITestScreenInteractor()
-            dependencies.trackInteractor = UITestTrackInteractor(fixture: fixture)
-            dependencies.wallpaperInteractor = UITestWallpaperInteractor()
+            applyDependencies(&dependencies)
         }
     }
 
@@ -76,8 +86,18 @@ import Foundation
     }
 #else
     struct AppDependencyBootstrap {
-        let launchEnvironment: AppLaunchEnvironment
+        private let applyDependencies: (inout DependencyValues) -> Void
 
-        func apply(to dependencies: inout DependencyValues) {}
+        init(launchEnvironment: AppLaunchEnvironment) {
+            self.init(apply: { _ in })
+        }
+
+        init(apply applyDependencies: @escaping (inout DependencyValues) -> Void) {
+            self.applyDependencies = applyDependencies
+        }
+
+        func apply(to dependencies: inout DependencyValues) {
+            applyDependencies(&dependencies)
+        }
     }
 #endif

@@ -21,6 +21,79 @@ private func waitUntil(
     }
 }
 
+private func sameLayout(_ lhs: ScreenLayout?, _ rhs: ScreenLayout) -> Bool {
+    guard let lhs else { return false }
+    return lhs.windowFrame == rhs.windowFrame
+        && lhs.hostingFrame == rhs.hostingFrame
+        && lhs.screenOrigin == rhs.screenOrigin
+}
+
+private final class MutableScreenInteractor: ScreenInteractor, @unchecked Sendable {
+    var screenSelector: ScreenSelector { .main }
+    var screenDebounce: Double { 5 }
+    private let screenChangesSubject = PassthroughSubject<Void, Never>()
+    private var currentLayout: ScreenLayout
+
+    init(layout: ScreenLayout) {
+        currentLayout = layout
+    }
+
+    func resolveLayout() -> ScreenLayout {
+        currentLayout
+    }
+
+    var screenChanges: AnyPublisher<Void, Never> {
+        screenChangesSubject.eraseToAnyPublisher()
+    }
+
+    func updateLayout(_ layout: ScreenLayout) {
+        currentLayout = layout
+        screenChangesSubject.send(())
+    }
+}
+
+private struct FixtureWallpaperInteractor: WallpaperInteractor {
+    let wallpaperState: WallpaperState
+    var rippleConfig: RippleStyle = .init(enabled: false)
+
+    func resolveWallpaper() async throws -> WallpaperState {
+        wallpaperState
+    }
+
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> {
+        Empty().eraseToAnyPublisher()
+    }
+}
+
+private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
+    let title: String
+    let artist: String
+    let lyrics: [String]
+
+    var trackChange: AnyPublisher<TrackUpdate, Never> {
+        Just(
+            TrackUpdate(
+                title: title,
+                artist: artist,
+                lyrics: .plain(lyrics),
+                lyricsState: .resolved
+            )
+        ).eraseToAnyPublisher()
+    }
+
+    var artwork: AnyPublisher<Data?, Never> {
+        Just(nil).eraseToAnyPublisher()
+    }
+
+    var playbackPosition: AnyPublisher<PlaybackPosition, Never> {
+        Empty().eraseToAnyPublisher()
+    }
+
+    var decodeEffectConfig: DecodeEffect { .init(duration: 0) }
+    var textLayout: TextLayout { .init(decodeEffect: .init(duration: 0)) }
+    var artworkStyle: ArtworkStyle { .init(opacity: 0) }
+}
+
 @Suite("AppLaunchEnvironment")
 struct AppLaunchEnvironmentTests {
     @Test("parses UI test launch environment and lyrics lines")
@@ -198,6 +271,13 @@ struct AppRouterTests {
         #expect(!hasValue(named: "appWindow", from: router))
     }
 
+    @Test("default frame scheduler factory creates DisplayLinkDriver")
+    func defaultFactoryCreatesDisplayLinkDriver() {
+        let frameScheduler = AppRouter.defaultFrameSchedulerFactory(onFrame: {})
+
+        #expect(frameScheduler is DisplayLinkDriver)
+    }
+
     @Test("start applies bootstrap fixture graph and stop tears it down")
     func startAndStop() async {
         let window = SpyWindow()
@@ -242,6 +322,7 @@ struct AppRouterTests {
         #expect(wallpaperPresenter != nil)
         #expect(ripplePresenter != nil)
         #expect(appWindow === window)
+        #expect(window.showCallCount == 1)
         #expect(driver.startCallCount == 1)
 
         driver.fire()
@@ -249,7 +330,6 @@ struct AppRouterTests {
         router.stop()
 
         #expect(!hasValue(named: "appWindow", from: router))
-        #expect(window.orderOutCallCount == 1)
         #expect(window.closeCallCount == 1)
         #expect(driver.stopCallCount == 1)
     }
@@ -271,6 +351,7 @@ struct AppRouterTests {
         router.start()
         router.start()
 
+        #expect(window.showCallCount == 1)
         #expect(driver.startCallCount == 1)
         #expect(value(named: "appPresenter", from: router) as AppPresenter? != nil)
 
@@ -286,11 +367,66 @@ struct AppRouterTests {
         #expect(!hasValue(named: "appWindow", from: router))
     }
 
+    @Test("start forwards layout changes and player attachment to the window")
+    func startForwardsWindowSideEffects() async {
+        let initialLayout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 1280, height: 720),
+            hostingFrame: CGRect(x: 0, y: 0, width: 1280, height: 720),
+            screenOrigin: .zero
+        )
+        let updatedLayout = ScreenLayout(
+            windowFrame: CGRect(x: 20, y: 10, width: 1440, height: 900),
+            hostingFrame: CGRect(x: 24, y: 32, width: 1392, height: 836),
+            screenOrigin: CGPoint(x: 20, y: 10)
+        )
+        let screenInteractor = MutableScreenInteractor(layout: initialLayout)
+        let wallpaperInteractor = FixtureWallpaperInteractor(
+            wallpaperState: .init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"))
+        )
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = screenInteractor
+                dependencies.trackInteractor = FixtureTrackInteractor(
+                    title: "Router Song",
+                    artist: "Router Artist",
+                    lyrics: ["One", "Two"]
+                )
+                dependencies.wallpaperInteractor = wallpaperInteractor
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+            },
+            windowFactory: { _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        defer { router.stop() }
+
+        await waitUntil { window.attachedPlayers.count == 1 }
+        #expect(window.attachedPlayers.count == 1)
+        #expect(driver.startedWindow === window)
+
+        screenInteractor.updateLayout(updatedLayout)
+        await waitUntil { sameLayout(window.appliedLayouts.last, updatedLayout) }
+
+        #expect(window.appliedLayouts.count == 1)
+        #expect(sameLayout(window.appliedLayouts.last, updatedLayout))
+    }
+
     final class SpyWindow: OverlayWindow {
-        var orderOutCallCount = 0
+        var showCallCount = 0
         var closeCallCount = 0
         var appliedLayouts: [ScreenLayout] = []
         var attachedPlayers: [AVPlayer] = []
+
+        func show() {
+            showCallCount += 1
+        }
 
         func applyLayout(_ layout: ScreenLayout) {
             appliedLayouts.append(layout)
@@ -298,10 +434,6 @@ struct AppRouterTests {
 
         func attachPlayerLayer(for player: AVPlayer) {
             attachedPlayers.append(player)
-        }
-
-        func orderOut(_ sender: Any?) {
-            orderOutCallCount += 1
         }
 
         func close() {
@@ -312,10 +444,12 @@ struct AppRouterTests {
     final class SpyFrameScheduler: FrameScheduler {
         var startCallCount = 0
         var stopCallCount = 0
+        var startedWindow: AnyObject?
         var onFrame: (@MainActor () -> Void)?
 
         func start(in window: any OverlayWindow) {
             startCallCount += 1
+            startedWindow = window
         }
 
         func stop() {

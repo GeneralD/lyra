@@ -43,6 +43,8 @@ public final class WallpaperPresenter: ObservableObject {
         player?.pause()
         endTimeObserver.map { player?.removeTimeObserver($0) }
         loopObserver.map(NotificationCenter.default.removeObserver)
+        endTimeObserver = nil
+        loopObserver = nil
         cancellables.removeAll()
         player = nil
     }
@@ -80,13 +82,7 @@ extension WallpaperPresenter {
         if let seekEnd {
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
             endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                Task { @MainActor in
-                    guard let self, !self.isSeeking, time >= seekEnd else { return }
-                    self.isSeeking = true
-                    player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                        Task { @MainActor in self?.isSeeking = false }
-                    }
-                }
+                Task { @MainActor in self?.handleLoopBoundary(at: time, seekEnd: seekEnd, seekStart: seekStart, player: player) }
             }
         }
 
@@ -94,8 +90,9 @@ extension WallpaperPresenter {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: player.currentItem, queue: .main
         ) { [weak player] _ in
-            player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
-            player?.play()
+            Task { @MainActor in
+                Self.restartPlayback(from: seekStart, player: player)
+            }
         }
 
         player.play()
@@ -116,5 +113,18 @@ extension WallpaperPresenter {
 
     func waitForLoad() async {
         await loadTask?.value
+    }
+
+    func handleLoopBoundary(at time: CMTime, seekEnd: CMTime, seekStart: CMTime, player: AVPlayer?) {
+        guard !isSeeking, time >= seekEnd else { return }
+        isSeeking = true
+        player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in self?.isSeeking = false }
+        }
+    }
+
+    static func restartPlayback(from seekStart: CMTime, player: AVPlayer?) {
+        player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
+        player?.play()
     }
 }

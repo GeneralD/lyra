@@ -7,6 +7,17 @@ import Testing
 
 @testable import Presenters
 
+@MainActor
+private func waitUntil(
+    timeout: Duration = .seconds(2),
+    condition: @escaping @MainActor () -> Bool
+) async {
+    let deadline = ContinuousClock.now + timeout
+    while !condition(), ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}
+
 // MARK: - Stub
 
 private struct StubWallpaperInteractor: WallpaperInteractor {
@@ -29,6 +40,67 @@ private struct FailingWallpaperInteractor: WallpaperInteractor {
 
 private enum StubError: Error {
     case resolveFailed
+}
+
+private final class SpyAVPlayer: AVPlayer, @unchecked Sendable {
+    nonisolated(unsafe) var playCallCount = 0
+    nonisolated(unsafe) var seekTimes: [CMTime] = []
+    nonisolated(unsafe) var pendingSeekCompletions: [(Bool) -> Void] = []
+
+    override func play() {
+        playCallCount += 1
+    }
+
+    override func seek(to time: CMTime, toleranceBefore: CMTime, toleranceAfter: CMTime) {
+        seekTimes.append(time)
+    }
+
+    override func seek(
+        to time: CMTime,
+        toleranceBefore: CMTime,
+        toleranceAfter: CMTime,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        seekTimes.append(time)
+        pendingSeekCompletions.append(completionHandler)
+    }
+
+    func completePendingSeeks() {
+        let completions = pendingSeekCompletions
+        pendingSeekCompletions = []
+        for completion in completions {
+            completion(true)
+        }
+    }
+}
+
+private func hasValue(named name: String, from object: Any) -> Bool {
+    guard
+        let storedValue = Mirror(reflecting: object).children
+            .first(where: { $0.label == name })?
+            .value
+    else { return false }
+
+    let mirror = Mirror(reflecting: storedValue)
+    guard mirror.displayStyle == .optional else { return true }
+    return mirror.children.first != nil
+}
+
+private func value<T>(named name: String, from object: Any) -> T? {
+    guard
+        let storedValue = Mirror(reflecting: object).children
+            .first(where: { $0.label == name })?
+            .value
+    else { return nil }
+
+    let mirror = Mirror(reflecting: storedValue)
+    let unwrappedValue =
+        if mirror.displayStyle == .optional {
+            mirror.children.first?.value as Any
+        } else {
+            storedValue
+        }
+    return unwrappedValue as? T
 }
 
 // MARK: - Tests
@@ -127,6 +199,32 @@ struct WallpaperPresenterTests {
                 #expect(presenter.endTime == nil)
             }
         }
+
+        @MainActor
+        @Test("start with endTime registers observers and stop clears them")
+        func registersAndClearsLoopObservers() async {
+            let state = WallpaperState(
+                url: URL(fileURLWithPath: "/tmp/loop.mp4"),
+                start: 2.0,
+                end: 4.0
+            )
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+
+                #expect(hasValue(named: "endTimeObserver", from: presenter))
+                #expect(hasValue(named: "loopObserver", from: presenter))
+
+                presenter.stop()
+
+                #expect(!hasValue(named: "endTimeObserver", from: presenter))
+                #expect(!hasValue(named: "loopObserver", from: presenter))
+            }
+        }
     }
 
     @Suite("onPlayerAvailable")
@@ -200,6 +298,106 @@ struct WallpaperPresenterTests {
                 await presenter.waitForLoad()
                 presenter.stop()
                 // Exercises cancellables.removeAll() branch — no crash expected.
+            }
+        }
+    }
+
+    @Suite("loop observers")
+    struct LoopObservers {
+        @MainActor
+        @Test("handleLoopBoundary seeks once until the pending seek completes")
+        func loopBoundaryDeduplicatesWhileSeeking() async {
+            let presenter = WallpaperPresenter()
+            let player = SpyAVPlayer()
+            let seekStart = CMTime(seconds: 2, preferredTimescale: 600)
+            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
+
+            presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+            presenter.handleLoopBoundary(
+                at: CMTime(seconds: 6, preferredTimescale: 600),
+                seekEnd: seekEnd,
+                seekStart: seekStart,
+                player: player
+            )
+
+            #expect(player.seekTimes == [seekStart])
+            #expect((value(named: "isSeeking", from: presenter) as Bool?) == true)
+
+            player.completePendingSeeks()
+            await waitUntil {
+                (value(named: "isSeeking", from: presenter) as Bool?) == false
+            }
+
+            presenter.handleLoopBoundary(
+                at: CMTime(seconds: 6, preferredTimescale: 600),
+                seekEnd: seekEnd,
+                seekStart: seekStart,
+                player: player
+            )
+
+            #expect(player.seekTimes == [seekStart, seekStart])
+        }
+
+        @MainActor
+        @Test("handleLoopBoundary ignores times before the end boundary")
+        func loopBoundaryIgnoresEarlyTimes() {
+            let presenter = WallpaperPresenter()
+            let player = SpyAVPlayer()
+            let seekStart = CMTime(seconds: 2, preferredTimescale: 600)
+            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
+
+            presenter.handleLoopBoundary(
+                at: CMTime(seconds: 4.9, preferredTimescale: 600),
+                seekEnd: seekEnd,
+                seekStart: seekStart,
+                player: player
+            )
+
+            #expect(player.seekTimes.isEmpty)
+            #expect((value(named: "isSeeking", from: presenter) as Bool?) == false)
+        }
+
+        @MainActor
+        @Test("restartPlayback seeks to loop start and resumes playback")
+        func restartPlaybackSeeksAndPlays() {
+            let player = SpyAVPlayer()
+            let seekStart = CMTime(seconds: 3, preferredTimescale: 600)
+
+            WallpaperPresenter.restartPlayback(from: seekStart, player: player)
+
+            #expect(player.seekTimes == [seekStart])
+            #expect(player.playCallCount == 1)
+        }
+
+        @MainActor
+        @Test("AVPlayerItemDidPlayToEndTime notification schedules playback restart")
+        func endNotificationSchedulesRestart() async {
+            let state = WallpaperState(
+                url: URL(fileURLWithPath: "/tmp/loop.mp4"),
+                start: 2.0,
+                end: 4.0
+            )
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+
+                guard let item = presenter.player?.currentItem else {
+                    Issue.record("expected currentItem to exist after setupPlayer")
+                    return
+                }
+
+                NotificationCenter.default.post(
+                    name: .AVPlayerItemDidPlayToEndTime,
+                    object: item
+                )
+
+                // Yield so the @MainActor Task scheduled by the observer runs.
+                await Task.yield()
+                try? await Task.sleep(for: .milliseconds(50))
             }
         }
     }
