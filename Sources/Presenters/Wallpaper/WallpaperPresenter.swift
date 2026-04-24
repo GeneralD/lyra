@@ -12,6 +12,10 @@ public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var player: AVPlayer?
 
+    private var items: [ResolvedWallpaperItem] = []
+    private var mode: WallpaperPlaybackMode = .cycle
+    private var currentIndex: Int = 0
+
     private var loopObserver: NSObjectProtocol?
     private var endTimeObserver: Any?
     private var isSeeking: Bool = false
@@ -19,34 +23,41 @@ public final class WallpaperPresenter: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.wallpaperInteractor) private var interactor
+    @Dependency(\.randomSource) private var randomSource
 
     public init() {}
 
     public func start() {
         loadTask?.cancel()
         isLoading = true
-        let interactor = self.interactor
+        items = []
+        currentIndex = 0
+        mode = interactor.playbackMode
+        let stream = interactor.resolvedWallpapers()
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let state = try? await interactor.resolveWallpaper()
-            wallpaperURL = state?.url
-            startTime = state?.start
-            endTime = state?.end
-            isLoading = false
-            await setupPlayer()
+            for await resolved in stream {
+                let wasEmpty = items.isEmpty
+                items.append(resolved)
+                if wasEmpty {
+                    isLoading = false
+                    currentIndex = 0
+                    await activateCurrentItem()
+                }
+            }
+            if items.isEmpty {
+                isLoading = false
+            }
         }
     }
 
     public func stop() {
         loadTask?.cancel()
         loadTask = nil
-        player?.pause()
-        endTimeObserver.map { player?.removeTimeObserver($0) }
-        loopObserver.map(NotificationCenter.default.removeObserver)
-        endTimeObserver = nil
-        loopObserver = nil
+        tearDownPlayer()
         cancellables.removeAll()
-        player = nil
+        items = []
+        currentIndex = 0
     }
 
     /// Register a side-effect to run the first time a player becomes available.
@@ -63,17 +74,33 @@ public final class WallpaperPresenter: ObservableObject {
 }
 
 extension WallpaperPresenter {
-    private func setupPlayer() async {
-        guard let wallpaperURL else { return }
+    private func activateCurrentItem() async {
+        guard items.indices.contains(currentIndex) else {
+            wallpaperURL = nil
+            startTime = nil
+            endTime = nil
+            player = nil
+            return
+        }
+        let item = items[currentIndex]
+        wallpaperURL = item.url
+        startTime = item.start
+        endTime = item.end
+        await setupPlayer(for: item)
+        if cancellables.isEmpty {
+            observeSleepWake()
+        }
+    }
 
-        let player = AVPlayer(url: wallpaperURL)
+    private func setupPlayer(for item: ResolvedWallpaperItem) async {
+        let player = AVPlayer(url: item.url)
         player.isMuted = true
         player.preventsDisplaySleepDuringVideoPlayback = false
         player.actionAtItemEnd = .none
         self.player = player
 
-        let seekStart = startTime.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
-        let seekEnd = endTime.map { CMTime(seconds: $0, preferredTimescale: 600) }
+        let seekStart = item.start.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
+        let seekEnd = item.end.map { CMTime(seconds: $0, preferredTimescale: 600) }
 
         if seekStart != .zero {
             await player.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -89,14 +116,21 @@ extension WallpaperPresenter {
         loopObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: player.currentItem, queue: .main
-        ) { [weak player] _ in
-            Task { @MainActor in
-                Self.restartPlayback(from: seekStart, player: player)
-            }
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.handleItemCompletion(seekStart: seekStart) }
         }
 
         player.play()
-        observeSleepWake()
+    }
+
+    private func tearDownPlayer() {
+        player?.pause()
+        endTimeObserver.map { player?.removeTimeObserver($0) }
+        loopObserver.map(NotificationCenter.default.removeObserver)
+        endTimeObserver = nil
+        loopObserver = nil
+        isSeeking = false
+        player = nil
     }
 
     private func observeSleepWake() {
@@ -117,9 +151,39 @@ extension WallpaperPresenter {
 
     func handleLoopBoundary(at time: CMTime, seekEnd: CMTime, seekStart: CMTime, player: AVPlayer?) {
         guard !isSeeking, time >= seekEnd else { return }
+        guard items.count <= 1 else {
+            Task { @MainActor [weak self] in await self?.advanceToNextItem() }
+            return
+        }
         isSeeking = true
         player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in self?.isSeeking = false }
+        }
+    }
+
+    func handleItemCompletion(seekStart: CMTime) async {
+        guard items.count > 1 else {
+            Self.restartPlayback(from: seekStart, player: player)
+            return
+        }
+        await advanceToNextItem()
+    }
+
+    func advanceToNextItem() async {
+        guard items.count > 1 else { return }
+        currentIndex = nextIndex(from: currentIndex)
+        tearDownPlayer()
+        await activateCurrentItem()
+    }
+
+    func nextIndex(from current: Int) -> Int {
+        switch mode {
+        case .cycle:
+            return (current + 1) % items.count
+        case .shuffle:
+            let candidates = (0..<items.count).filter { $0 != current }
+            guard !candidates.isEmpty else { return current }
+            return candidates[randomSource.next(below: candidates.count)]
         }
     }
 

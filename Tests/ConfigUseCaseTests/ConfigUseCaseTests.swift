@@ -15,7 +15,7 @@ struct ConfigUseCaseTests {
         } operation: {
             let useCase = ConfigUseCaseImpl()
             let result = useCase.appStyle
-            #expect(result.wallpaper?.location == expected.wallpaper?.location)
+            #expect(result.wallpaper?.items.first?.location == expected.wallpaper?.items.first?.location)
             #expect(result.configDir == expected.configDir)
         }
     }
@@ -29,8 +29,8 @@ struct ConfigUseCaseTests {
             let useCase = ConfigUseCaseImpl()
             let result = useCase.appStyle
             let defaultStyle = AppStyle()
-            #expect(result.wallpaper?.location != defaultStyle.wallpaper?.location)
-            #expect(result.wallpaper?.location == "custom.mp4")
+            #expect(result.wallpaper?.items.first?.location != defaultStyle.wallpaper?.items.first?.location)
+            #expect(result.wallpaper?.items.first?.location == "custom.mp4")
         }
     }
 

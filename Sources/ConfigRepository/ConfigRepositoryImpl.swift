@@ -35,7 +35,12 @@ extension ConfigRepositoryImpl: ConfigRepository {
             ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,
-            wallpaper: config.wallpaper.map { WallpaperStyle(location: $0.location, start: $0.start, end: $0.end) },
+            wallpaper: config.wallpaper.map { cfg in
+                WallpaperStyle(
+                    items: cfg.items.map { WallpaperItem(location: $0.location, start: $0.start, end: $0.end) },
+                    mode: cfg.mode
+                )
+            },
             configDir: result.configDir,
             ai: config.ai.map { AIEndpoint(endpoint: $0.endpoint, model: $0.model, apiKey: $0.apiKey) }
         )

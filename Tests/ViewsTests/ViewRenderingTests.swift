@@ -39,14 +39,16 @@ private struct IdleTrackInteractor: TrackInteractor, @unchecked Sendable {
 }
 
 private struct DisabledRippleInteractor: WallpaperInteractor {
+    var playbackMode: WallpaperPlaybackMode { .cycle }
     var rippleConfig: RippleStyle { .init(enabled: false) }
-    func resolveWallpaper() async throws -> WallpaperState { .init() }
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
 
 private struct EnabledRippleInteractor: WallpaperInteractor {
+    var playbackMode: WallpaperPlaybackMode { .cycle }
     var rippleConfig: RippleStyle { .init(enabled: true) }
-    func resolveWallpaper() async throws -> WallpaperState { .init() }
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
 

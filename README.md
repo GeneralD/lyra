@@ -241,6 +241,30 @@ end = "3:45"       # stop before outro
 
 Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` and `end` are optional. The bare string format (`wallpaper = "file.mp4"`) still works for simple cases.
 
+**Multiple wallpapers** (optional):
+
+Provide multiple videos with `[[wallpaper.items]]` and choose between sequential (`cycle`) and random (`shuffle`) playback:
+
+```toml
+[wallpaper]
+mode = "cycle"   # or "shuffle" — default is "cycle"
+
+[[wallpaper.items]]
+location = "loop.mp4"
+
+[[wallpaper.items]]
+location = "https://www.youtube.com/watch?v=XXXXX"
+start = "0:30"
+end = "3:45"
+
+[[wallpaper.items]]
+location = "https://example.com/bg.mp4"
+```
+
+- `cycle` plays items in the order written, advancing when each item finishes (wraps around at the end).
+- `shuffle` advances to a random item each time playback completes, never repeating the current one twice in a row.
+- All items are resolved in parallel. In `cycle`, playback starts as soon as the first configured item is ready — later items play in configured order regardless of download speed. In `shuffle`, playback starts with whichever item resolves first.
+
 ### Full example
 
 #### **config.toml**

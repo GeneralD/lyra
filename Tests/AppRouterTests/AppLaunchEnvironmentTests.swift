@@ -28,6 +28,10 @@ private func sameLayout(_ lhs: ScreenLayout?, _ rhs: ScreenLayout) -> Bool {
         && lhs.screenOrigin == rhs.screenOrigin
 }
 
+private func collectAll(_ stream: AsyncStream<ResolvedWallpaperItem>) async -> [ResolvedWallpaperItem] {
+    await stream.reduce(into: [ResolvedWallpaperItem]()) { $0.append($1) }
+}
+
 private final class MutableScreenInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector { .main }
     var screenDebounce: Double { 5 }
@@ -56,8 +60,14 @@ private struct FixtureWallpaperInteractor: WallpaperInteractor {
     let wallpaperState: WallpaperState
     var rippleConfig: RippleStyle = .init(enabled: false)
 
-    func resolveWallpaper() async throws -> WallpaperState {
-        wallpaperState
+    var playbackMode: WallpaperPlaybackMode { wallpaperState.mode }
+
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        let items = wallpaperState.items
+        return AsyncStream { continuation in
+            for item in items { continuation.yield(item) }
+            continuation.finish()
+        }
     }
 
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> {
@@ -206,12 +216,13 @@ struct AppDependencyBootstrapTests {
             return presenter.layout
         }
 
-        let wallpaper = try await withDependencies {
+        let (stream, mode): (AsyncStream<ResolvedWallpaperItem>, WallpaperPlaybackMode) = withDependencies {
             bootstrap.apply(to: &$0)
         } operation: {
             @Dependency(\.wallpaperInteractor) var wallpaperInteractor
-            return try await wallpaperInteractor.resolveWallpaper()
+            return (wallpaperInteractor.resolvedWallpapers(), wallpaperInteractor.playbackMode)
         }
+        let wallpaper = WallpaperState(items: await collectAll(stream), mode: mode)
 
         let ripplePresenter = withDependencies {
             bootstrap.apply(to: &$0)
@@ -225,9 +236,7 @@ struct AppDependencyBootstrapTests {
         #expect(layout.windowFrame == CGRect(x: 0, y: 0, width: 1280, height: 720))
         #expect(layout.hostingFrame == CGRect(x: 0, y: 0, width: 1280, height: 720))
         #expect(layout.screenOrigin == .zero)
-        #expect(wallpaper.url == nil)
-        #expect(wallpaper.start == nil)
-        #expect(wallpaper.end == nil)
+        #expect(wallpaper.items.isEmpty)
         #expect(ripplePresenter.isEnabled == false)
         #expect(ripplePresenter.rippleState != nil)
     }
@@ -381,7 +390,7 @@ struct AppRouterTests {
         )
         let screenInteractor = MutableScreenInteractor(layout: initialLayout)
         let wallpaperInteractor = FixtureWallpaperInteractor(
-            wallpaperState: .init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"))
+            wallpaperState: .init(items: [.init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"))])
         )
         let window = SpyWindow()
         let driver = SpyFrameScheduler()
@@ -495,7 +504,8 @@ struct AppRouterTests {
 struct AccessibilityHooksTests {
     private struct EnabledRippleWallpaperInteractor: WallpaperInteractor {
         var rippleConfig: RippleStyle { .init(enabled: true) }
-        func resolveWallpaper() async throws -> WallpaperState { .init() }
+        var playbackMode: WallpaperPlaybackMode { .cycle }
+        func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
         var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
     }
 

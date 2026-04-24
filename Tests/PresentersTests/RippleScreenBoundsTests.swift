@@ -10,8 +10,9 @@ import Testing
 
 private struct StubWallpaperInteractor: WallpaperInteractor {
     var rippleConfig: RippleStyle = .init()
+    var playbackMode: WallpaperPlaybackMode { .cycle }
 
-    func resolveWallpaper() async throws -> WallpaperState { .init() }
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
 
