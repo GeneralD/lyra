@@ -108,22 +108,26 @@ public final class AppRouter {
     }
 
     public func stop() {
-        guard appWindow != nil || frameScheduler != nil else { return }
-
         appPresenter?.stop()
+        defer { appPresenter = nil }
+
         headerPresenter?.stop()
+        defer { headerPresenter = nil }
+
         lyricsPresenter?.stop()
+        defer { lyricsPresenter = nil }
+
         wallpaperPresenter?.stop()
+        defer { wallpaperPresenter = nil }
+
         ripplePresenter?.stop()
+        defer { ripplePresenter = nil }
+
         frameScheduler?.stop()
+        defer { frameScheduler = nil }
+
         appWindow?.close()
-        frameScheduler = nil
         appWindow = nil
-        ripplePresenter = nil
-        wallpaperPresenter = nil
-        lyricsPresenter = nil
-        headerPresenter = nil
-        appPresenter = nil
     }
 
     private func withBootstrap<T>(_ operation: () -> T) -> T {
