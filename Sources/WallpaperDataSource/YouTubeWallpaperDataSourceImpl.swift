@@ -132,7 +132,7 @@ extension YouTubeWallpaperDataSourceImpl {
         removeItemAtPath(tmpPath)
         let (status, stderr) = try await processRunner(
             ffmpeg,
-            ["-y", "-i", path, "-c", "copy", "-movflags", "+faststart", tmpPath]
+            ["-nostdin", "-y", "-i", path, "-c", "copy", "-movflags", "+faststart", tmpPath]
         )
         guard status == 0 else {
             removeItemAtPath(tmpPath)
@@ -150,6 +150,7 @@ extension YouTubeWallpaperDataSourceImpl {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executablePath)
             process.arguments = arguments
+            process.standardInput = FileHandle.nullDevice
             let stderrPipe = Pipe()
             process.standardError = stderrPipe
 

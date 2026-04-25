@@ -129,6 +129,11 @@ struct YouTubeWallpaperResolveTests {
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
+
+        let calls = await runner.calls
+        #expect(calls.count == 2)
+        #expect(calls[1].executablePath == "/usr/bin/ffmpeg")
+        #expect(calls[1].arguments.first == "-nostdin")
     }
 
     @Test("public init helper closures execute successfully")
