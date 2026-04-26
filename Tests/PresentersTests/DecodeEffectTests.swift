@@ -244,19 +244,17 @@ struct DecodeEffectStateTests {
     @MainActor
     @Test("decode called while animating restarts cleanly")
     func decodeRestart() async {
-        let testClock = TestClock()
         await withDependencies {
-            $0.continuousClock = testClock
+            $0.continuousClock = ImmediateClock()
             $0.randomSource = SequenceRandomSource(values: [0])
         } operation: {
-            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            let state = DecodeEffectState(config: DecodeEffect(duration: 0.1, charsets: [.latin]))
             state.decode(to: "FIRST")
             #expect(state.isAnimating)
 
             state.decode(to: "SECOND")
             #expect(state.isAnimating)
 
-            await testClock.advance(by: .seconds(2))
             await state.task?.value
             #expect(state.displayText == "SECOND")
         }
@@ -281,23 +279,17 @@ struct DecodeEffectStateTests {
     @MainActor
     @Test("decode gradually locks characters from left when source returns 0")
     func decodeProgressiveLock() async {
-        let testClock = TestClock()
         await withDependencies {
-            $0.continuousClock = testClock
+            $0.continuousClock = ImmediateClock()
             $0.randomSource = SequenceRandomSource(values: [0])
         } operation: {
             let state = DecodeEffectState(config: DecodeEffect(duration: 0.3, charsets: [.latin]))
             var snapshots: [String] = []
             state.onUpdate = { snapshots.append($0) }
             state.decode(to: "ABCD")
-
-            // Let loop run to completion by advancing clock well past duration
-            await Task.yield()
-            await testClock.advance(by: .seconds(1))
             await state.task?.value
 
             #expect(state.displayText == "ABCD")
-            // At least one intermediate frame where some target chars are already visible
             let hadPartial = snapshots.contains { frame in
                 frame != "ABCD" && frame.contains("A")
             }
