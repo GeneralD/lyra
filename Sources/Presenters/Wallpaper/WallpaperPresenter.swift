@@ -60,13 +60,14 @@ public final class WallpaperPresenter: ObservableObject {
         currentIndex = 0
     }
 
-    /// Register a side-effect to run the first time a player becomes available.
-    /// The wireframe uses this to drive `OverlayWindow.attachPlayerLayer` without
-    /// owning the subscription.
+    /// Register a side-effect to run every time a player becomes available
+    /// (including swaps when advancing between wallpaper items). The wireframe
+    /// uses this to drive `OverlayWindow.attachPlayerLayer` without owning the
+    /// subscription.
     public func onPlayerAvailable(_ handler: @escaping @MainActor (AVPlayer) -> Void) {
         $player
             .compactMap { $0 }
-            .first()
+            .removeDuplicates { $0 === $1 }
             .receive(on: DispatchQueue.main)
             .sink { player in handler(player) }
             .store(in: &cancellables)

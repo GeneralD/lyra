@@ -284,6 +284,48 @@ struct WallpaperPresenterTests {
         }
 
         @MainActor
+        @Test("fires again when the player is swapped (multi-item advance)")
+        func firesOnEveryPlayerSwap() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+
+                final class Recorder: @unchecked Sendable {
+                    var players: [AVPlayer] = []
+                }
+                let recorder = Recorder()
+
+                presenter.onPlayerAvailable { player in
+                    recorder.players.append(player)
+                }
+
+                presenter.start()
+                await presenter.waitForLoad()
+
+                let firstDeadline = ContinuousClock.now + .seconds(2)
+                while recorder.players.count < 1, ContinuousClock.now < firstDeadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(recorder.players.count == 1)
+                let firstPlayer = recorder.players.first
+
+                await presenter.handleItemCompletion(seekStart: .zero, player: nil)
+
+                let secondDeadline = ContinuousClock.now + .seconds(2)
+                while recorder.players.count < 2, ContinuousClock.now < secondDeadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(recorder.players.count == 2)
+                #expect(recorder.players.last !== firstPlayer)
+                #expect(recorder.players.last === presenter.player)
+            }
+        }
+
+        @MainActor
         @Test("stop clears onPlayerAvailable subscription")
         func stopClearsSubscription() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
