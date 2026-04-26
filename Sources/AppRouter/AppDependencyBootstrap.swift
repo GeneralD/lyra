@@ -80,7 +80,10 @@ import Foundation
     }
 
     private struct UITestWallpaperInteractor: WallpaperInteractor {
-        func resolveWallpaper() async throws -> WallpaperState { .init() }
+        var playbackMode: WallpaperPlaybackMode { .cycle }
+        func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+            AsyncStream { $0.finish() }
+        }
         var rippleConfig: RippleStyle { .init(enabled: false) }
         var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
     }

@@ -15,18 +15,35 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var existingConfigPath: String? { nil }
 }
 
+/// Stub UseCase that resolves each location to a predictable URL with a configurable delay.
+/// Delays let tests exercise out-of-order completion in cycle mode.
 private struct StubWallpaperUseCase: WallpaperUseCase, Sendable {
-    var result: URL?
+    var results: [String: URL] = [:]
+    var delaysMillis: [String: UInt64] = [:]
+    var failures: Set<String> = []
 
     func resolveWallpaper(value: String?, configDir: String) async throws -> URL? {
-        result
+        guard let value else { return nil }
+        if let ms = delaysMillis[value], ms > 0 {
+            try? await Task.sleep(nanoseconds: ms * 1_000_000)
+        }
+        if failures.contains(value) {
+            throw StubError.failed
+        }
+        return results[value]
     }
+}
+
+private enum StubError: Error { case failed }
+
+private func collect(_ stream: AsyncStream<ResolvedWallpaperItem>) async -> [ResolvedWallpaperItem] {
+    await stream.reduce(into: [ResolvedWallpaperItem]()) { $0.append($1) }
 }
 
 @Suite("WallpaperInteractor")
 struct WallpaperInteractorImplTests {
 
-    @Test("resolveWallpaper returns empty state when no wallpaper configured")
+    @Test("resolvedWallpapers emits empty stream when no wallpaper configured")
     func noWallpaperConfig() async throws {
         let interactor = withDependencies {
             $0.configUseCase = StubConfigUseCase()
@@ -35,43 +52,112 @@ struct WallpaperInteractorImplTests {
             WallpaperInteractorImpl()
         }
 
-        let state = try await interactor.resolveWallpaper()
-        #expect(state.url == nil)
-        #expect(state.start == nil)
-        #expect(state.end == nil)
+        let items = await collect(interactor.resolvedWallpapers())
+        #expect(items.isEmpty)
+        #expect(interactor.playbackMode == .cycle)
     }
 
-    @Test("resolveWallpaper returns state with URL when wallpaper configured")
-    func withWallpaperConfig() async throws {
+    @Test("resolvedWallpapers emits single item for legacy single-location config")
+    func singleItem() async throws {
+        let resolved = URL(fileURLWithPath: "/resolved/bg.mp4")
         let wallpaper = WallpaperStyle(location: "bg.mp4", start: 10, end: 180)
         let style = AppStyle(wallpaper: wallpaper, configDir: "/config")
-        let resolved = URL(fileURLWithPath: "/resolved/bg.mp4")
+
         let interactor = withDependencies {
             $0.configUseCase = StubConfigUseCase(style: style)
-            $0.wallpaperUseCase = StubWallpaperUseCase(result: resolved)
+            $0.wallpaperUseCase = StubWallpaperUseCase(results: ["bg.mp4": resolved])
         } operation: {
             WallpaperInteractorImpl()
         }
 
-        let state = try await interactor.resolveWallpaper()
-        #expect(state.url == resolved)
-        #expect(state.start == 10)
-        #expect(state.end == 180)
+        let items = await collect(interactor.resolvedWallpapers())
+        #expect(items == [ResolvedWallpaperItem(url: resolved, start: 10, end: 180)])
     }
 
-    @Test("resolveWallpaper uses home directory when configDir is nil")
-    func configDirFallback() async throws {
-        let wallpaper = WallpaperStyle(location: "bg.mp4")
-        let style = AppStyle(wallpaper: wallpaper, configDir: nil)
+    @Test("cycle mode emits items in configured order even when later entries resolve first")
+    func cycleOrderWithMixedLatency() async throws {
+        let style = AppStyle(
+            wallpaper: WallpaperStyle(
+                items: [
+                    WallpaperItem(location: "slow.mp4"),
+                    WallpaperItem(location: "fast.mp4"),
+                ],
+                mode: .cycle
+            ),
+            configDir: "/config"
+        )
+        let slow = URL(fileURLWithPath: "/resolved/slow.mp4")
+        let fast = URL(fileURLWithPath: "/resolved/fast.mp4")
         let interactor = withDependencies {
             $0.configUseCase = StubConfigUseCase(style: style)
-            $0.wallpaperUseCase = StubWallpaperUseCase(result: URL(fileURLWithPath: "/bg.mp4"))
+            $0.wallpaperUseCase = StubWallpaperUseCase(
+                results: ["slow.mp4": slow, "fast.mp4": fast],
+                delaysMillis: ["slow.mp4": 50, "fast.mp4": 0]
+            )
         } operation: {
             WallpaperInteractorImpl()
         }
 
-        let state = try await interactor.resolveWallpaper()
-        #expect(state.url != nil)
+        let items = await collect(interactor.resolvedWallpapers())
+        #expect(items.map(\.url) == [slow, fast])
+        #expect(interactor.playbackMode == .cycle)
+    }
+
+    @Test("cycle mode skips failed items but preserves remaining order")
+    func cycleSkipsFailures() async throws {
+        let style = AppStyle(
+            wallpaper: WallpaperStyle(
+                items: [
+                    WallpaperItem(location: "broken.mp4"),
+                    WallpaperItem(location: "ok.mp4"),
+                ],
+                mode: .cycle
+            ),
+            configDir: "/config"
+        )
+        let ok = URL(fileURLWithPath: "/resolved/ok.mp4")
+        let interactor = withDependencies {
+            $0.configUseCase = StubConfigUseCase(style: style)
+            $0.wallpaperUseCase = StubWallpaperUseCase(
+                results: ["ok.mp4": ok],
+                failures: ["broken.mp4"]
+            )
+        } operation: {
+            WallpaperInteractorImpl()
+        }
+
+        let items = await collect(interactor.resolvedWallpapers())
+        #expect(items.map(\.url) == [ok])
+    }
+
+    @Test("shuffle mode emits items as they complete (first-resolve first)")
+    func shuffleEmitsAsCompleted() async throws {
+        let style = AppStyle(
+            wallpaper: WallpaperStyle(
+                items: [
+                    WallpaperItem(location: "slow.mp4"),
+                    WallpaperItem(location: "fast.mp4"),
+                ],
+                mode: .shuffle
+            ),
+            configDir: "/config"
+        )
+        let slow = URL(fileURLWithPath: "/resolved/slow.mp4")
+        let fast = URL(fileURLWithPath: "/resolved/fast.mp4")
+        let interactor = withDependencies {
+            $0.configUseCase = StubConfigUseCase(style: style)
+            $0.wallpaperUseCase = StubWallpaperUseCase(
+                results: ["slow.mp4": slow, "fast.mp4": fast],
+                delaysMillis: ["slow.mp4": 80, "fast.mp4": 0]
+            )
+        } operation: {
+            WallpaperInteractorImpl()
+        }
+
+        let items = await collect(interactor.resolvedWallpapers())
+        #expect(items.first?.url == fast)
+        #expect(Set(items.map(\.url)) == [fast, slow])
+        #expect(interactor.playbackMode == .shuffle)
     }
 
     @Test("rippleConfig returns config from appStyle")

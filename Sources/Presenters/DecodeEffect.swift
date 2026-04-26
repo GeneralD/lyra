@@ -5,17 +5,15 @@ import Foundation
 // MARK: - CharacterPool
 
 struct CharacterPool {
-    private let characters: [Character]
+    let characters: [Character]
 
     init(charsets: Set<CharsetName>) {
         characters = charsets.flatMap(\.allCharacters)
     }
 
-    var random: Character { characters.randomElement() ?? "?" }
+    var count: Int { characters.count }
 
-    func random(count: Int) -> String {
-        String((0..<count).map { _ in random })
-    }
+    func character(at index: Int) -> Character { characters[index] }
 }
 
 extension CharsetName {
@@ -47,6 +45,7 @@ final class DecodeEffectState {
     private let duration: Double
     private let pool: CharacterPool
     @Dependency(\.continuousClock) private var clock
+    @Dependency(\.randomSource) private var randomSource
 
     init(config: DecodeEffect) {
         self.duration = config.duration
@@ -58,7 +57,7 @@ extension DecodeEffectState {
     func startLoading(placeholderLength: Int = 12) {
         stop()
         isAnimating = true
-        updateDisplay(pool.random(count: placeholderLength))
+        updateDisplay(randomString(count: placeholderLength))
 
         let clock = self.clock
         task = Task { [weak self] in
@@ -83,7 +82,7 @@ extension DecodeEffectState {
             return
         }
 
-        updateDisplay(pool.random(count: text.count))
+        updateDisplay(randomString(count: text.count))
 
         let totalChars = text.count
         guard totalChars > 0 else {
@@ -108,7 +107,8 @@ extension DecodeEffectState {
 
                 while lockedIndices.count < targetLocked {
                     let remaining = (0..<totalChars).filter { !lockedIndices.contains($0) }
-                    guard let idx = remaining.randomElement() else { break }
+                    guard !remaining.isEmpty else { break }
+                    let idx = remaining[randomSource.next(below: remaining.count)]
                     lockedIndices.insert(idx)
                 }
 
@@ -136,25 +136,34 @@ extension DecodeEffectState {
 }
 
 extension DecodeEffectState {
-    fileprivate func finish() {
+    private func finish() {
         stop()
     }
 
-    fileprivate func updateDisplay(_ text: String) {
+    private func updateDisplay(_ text: String) {
         displayText = text
         onUpdate?(text)
     }
 
-    fileprivate func tickLoading() {
-        updateDisplay(pool.random(count: displayText.count))
+    private func tickLoading() {
+        updateDisplay(randomString(count: displayText.count))
     }
 
-    fileprivate func tickDecode() {
+    private func tickDecode() {
         let chars = Array(targetText)
         updateDisplay(
             chars.enumerated()
-                .map { lockedIndices.contains($0.offset) ? String($0.element) : String(pool.random) }
+                .map { lockedIndices.contains($0.offset) ? String($0.element) : String(randomCharacter()) }
                 .joined()
         )
+    }
+
+    private func randomCharacter() -> Character {
+        guard pool.count > 0 else { return "?" }
+        return pool.character(at: randomSource.next(below: pool.count))
+    }
+
+    private func randomString(count: Int) -> String {
+        String((0..<count).map { _ in randomCharacter() })
     }
 }

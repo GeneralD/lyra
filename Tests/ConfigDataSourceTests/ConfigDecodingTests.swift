@@ -73,9 +73,9 @@ struct WallpaperTomlDecodingTests {
             """
             wallpaper = "loop.mp4"
             """)
-        #expect(config.wallpaper?.location == "loop.mp4")
-        #expect(config.wallpaper?.start == nil)
-        #expect(config.wallpaper?.end == nil)
+        #expect(config.wallpaper?.items.first?.location == "loop.mp4")
+        #expect(config.wallpaper?.items.first?.start == nil)
+        #expect(config.wallpaper?.items.first?.end == nil)
     }
 
     @Test("[wallpaper] table with location only")
@@ -85,9 +85,9 @@ struct WallpaperTomlDecodingTests {
             [wallpaper]
             location = "bg.mp4"
             """)
-        #expect(config.wallpaper?.location == "bg.mp4")
-        #expect(config.wallpaper?.start == nil)
-        #expect(config.wallpaper?.end == nil)
+        #expect(config.wallpaper?.items.first?.location == "bg.mp4")
+        #expect(config.wallpaper?.items.first?.start == nil)
+        #expect(config.wallpaper?.items.first?.end == nil)
     }
 
     @Test("[wallpaper] table with start and end")
@@ -99,9 +99,9 @@ struct WallpaperTomlDecodingTests {
             start = "0:30"
             end = "3:45"
             """)
-        #expect(config.wallpaper?.location == "https://www.youtube.com/watch?v=XXXXX")
-        #expect(config.wallpaper?.start == 30.0)
-        #expect(config.wallpaper?.end == 225.0)
+        #expect(config.wallpaper?.items.first?.location == "https://www.youtube.com/watch?v=XXXXX")
+        #expect(config.wallpaper?.items.first?.start == 30.0)
+        #expect(config.wallpaper?.items.first?.end == 225.0)
     }
 
     @Test("[wallpaper] table with start only")
@@ -112,8 +112,8 @@ struct WallpaperTomlDecodingTests {
             location = "video.mp4"
             start = "1:00"
             """)
-        #expect(config.wallpaper?.start == 60.0)
-        #expect(config.wallpaper?.end == nil)
+        #expect(config.wallpaper?.items.first?.start == 60.0)
+        #expect(config.wallpaper?.items.first?.end == nil)
     }
 
     @Test("missing wallpaper produces nil")
@@ -131,8 +131,8 @@ struct WallpaperTomlDecodingTests {
             start = "2:00"
             end = "1:00"
             """)
-        #expect(config.wallpaper?.start == 120.0)
-        #expect(config.wallpaper?.end == nil)
+        #expect(config.wallpaper?.items.first?.start == 120.0)
+        #expect(config.wallpaper?.items.first?.end == nil)
     }
 }
 

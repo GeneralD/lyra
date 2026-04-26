@@ -70,6 +70,14 @@ let package = Package(
             ]
         ),
 
+        // ── RandomSource ──
+        .target(
+            name: "RandomSource",
+            dependencies: [
+                "Domain"
+            ]
+        ),
+
         // ── BenchmarkHandler ──
         .target(
             name: "BenchmarkHandler",
@@ -167,6 +175,7 @@ let package = Package(
             dependencies: [
                 "AppKitScreenProvider",
                 "Domain",
+                "RandomSource",
                 "TrackInteractor",
                 "ScreenInteractor",
                 "WallpaperInteractor",
@@ -416,6 +425,7 @@ let package = Package(
         ),
         .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
+        .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
         .testTarget(
             name: "ProcessHandlerTests",
             dependencies: [

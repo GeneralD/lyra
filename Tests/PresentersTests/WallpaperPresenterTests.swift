@@ -18,28 +18,42 @@ private func waitUntil(
     }
 }
 
-// MARK: - Stub
+// MARK: - Stubs
 
 private struct StubWallpaperInteractor: WallpaperInteractor {
-    var wallpaperState: WallpaperState = .init()
+    var items: [ResolvedWallpaperItem] = []
+    var mode: WallpaperPlaybackMode = .cycle
     var rippleConfig: RippleStyle = .init()
     var sleepChangesSubject: PassthroughSubject<SleepWakeEvent, Never>? = nil
 
-    func resolveWallpaper() async throws -> WallpaperState { wallpaperState }
+    var playbackMode: WallpaperPlaybackMode { mode }
+
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        let emitted = items
+        return AsyncStream { continuation in
+            for item in emitted { continuation.yield(item) }
+            continuation.finish()
+        }
+    }
+
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> {
         sleepChangesSubject?.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()
     }
 }
 
-private struct FailingWallpaperInteractor: WallpaperInteractor {
-    var rippleConfig: RippleStyle = .init()
+private final class FakeRandomSource: RandomSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Int]
 
-    func resolveWallpaper() async throws -> WallpaperState { throw StubError.resolveFailed }
-    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
-}
+    init(_ values: [Int]) { self.values = values }
 
-private enum StubError: Error {
-    case resolveFailed
+    func next(below count: Int) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !values.isEmpty else { return 0 }
+        let v = values.removeFirst()
+        return ((v % count) + count) % count
+    }
 }
 
 private final class SpyAVPlayer: AVPlayer, @unchecked Sendable {
@@ -111,13 +125,13 @@ struct WallpaperPresenterTests {
     @Suite("start")
     struct Resolve {
         @MainActor
-        @Test("sets wallpaperURL, start, and end from interactor result")
-        func setsWallpaperState() async {
+        @Test("plays the first emitted item")
+        func playsFirstItem() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: 5.0, end: 30.0)
+            let item = ResolvedWallpaperItem(url: url, start: 5.0, end: 30.0)
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -131,10 +145,10 @@ struct WallpaperPresenterTests {
         }
 
         @MainActor
-        @Test("nil state when no wallpaper configured")
-        func nilWallpaper() async {
+        @Test("remains idle when the stream emits no items")
+        func emptyStream() async {
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: .init())
+                $0.wallpaperInteractor = StubWallpaperInteractor()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -144,21 +158,7 @@ struct WallpaperPresenterTests {
                 #expect(presenter.startTime == nil)
                 #expect(presenter.endTime == nil)
                 #expect(presenter.isLoading == false)
-            }
-        }
-
-        @MainActor
-        @Test("sets nil when interactor throws")
-        func handlesError() async {
-            await withDependencies {
-                $0.wallpaperInteractor = FailingWallpaperInteractor()
-            } operation: {
-                let presenter = WallpaperPresenter()
-                presenter.start()
-                await presenter.waitForLoad()
-
-                #expect(presenter.wallpaperURL == nil)
-                #expect(presenter.isLoading == false)
+                #expect(presenter.player == nil)
             }
         }
 
@@ -166,10 +166,10 @@ struct WallpaperPresenterTests {
         @Test("stop clears player state")
         func stopClearsPlayer() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: 5.0, end: 30.0)
+            let item = ResolvedWallpaperItem(url: url, start: 5.0, end: 30.0)
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -185,10 +185,10 @@ struct WallpaperPresenterTests {
         @Test("start with only start time, no end time")
         func startTimeOnly() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: 10.0, end: nil)
+            let item = ResolvedWallpaperItem(url: url, start: 10.0)
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -203,14 +203,14 @@ struct WallpaperPresenterTests {
         @MainActor
         @Test("start with endTime registers observers and stop clears them")
         func registersAndClearsLoopObservers() async {
-            let state = WallpaperState(
+            let item = ResolvedWallpaperItem(
                 url: URL(fileURLWithPath: "/tmp/loop.mp4"),
                 start: 2.0,
                 end: 4.0
             )
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -233,10 +233,10 @@ struct WallpaperPresenterTests {
         @Test("fires once when player becomes available")
         func firesOnceOnPlayerReady() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: nil, end: nil)
+            let item = ResolvedWallpaperItem(url: url)
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
 
@@ -265,10 +265,10 @@ struct WallpaperPresenterTests {
         }
 
         @MainActor
-        @Test("never fires when no wallpaper is configured")
+        @Test("never fires when stream is empty")
         func doesNotFireWhenNoPlayer() async {
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: .init())
+                $0.wallpaperInteractor = StubWallpaperInteractor()
             } operation: {
                 let presenter = WallpaperPresenter()
                 final class Counter: @unchecked Sendable { var count = 0 }
@@ -284,13 +284,55 @@ struct WallpaperPresenterTests {
         }
 
         @MainActor
+        @Test("fires again when the player is swapped (multi-item advance)")
+        func firesOnEveryPlayerSwap() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+
+                final class Recorder: @unchecked Sendable {
+                    var players: [AVPlayer] = []
+                }
+                let recorder = Recorder()
+
+                presenter.onPlayerAvailable { player in
+                    recorder.players.append(player)
+                }
+
+                presenter.start()
+                await presenter.waitForLoad()
+
+                let firstDeadline = ContinuousClock.now + .seconds(2)
+                while recorder.players.count < 1, ContinuousClock.now < firstDeadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(recorder.players.count == 1)
+                let firstPlayer = recorder.players.first
+
+                await presenter.handleItemCompletion(seekStart: .zero, player: nil)
+
+                let secondDeadline = ContinuousClock.now + .seconds(2)
+                while recorder.players.count < 2, ContinuousClock.now < secondDeadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(recorder.players.count == 2)
+                #expect(recorder.players.last !== firstPlayer)
+                #expect(recorder.players.last === presenter.player)
+            }
+        }
+
+        @MainActor
         @Test("stop clears onPlayerAvailable subscription")
         func stopClearsSubscription() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: nil, end: nil)
+            let item = ResolvedWallpaperItem(url: url)
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.onPlayerAvailable { _ in }
@@ -305,7 +347,7 @@ struct WallpaperPresenterTests {
     @Suite("loop observers")
     struct LoopObservers {
         @MainActor
-        @Test("handleLoopBoundary seeks once until the pending seek completes")
+        @Test("handleLoopBoundary seeks once until the pending seek completes (single item)")
         func loopBoundaryDeduplicatesWhileSeeking() async {
             let presenter = WallpaperPresenter()
             let player = SpyAVPlayer()
@@ -372,32 +414,231 @@ struct WallpaperPresenterTests {
         @MainActor
         @Test("AVPlayerItemDidPlayToEndTime notification schedules playback restart")
         func endNotificationSchedulesRestart() async {
-            let state = WallpaperState(
+            let item = ResolvedWallpaperItem(
                 url: URL(fileURLWithPath: "/tmp/loop.mp4"),
                 start: 2.0,
                 end: 4.0
             )
 
             await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(wallpaperState: state)
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
                 await presenter.waitForLoad()
 
-                guard let item = presenter.player?.currentItem else {
+                guard let currentItem = presenter.player?.currentItem else {
                     Issue.record("expected currentItem to exist after setupPlayer")
                     return
                 }
 
                 NotificationCenter.default.post(
                     name: .AVPlayerItemDidPlayToEndTime,
-                    object: item
+                    object: currentItem
                 )
 
                 // Yield so the @MainActor Task scheduled by the observer runs.
                 await Task.yield()
                 try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    @Suite("multi-item advancement")
+    struct MultiItem {
+        @MainActor
+        @Test("cycle mode advances items in configured order on item completion")
+        func cycleAdvancesInOrder() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                await presenter.advanceToNextItem()
+                #expect(presenter.wallpaperURL == b.url)
+
+                await presenter.advanceToNextItem()
+                #expect(presenter.wallpaperURL == c.url)
+
+                await presenter.advanceToNextItem()
+                #expect(presenter.wallpaperURL == a.url)  // wraps around
+            }
+        }
+
+        @MainActor
+        @Test("shuffle mode picks next item via RandomSource, excluding current")
+        func shuffleUsesRandomSource() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
+
+            // After index 0 (a), candidates = [1, 2]. RandomSource picks index 1 → c.
+            // After index 2 (c), candidates = [0, 1]. RandomSource picks index 0 → a.
+            let fake = FakeRandomSource([1, 0])
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .shuffle)
+                $0.randomSource = fake
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                await presenter.advanceToNextItem()
+                #expect(presenter.wallpaperURL == c.url)
+
+                await presenter.advanceToNextItem()
+                #expect(presenter.wallpaperURL == a.url)
+            }
+        }
+
+        @MainActor
+        @Test("nextIndex cycle wraps around at the end")
+        func nextIndexCycleWraps() async {
+            let items = [
+                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4")),
+                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4")),
+            ]
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: items, mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+
+                #expect(presenter.nextIndex(from: 0) == 1)
+                #expect(presenter.nextIndex(from: 1) == 0)
+            }
+        }
+
+        @MainActor
+        @Test("nextIndex shuffle never returns current index when count > 1")
+        func shuffleNeverRepeatsCurrent() async {
+            let items = (0..<5).map {
+                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/\($0).mp4"))
+            }
+            // The fake source returns 0 — selected from filtered candidates,
+            // which excludes current. So result should never equal `from`.
+            let fake = FakeRandomSource([0, 0, 0, 0, 0])
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: items, mode: .shuffle)
+                $0.randomSource = fake
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+
+                for current in 0..<5 {
+                    #expect(presenter.nextIndex(from: current) != current)
+                }
+            }
+        }
+
+        @MainActor
+        @Test("handleItemCompletion on single item restarts playback (does not advance)")
+        func singleItemLoopsRatherThanAdvance() async {
+            let item = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/solo.mp4"),
+                start: 1.0,
+                end: 3.0
+            )
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                let urlBefore = presenter.wallpaperURL
+
+                await presenter.handleItemCompletion(seekStart: CMTime(seconds: 1, preferredTimescale: 600), player: nil)
+
+                #expect(presenter.wallpaperURL == urlBefore)
+            }
+        }
+
+        @MainActor
+        @Test("handleItemCompletion on multiple items advances to next item")
+        func multiItemCompletionAdvances() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                await presenter.handleItemCompletion(seekStart: .zero, player: nil)
+
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+
+        @MainActor
+        @Test("handleLoopBoundary on multiple items advances instead of seeking")
+        func multiItemLoopBoundaryAdvances() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let player = SpyAVPlayer()
+            let seekStart = CMTime(seconds: 1, preferredTimescale: 600)
+            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+
+                await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperURL == b.url)
+                #expect(player.seekTimes.isEmpty)  // no manual seek — advance instead
+            }
+        }
+
+        @MainActor
+        @Test("repeated handleLoopBoundary firings advance only once (no double-advance race)")
+        func repeatedLoopBoundaryAdvancesOnce() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
+            let player = SpyAVPlayer()
+            let seekStart = CMTime(seconds: 1, preferredTimescale: 600)
+            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await presenter.waitForLoad()
+                #expect(presenter.wallpaperURL == a.url)
+
+                // Simulate periodic time observer firing several times before the
+                // first advance Task gets to run on the actor.
+                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+
+                await waitUntil { presenter.wallpaperURL == b.url }
+                // Should land on b (one advance from a), not skip to c.
+                #expect(presenter.wallpaperURL == b.url)
             }
         }
     }
@@ -408,18 +649,17 @@ struct WallpaperPresenterTests {
         @Test(".willSleep pauses the player")
         func willSleepPauses() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: nil, end: nil)
+            let item = ResolvedWallpaperItem(url: url)
             let subject = PassthroughSubject<SleepWakeEvent, Never>()
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(
-                    wallpaperState: state, sleepChangesSubject: subject)
+                    items: [item], sleepChangesSubject: subject)
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
                 await presenter.waitForLoad()
 
-                // setupPlayer started playback; emit .willSleep and observe pause.
                 subject.send(.willSleep)
 
                 let deadline = ContinuousClock.now + .seconds(1)
@@ -434,12 +674,12 @@ struct WallpaperPresenterTests {
         @Test(".didWake resumes the player")
         func didWakeResumes() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let state = WallpaperState(url: url, start: nil, end: nil)
+            let item = ResolvedWallpaperItem(url: url)
             let subject = PassthroughSubject<SleepWakeEvent, Never>()
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(
-                    wallpaperState: state, sleepChangesSubject: subject)
+                    items: [item], sleepChangesSubject: subject)
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
