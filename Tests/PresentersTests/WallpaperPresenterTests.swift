@@ -18,6 +18,11 @@ private func waitUntil(
     }
 }
 
+@MainActor
+private func waitForItemsLoaded(_ presenter: WallpaperPresenter, count: Int) async {
+    await waitUntil { presenter.items.count == count }
+}
+
 // MARK: - Stubs
 
 private struct StubWallpaperInteractor: WallpaperInteractor {
@@ -56,65 +61,45 @@ private final class FakeRandomSource: RandomSource, @unchecked Sendable {
     }
 }
 
-private final class SpyAVPlayer: AVPlayer, @unchecked Sendable {
-    nonisolated(unsafe) var playCallCount = 0
-    nonisolated(unsafe) var seekTimes: [CMTime] = []
-    nonisolated(unsafe) var pendingSeekCompletions: [(Bool) -> Void] = []
+/// A stub interactor that lets the test drive item arrival over time. Used to
+/// simulate late-arriving items in the resolved-wallpaper stream.
+private final class LiveStubWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
+    let mode: WallpaperPlaybackMode
+    let rippleConfig: RippleStyle = .init()
+    private let lock = NSLock()
+    private var continuation: AsyncStream<ResolvedWallpaperItem>.Continuation?
 
-    override func play() {
-        playCallCount += 1
+    init(mode: WallpaperPlaybackMode = .cycle) {
+        self.mode = mode
     }
 
-    override func seek(to time: CMTime, toleranceBefore: CMTime, toleranceAfter: CMTime) {
-        seekTimes.append(time)
-    }
+    var playbackMode: WallpaperPlaybackMode { mode }
 
-    override func seek(
-        to time: CMTime,
-        toleranceBefore: CMTime,
-        toleranceAfter: CMTime,
-        completionHandler: @escaping (Bool) -> Void
-    ) {
-        seekTimes.append(time)
-        pendingSeekCompletions.append(completionHandler)
-    }
-
-    func completePendingSeeks() {
-        let completions = pendingSeekCompletions
-        pendingSeekCompletions = []
-        for completion in completions {
-            completion(true)
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        AsyncStream { continuation in
+            lock.lock()
+            self.continuation = continuation
+            lock.unlock()
         }
     }
-}
 
-private func hasValue(named name: String, from object: Any) -> Bool {
-    guard
-        let storedValue = Mirror(reflecting: object).children
-            .first(where: { $0.label == name })?
-            .value
-    else { return false }
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> {
+        Empty().eraseToAnyPublisher()
+    }
 
-    let mirror = Mirror(reflecting: storedValue)
-    guard mirror.displayStyle == .optional else { return true }
-    return mirror.children.first != nil
-}
+    func emit(_ item: ResolvedWallpaperItem) {
+        lock.lock()
+        let cont = continuation
+        lock.unlock()
+        cont?.yield(item)
+    }
 
-private func value<T>(named name: String, from object: Any) -> T? {
-    guard
-        let storedValue = Mirror(reflecting: object).children
-            .first(where: { $0.label == name })?
-            .value
-    else { return nil }
-
-    let mirror = Mirror(reflecting: storedValue)
-    let unwrappedValue =
-        if mirror.displayStyle == .optional {
-            mirror.children.first?.value as Any
-        } else {
-            storedValue
-        }
-    return unwrappedValue as? T
+    func finish() {
+        lock.lock()
+        let cont = continuation
+        lock.unlock()
+        cont?.finish()
+    }
 }
 
 // MARK: - Tests
@@ -135,7 +120,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.wallpaperURL == url }
 
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 5.0)
@@ -152,7 +137,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { !presenter.isLoading }
 
                 #expect(presenter.wallpaperURL == nil)
                 #expect(presenter.startTime == nil)
@@ -173,7 +158,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.wallpaperURL == url }
                 #expect(presenter.wallpaperURL == url)
 
                 presenter.stop()
@@ -192,37 +177,11 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.wallpaperURL == url }
 
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 10.0)
                 #expect(presenter.endTime == nil)
-            }
-        }
-
-        @MainActor
-        @Test("start with endTime registers observers and stop clears them")
-        func registersAndClearsLoopObservers() async {
-            let item = ResolvedWallpaperItem(
-                url: URL(fileURLWithPath: "/tmp/loop.mp4"),
-                start: 2.0,
-                end: 4.0
-            )
-
-            await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
-            } operation: {
-                let presenter = WallpaperPresenter()
-                presenter.start()
-                await presenter.waitForLoad()
-
-                #expect(hasValue(named: "endTimeObserver", from: presenter))
-                #expect(hasValue(named: "loopObserver", from: presenter))
-
-                presenter.stop()
-
-                #expect(!hasValue(named: "endTimeObserver", from: presenter))
-                #expect(!hasValue(named: "loopObserver", from: presenter))
             }
         }
     }
@@ -252,12 +211,7 @@ struct WallpaperPresenterTests {
                 }
 
                 presenter.start()
-                await presenter.waitForLoad()
-
-                let deadline = ContinuousClock.now + .seconds(2)
-                while counter.count < 1, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await waitUntil { counter.count >= 1 }
 
                 #expect(counter.count == 1)
                 #expect(counter.player === presenter.player)
@@ -276,7 +230,7 @@ struct WallpaperPresenterTests {
 
                 presenter.onPlayerAvailable { _ in counter.count += 1 }
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { !presenter.isLoading }
 
                 #expect(counter.count == 0)
                 #expect(presenter.player == nil)
@@ -284,8 +238,8 @@ struct WallpaperPresenterTests {
         }
 
         @MainActor
-        @Test("fires again when the player is swapped (multi-item advance)")
-        func firesOnEveryPlayerSwap() async {
+        @Test("does not fire again when items advance (stable player instance)")
+        func staysAttachedAcrossAdvances() async {
             let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
             let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
 
@@ -304,24 +258,17 @@ struct WallpaperPresenterTests {
                 }
 
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitForItemsLoaded(presenter, count: 2)
 
-                let firstDeadline = ContinuousClock.now + .seconds(2)
-                while recorder.players.count < 1, ContinuousClock.now < firstDeadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await waitUntil { recorder.players.count >= 1 }
                 #expect(recorder.players.count == 1)
                 let firstPlayer = recorder.players.first
 
-                await presenter.handleItemCompletion(seekStart: .zero, player: nil)
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == b.url }
 
-                let secondDeadline = ContinuousClock.now + .seconds(2)
-                while recorder.players.count < 2, ContinuousClock.now < secondDeadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
-                #expect(recorder.players.count == 2)
-                #expect(recorder.players.last !== firstPlayer)
-                #expect(recorder.players.last === presenter.player)
+                #expect(recorder.players.count == 1)
+                #expect(presenter.player === firstPlayer)
             }
         }
 
@@ -337,109 +284,9 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 presenter.onPlayerAvailable { _ in }
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.wallpaperURL == url }
                 presenter.stop()
                 // Exercises cancellables.removeAll() branch — no crash expected.
-            }
-        }
-    }
-
-    @Suite("loop observers")
-    struct LoopObservers {
-        @MainActor
-        @Test("handleLoopBoundary seeks once until the pending seek completes (single item)")
-        func loopBoundaryDeduplicatesWhileSeeking() async {
-            let presenter = WallpaperPresenter()
-            let player = SpyAVPlayer()
-            let seekStart = CMTime(seconds: 2, preferredTimescale: 600)
-            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
-
-            presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
-            presenter.handleLoopBoundary(
-                at: CMTime(seconds: 6, preferredTimescale: 600),
-                seekEnd: seekEnd,
-                seekStart: seekStart,
-                player: player
-            )
-
-            #expect(player.seekTimes == [seekStart])
-            #expect((value(named: "isSeeking", from: presenter) as Bool?) == true)
-
-            player.completePendingSeeks()
-            await waitUntil {
-                (value(named: "isSeeking", from: presenter) as Bool?) == false
-            }
-
-            presenter.handleLoopBoundary(
-                at: CMTime(seconds: 6, preferredTimescale: 600),
-                seekEnd: seekEnd,
-                seekStart: seekStart,
-                player: player
-            )
-
-            #expect(player.seekTimes == [seekStart, seekStart])
-        }
-
-        @MainActor
-        @Test("handleLoopBoundary ignores times before the end boundary")
-        func loopBoundaryIgnoresEarlyTimes() {
-            let presenter = WallpaperPresenter()
-            let player = SpyAVPlayer()
-            let seekStart = CMTime(seconds: 2, preferredTimescale: 600)
-            let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
-
-            presenter.handleLoopBoundary(
-                at: CMTime(seconds: 4.9, preferredTimescale: 600),
-                seekEnd: seekEnd,
-                seekStart: seekStart,
-                player: player
-            )
-
-            #expect(player.seekTimes.isEmpty)
-            #expect((value(named: "isSeeking", from: presenter) as Bool?) == false)
-        }
-
-        @MainActor
-        @Test("restartPlayback seeks to loop start and resumes playback")
-        func restartPlaybackSeeksAndPlays() {
-            let player = SpyAVPlayer()
-            let seekStart = CMTime(seconds: 3, preferredTimescale: 600)
-
-            WallpaperPresenter.restartPlayback(from: seekStart, player: player)
-
-            #expect(player.seekTimes == [seekStart])
-            #expect(player.playCallCount == 1)
-        }
-
-        @MainActor
-        @Test("AVPlayerItemDidPlayToEndTime notification schedules playback restart")
-        func endNotificationSchedulesRestart() async {
-            let item = ResolvedWallpaperItem(
-                url: URL(fileURLWithPath: "/tmp/loop.mp4"),
-                start: 2.0,
-                end: 4.0
-            )
-
-            await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
-            } operation: {
-                let presenter = WallpaperPresenter()
-                presenter.start()
-                await presenter.waitForLoad()
-
-                guard let currentItem = presenter.player?.currentItem else {
-                    Issue.record("expected currentItem to exist after setupPlayer")
-                    return
-                }
-
-                NotificationCenter.default.post(
-                    name: .AVPlayerItemDidPlayToEndTime,
-                    object: currentItem
-                )
-
-                // Yield so the @MainActor Task scheduled by the observer runs.
-                await Task.yield()
-                try? await Task.sleep(for: .milliseconds(50))
             }
         }
     }
@@ -458,16 +305,17 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitForItemsLoaded(presenter, count: 3)
                 #expect(presenter.wallpaperURL == a.url)
 
-                await presenter.advanceToNextItem()
-                #expect(presenter.wallpaperURL == b.url)
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == b.url }
 
-                await presenter.advanceToNextItem()
-                #expect(presenter.wallpaperURL == c.url)
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == c.url }
 
-                await presenter.advanceToNextItem()
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == a.url }
                 #expect(presenter.wallpaperURL == a.url)  // wraps around
             }
         }
@@ -489,63 +337,20 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitForItemsLoaded(presenter, count: 3)
                 #expect(presenter.wallpaperURL == a.url)
 
-                await presenter.advanceToNextItem()
-                #expect(presenter.wallpaperURL == c.url)
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == c.url }
 
-                await presenter.advanceToNextItem()
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == a.url }
                 #expect(presenter.wallpaperURL == a.url)
             }
         }
 
         @MainActor
-        @Test("nextIndex cycle wraps around at the end")
-        func nextIndexCycleWraps() async {
-            let items = [
-                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4")),
-                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4")),
-            ]
-
-            await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(items: items, mode: .cycle)
-            } operation: {
-                let presenter = WallpaperPresenter()
-                presenter.start()
-                await presenter.waitForLoad()
-
-                #expect(presenter.nextIndex(from: 0) == 1)
-                #expect(presenter.nextIndex(from: 1) == 0)
-            }
-        }
-
-        @MainActor
-        @Test("nextIndex shuffle never returns current index when count > 1")
-        func shuffleNeverRepeatsCurrent() async {
-            let items = (0..<5).map {
-                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/\($0).mp4"))
-            }
-            // The fake source returns 0 — selected from filtered candidates,
-            // which excludes current. So result should never equal `from`.
-            let fake = FakeRandomSource([0, 0, 0, 0, 0])
-
-            await withDependencies {
-                $0.wallpaperInteractor = StubWallpaperInteractor(items: items, mode: .shuffle)
-                $0.randomSource = fake
-            } operation: {
-                let presenter = WallpaperPresenter()
-                presenter.start()
-                await presenter.waitForLoad()
-
-                for current in 0..<5 {
-                    #expect(presenter.nextIndex(from: current) != current)
-                }
-            }
-        }
-
-        @MainActor
-        @Test("handleItemCompletion on single item restarts playback (does not advance)")
+        @Test("controller.handleItemEnd on single item loops via controller, not advance")
         func singleItemLoopsRatherThanAdvance() async {
             let item = ResolvedWallpaperItem(
                 url: URL(fileURLWithPath: "/tmp/solo.mp4"),
@@ -558,17 +363,20 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.wallpaperURL == item.url }
                 let urlBefore = presenter.wallpaperURL
 
-                await presenter.handleItemCompletion(seekStart: CMTime(seconds: 1, preferredTimescale: 600), player: nil)
+                presenter.controller.handleItemEnd()
+
+                // Give the advance Task a chance to run (loop or advance).
+                try? await Task.sleep(for: .milliseconds(50))
 
                 #expect(presenter.wallpaperURL == urlBefore)
             }
         }
 
         @MainActor
-        @Test("handleItemCompletion on multiple items advances to next item")
+        @Test("controller.handleItemEnd on multiple items advances to next item")
         func multiItemCompletionAdvances() async {
             let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
             let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
@@ -578,22 +386,22 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitForItemsLoaded(presenter, count: 2)
                 #expect(presenter.wallpaperURL == a.url)
 
-                await presenter.handleItemCompletion(seekStart: .zero, player: nil)
+                presenter.controller.handleItemEnd()
 
+                await waitUntil { presenter.wallpaperURL == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
 
         @MainActor
-        @Test("handleLoopBoundary on multiple items advances instead of seeking")
+        @Test("controller.handleBoundary on multiple items advances")
         func multiItemLoopBoundaryAdvances() async {
-            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let a = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/a.mp4"), start: 1.0, end: 5.0)
             let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
-            let player = SpyAVPlayer()
-            let seekStart = CMTime(seconds: 1, preferredTimescale: 600)
             let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
 
             await withDependencies {
@@ -601,25 +409,23 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitForItemsLoaded(presenter, count: 2)
                 #expect(presenter.wallpaperURL == a.url)
 
-                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+                presenter.controller.handleBoundary(at: seekEnd)
 
                 await waitUntil { presenter.wallpaperURL == b.url }
                 #expect(presenter.wallpaperURL == b.url)
-                #expect(player.seekTimes.isEmpty)  // no manual seek — advance instead
             }
         }
 
         @MainActor
-        @Test("repeated handleLoopBoundary firings advance only once (no double-advance race)")
+        @Test("repeated handleBoundary firings advance only once (no double-advance race)")
         func repeatedLoopBoundaryAdvancesOnce() async {
-            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let a = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/a.mp4"), start: 1.0, end: 5.0)
             let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
             let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
-            let player = SpyAVPlayer()
-            let seekStart = CMTime(seconds: 1, preferredTimescale: 600)
             let seekEnd = CMTime(seconds: 5, preferredTimescale: 600)
 
             await withDependencies {
@@ -627,17 +433,145 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitForItemsLoaded(presenter, count: 3)
                 #expect(presenter.wallpaperURL == a.url)
 
                 // Simulate periodic time observer firing several times before the
                 // first advance Task gets to run on the actor.
-                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
-                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
-                presenter.handleLoopBoundary(at: seekEnd, seekEnd: seekEnd, seekStart: seekStart, player: player)
+                presenter.controller.handleBoundary(at: seekEnd)
+                presenter.controller.handleBoundary(at: seekEnd)
+                presenter.controller.handleBoundary(at: seekEnd)
 
                 await waitUntil { presenter.wallpaperURL == b.url }
                 // Should land on b (one advance from a), not skip to c.
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+    }
+
+    @Suite("late-arriving items")
+    struct LateArrival {
+        @MainActor
+        @Test("items emitted after playback starts are picked up on next advance")
+        func lateArrivalAdvancesToNewItem() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let interactor = LiveStubWallpaperInteractor(mode: .cycle)
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+
+                interactor.emit(a)
+                await waitUntil { presenter.wallpaperURL == a.url }
+                #expect(presenter.wallpaperURL == a.url)
+
+                // Late arrival — second item shows up after playback has begun.
+                interactor.emit(b)
+                interactor.finish()
+                await waitForItemsLoaded(presenter, count: 2)
+
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+
+        @MainActor
+        @Test("single-item stream remains in loop mode until a second item arrives")
+        func lateArrivalUnlocksAdvancement() async {
+            let a = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/a.mp4"), end: 5.0)
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let interactor = LiveStubWallpaperInteractor(mode: .cycle)
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+
+                interactor.emit(a)
+                await waitUntil { presenter.wallpaperURL == a.url }
+
+                // Boundary fires while only one item is loaded — should loop, not advance.
+                presenter.controller.handleBoundary(
+                    at: CMTime(seconds: 5, preferredTimescale: 600))
+                try? await Task.sleep(for: .milliseconds(50))
+                #expect(presenter.wallpaperURL == a.url)
+
+                interactor.emit(b)
+                interactor.finish()
+                await waitForItemsLoaded(presenter, count: 2)
+
+                // Now that two items exist, boundary should advance.
+                presenter.controller.handleBoundary(
+                    at: CMTime(seconds: 5, preferredTimescale: 600))
+                await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+    }
+
+    @Suite("shuffle determinism")
+    struct ShuffleDeterminism {
+        @MainActor
+        @Test("shuffle visits every item over many advances given a covering sequence")
+        func visitsAllItems() async {
+            let items = (0..<5).map {
+                ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/\($0).mp4"))
+            }
+            // Advance 20 times; pick deterministic indices that cycle through candidates.
+            let fake = FakeRandomSource(Array(repeating: [0, 1, 2, 3], count: 5).flatMap { $0 })
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: items, mode: .shuffle)
+                $0.randomSource = fake
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await waitForItemsLoaded(presenter, count: items.count)
+
+                var visited: Set<URL> = [presenter.wallpaperURL].compactMap { $0 }
+                    .reduce(into: Set<URL>()) { $0.insert($1) }
+                for _ in 0..<20 {
+                    let prev = presenter.wallpaperURL
+                    presenter.controller.handleItemEnd()
+                    await waitUntil { presenter.wallpaperURL != prev }
+                    if let url = presenter.wallpaperURL { visited.insert(url) }
+                }
+
+                #expect(visited.count == items.count)
+            }
+        }
+    }
+
+    @Suite("double-fire guard")
+    struct DoubleFireGuard {
+        @MainActor
+        @Test("handleBoundary then handleItemEnd advances only once")
+        func boundaryThenItemEndAdvancesOnce() async {
+            let a = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/a.mp4"), end: 5.0)
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(
+                    items: [a, b, c], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await waitForItemsLoaded(presenter, count: 3)
+                #expect(presenter.wallpaperURL == a.url)
+
+                presenter.controller.handleBoundary(
+                    at: CMTime(seconds: 5, preferredTimescale: 600))
+                presenter.controller.handleItemEnd()
+
+                await waitUntil { presenter.wallpaperURL == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
@@ -658,7 +592,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.player != nil }
 
                 subject.send(.willSleep)
 
@@ -683,7 +617,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await presenter.waitForLoad()
+                await waitUntil { presenter.player != nil }
 
                 subject.send(.willSleep)
                 subject.send(.didWake)

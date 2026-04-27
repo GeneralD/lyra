@@ -12,20 +12,26 @@ public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var player: AVPlayer?
 
-    private var items: [ResolvedWallpaperItem] = []
+    private(set) var items: [ResolvedWallpaperItem] = []
     private var mode: WallpaperPlaybackMode = .cycle
     private var currentIndex: Int = 0
 
-    private var loopObserver: NSObjectProtocol?
-    private var endTimeObserver: Any?
-    private var isSeeking: Bool = false
+    let controller = WallpaperPlaybackController()
     private var loadTask: Task<Void, Never>?
+    private var sleepWakeCancellable: AnyCancellable?
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.wallpaperInteractor) private var interactor
     @Dependency(\.randomSource) private var randomSource
 
-    public init() {}
+    public init() {
+        controller.$player.assign(to: &$player)
+        controller.onAdvanceRequested = { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.handleAdvanceRequest()
+            }
+        }
+    }
 
     public func start() {
         loadTask?.cancel()
@@ -33,6 +39,7 @@ public final class WallpaperPresenter: ObservableObject {
         items = []
         currentIndex = 0
         mode = interactor.playbackMode
+        observeSleepWake()
         let stream = interactor.resolvedWallpapers()
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -54,20 +61,22 @@ public final class WallpaperPresenter: ObservableObject {
     public func stop() {
         loadTask?.cancel()
         loadTask = nil
-        tearDownPlayer()
+        controller.stop()
+        sleepWakeCancellable?.cancel()
+        sleepWakeCancellable = nil
         cancellables.removeAll()
         items = []
         currentIndex = 0
     }
 
-    /// Register a side-effect to run every time a player becomes available
-    /// (including swaps when advancing between wallpaper items). The wireframe
-    /// uses this to drive `OverlayWindow.attachPlayerLayer` without owning the
-    /// subscription.
+    /// Register a side-effect to run once when the player becomes available.
+    /// The wireframe uses this to drive `OverlayWindow.attachPlayerLayer`. Since
+    /// the controller now keeps a stable AVPlayer instance across item swaps,
+    /// the layer only needs to be attached once.
     public func onPlayerAvailable(_ handler: @escaping @MainActor (AVPlayer) -> Void) {
         $player
             .compactMap { $0 }
-            .removeDuplicates { $0 === $1 }
+            .first()
             .receive(on: DispatchQueue.main)
             .sink { player in handler(player) }
             .store(in: &cancellables)
@@ -80,68 +89,27 @@ extension WallpaperPresenter {
             wallpaperURL = nil
             startTime = nil
             endTime = nil
-            player = nil
+            controller.stop()
             return
         }
         let item = items[currentIndex]
         wallpaperURL = item.url
         startTime = item.start
         endTime = item.end
-        await setupPlayer(for: item)
-        if cancellables.isEmpty {
-            observeSleepWake()
-        }
+        await controller.play(item: item)
     }
 
-    private func setupPlayer(for item: ResolvedWallpaperItem) async {
-        let player = AVPlayer(url: item.url)
-        player.isMuted = true
-        player.preventsDisplaySleepDuringVideoPlayback = false
-        player.actionAtItemEnd = .none
-        self.player = player
-
-        let seekStart = item.start.map { CMTime(seconds: $0, preferredTimescale: 600) } ?? .zero
-        let seekEnd = item.end.map { CMTime(seconds: $0, preferredTimescale: 600) }
-
-        if seekStart != .zero {
-            await player.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
+    private func handleAdvanceRequest() async {
+        guard items.count > 1 else {
+            controller.loopCurrent()
+            return
         }
-
-        if let seekEnd {
-            let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-            endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                Task { @MainActor in
-                    guard let self, let player, player === self.player else { return }
-                    self.handleLoopBoundary(at: time, seekEnd: seekEnd, seekStart: seekStart, player: player)
-                }
-            }
-        }
-
-        loopObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem, queue: .main
-        ) { [weak self, weak player] _ in
-            Task { @MainActor in
-                guard let self, let player, player === self.player else { return }
-                await self.handleItemCompletion(seekStart: seekStart, player: player)
-            }
-        }
-
-        player.play()
-    }
-
-    private func tearDownPlayer() {
-        player?.pause()
-        endTimeObserver.map { player?.removeTimeObserver($0) }
-        loopObserver.map(NotificationCenter.default.removeObserver)
-        endTimeObserver = nil
-        loopObserver = nil
-        isSeeking = false
-        player = nil
+        await advanceToNextItem()
     }
 
     private func observeSleepWake() {
-        interactor.systemSleepChanges
+        guard sleepWakeCancellable == nil else { return }
+        sleepWakeCancellable = interactor.systemSleepChanges
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 switch event {
@@ -149,43 +117,15 @@ extension WallpaperPresenter {
                 case .didWake: self?.player?.play()
                 }
             }
-            .store(in: &cancellables)
     }
 
-    func waitForLoad() async {
-        await loadTask?.value
-    }
-
-    func handleLoopBoundary(at time: CMTime, seekEnd: CMTime, seekStart: CMTime, player: AVPlayer?) {
-        guard !isSeeking, time >= seekEnd else { return }
-        isSeeking = true
-        guard items.count <= 1 else {
-            Task { @MainActor [weak self] in await self?.advanceToNextItem() }
-            return
-        }
-        player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            Task { @MainActor in self?.isSeeking = false }
-        }
-    }
-
-    func handleItemCompletion(seekStart: CMTime, player: AVPlayer?) async {
-        guard !isSeeking else { return }
-        guard items.count > 1 else {
-            Self.restartPlayback(from: seekStart, player: player ?? self.player)
-            return
-        }
-        isSeeking = true
-        await advanceToNextItem()
-    }
-
-    func advanceToNextItem() async {
+    private func advanceToNextItem() async {
         guard items.count > 1 else { return }
         currentIndex = nextIndex(from: currentIndex)
-        tearDownPlayer()
         await activateCurrentItem()
     }
 
-    func nextIndex(from current: Int) -> Int {
+    private func nextIndex(from current: Int) -> Int {
         switch mode {
         case .cycle:
             return (current + 1) % items.count
@@ -194,10 +134,5 @@ extension WallpaperPresenter {
             guard !candidates.isEmpty else { return current }
             return candidates[randomSource.next(below: candidates.count)]
         }
-    }
-
-    static func restartPlayback(from seekStart: CMTime, player: AVPlayer?) {
-        player?.seek(to: seekStart, toleranceBefore: .zero, toleranceAfter: .zero)
-        player?.play()
     }
 }
