@@ -26,7 +26,15 @@ jobs:
       - name: Build and check for warnings
         run: |
           swift build 2>&1 | tee /tmp/build.log
-          WARNINGS=$(grep "warning:" /tmp/build.log | grep -v ".build/" || true)
+          # Exclude:
+          #   - .build/ — third-party source warnings
+          #   - swift-syntax identity conflict — Papyrus uses apple/swift-syntax,
+          #     swift-dependencies uses swiftlang/swift-syntax (same repo, different URL).
+          #     Cannot resolve without forking upstream.
+          WARNINGS=$(grep "warning:" /tmp/build.log \
+            | grep -v ".build/" \
+            | grep -v 'swift-syntax.*conflicts with dependency on' \
+            || true)
           if [ -n "$WARNINGS" ]; then
             echo "::error::Build produced warnings in project sources"
             exit 1
