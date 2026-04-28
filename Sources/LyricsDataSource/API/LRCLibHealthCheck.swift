@@ -5,9 +5,7 @@ public struct LRCLibHealthCheck: Sendable {
     private let requestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     public init() {
-        self.init { request in
-            try await URLSession.shared.data(for: request)
-        }
+        self.init(requestPerformer: Self.defaultRequestPerformer)
     }
 
     init(
@@ -15,15 +13,20 @@ public struct LRCLibHealthCheck: Sendable {
     ) {
         self.requestPerformer = requestPerformer
     }
+
+    /// Default backend used by `init()`. Exposed `internal` so coverage tests
+    /// can invoke it directly without going through the network-bound init.
+    static let defaultRequestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
+        try await URLSession.shared.data(for: request)
+    }
 }
 
 extension LRCLibHealthCheck: HealthCheckable {
     public var serviceName: String { "LRCLIB API" }
 
     public func healthCheck() async -> HealthCheckResult {
-        guard let url = URL(string: "\(LRCLibAPI.baseURL)/api/search?q=test") else {
-            return HealthCheckResult(status: .fail, detail: "invalid URL")
-        }
+        // baseURL + literal path is a known-valid URL string; cannot fail.
+        let url = URL(string: "\(LRCLibAPI.baseURL)/api/search?q=test")!
         var request = URLRequest(url: url)
         request.setValue(LRCLibAPI.userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10

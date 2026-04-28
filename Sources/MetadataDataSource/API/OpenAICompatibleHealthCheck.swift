@@ -6,9 +6,7 @@ public struct OpenAICompatibleHealthCheck: Sendable {
     private let requestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     public init(config: AIEndpoint) {
-        self.init(config: config) { request in
-            try await URLSession.shared.data(for: request)
-        }
+        self.init(config: config, requestPerformer: Self.defaultRequestPerformer)
     }
 
     init(
@@ -19,10 +17,38 @@ public struct OpenAICompatibleHealthCheck: Sendable {
         self.requestPerformer = requestPerformer
     }
 
+    /// Default backend used by `init(config:)`. Exposed `internal` so coverage
+    /// tests can invoke it directly without going through the network-bound init.
+    static let defaultRequestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
+        try await URLSession.shared.data(for: request)
+    }
+
     private var normalizedEndpoint: String {
         config.endpoint.hasSuffix("/")
             ? String(config.endpoint.dropLast())
             : config.endpoint
+    }
+}
+
+private struct PingRequest: Encodable, Sendable {
+    let model: String
+    let messages: [Message]
+    let maxTokens: Int
+
+    init(model: String) {
+        self.model = model
+        self.messages = [Message(role: "user", content: "ping")]
+        self.maxTokens = 1
+    }
+
+    struct Message: Encodable, Sendable {
+        let role: String
+        let content: String
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages
+        case maxTokens = "max_tokens"
     }
 }
 
@@ -39,16 +65,8 @@ extension OpenAICompatibleHealthCheck: HealthCheckable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 10
 
-        let body: [String: Any] = [
-            "model": config.model,
-            "messages": [["role": "user", "content": "ping"]],
-            "max_tokens": 1,
-        ]
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            return HealthCheckResult(status: .fail, detail: "failed to serialize request body: \(error.localizedDescription)")
-        }
+        // Encoding a fixed-shape Encodable struct of String/Int fields cannot fail.
+        request.httpBody = try! JSONEncoder().encode(PingRequest(model: config.model))
 
         let start = ContinuousClock.now
         do {

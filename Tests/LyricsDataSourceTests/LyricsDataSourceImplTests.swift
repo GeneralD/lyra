@@ -6,6 +6,13 @@ import Testing
 
 @Suite("LyricsDataSourceImpl")
 struct LyricsDataSourceImplTests {
+    @Test("default init() wires the Papyrus-generated LRCLibAPI")
+    func defaultInitInstantiates() {
+        // Just exercising init() to cover the production wiring.
+        // We don't make a network call — only verify construction succeeds.
+        _ = LyricsDataSourceImpl()
+    }
+
     @Test("get returns decoded result when plain lyrics exist")
     func getReturnsDecodedResult() async {
         let dataSource = LyricsDataSourceImpl(

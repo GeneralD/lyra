@@ -86,9 +86,8 @@ extension RegexMetadataDataSourceImpl {
         let normalized = normalize(raw)
 
         if let match = normalized.firstMatch(of: /「([^」]+)」|『([^』]+)』/) {
-            let title =
-                (match.output.1 ?? match.output.2)
-                .map(String.init) ?? normalized
+            // Regex alternation guarantees one capture is non-nil on match.
+            let title = String(match.output.1 ?? match.output.2!)
             let artist = normalized[..<match.range.lowerBound]
                 .trimmingCharacters(in: .whitespaces)
             return (artist.isEmpty ? nil : artist, title)

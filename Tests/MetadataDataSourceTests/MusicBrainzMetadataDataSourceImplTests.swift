@@ -6,6 +6,11 @@ import Testing
 
 @Suite("MusicBrainzMetadataDataSourceImpl")
 struct MusicBrainzMetadataDataSourceImplTests {
+    @Test("default init() wires the Papyrus-generated MusicBrainzAPI")
+    func defaultInitInstantiates() {
+        _ = MusicBrainzMetadataDataSourceImpl()
+    }
+
     @Test("matchRecordings skips entries without artist and deduplicates title variants")
     func matchRecordingsDeduplicates() {
         let sut = MusicBrainzMetadataDataSourceImpl(api: MusicBrainzStub())

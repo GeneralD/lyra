@@ -61,6 +61,13 @@ struct OpenAICompatibleAPITests {
         #expect(provider.baseURL == "https://api.example.com")
     }
 
+    @Test("endpoint without trailing slash is left intact")
+    func providerKeepsEndpointWithoutTrailingSlash() {
+        let withoutSlash = AIEndpoint(endpoint: "https://api.example.com", model: "gpt-test", apiKey: "key")
+        let provider = OpenAICompatibleAPI.provider(for: withoutSlash)
+        #expect(provider.baseURL == "https://api.example.com")
+    }
+
     @Test("provider attaches Bearer token via modifyRequests")
     func providerAttachesBearer() async {
         let recorder = TestHTTPService()
@@ -73,5 +80,25 @@ struct OpenAICompatibleAPITests {
         _ = try? await api.chatCompletion(request: request)
 
         #expect(recorder.captured?.value(forHTTPHeaderField: "Authorization") == "Bearer xyz")
+    }
+
+    @Test("OpenAICompatibleAPI.provider(for:) attaches Bearer from AIEndpoint config")
+    func productionProviderAttachesBearer() async throws {
+        // Exercise the production `provider(for:)` factory by reusing its
+        // configured modifiers on a Provider wired to TestHTTPService.
+        let production = OpenAICompatibleAPI.provider(for: config)
+        let recorder = TestHTTPService()
+        let provider = Provider(
+            baseURL: production.baseURL,
+            http: recorder,
+            modifiers: production.modifiers,
+            interceptors: production.interceptors
+        )
+        let api = OpenAICompatibleAPI(provider: provider)
+        let request = ChatCompletionRequest.metadataExtraction(model: config.model, rawTitle: "t", rawArtist: "a")
+
+        _ = try? await api.chatCompletion(request: request)
+
+        #expect(recorder.captured?.value(forHTTPHeaderField: "Authorization") == "Bearer secret-key")
     }
 }

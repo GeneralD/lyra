@@ -4,6 +4,33 @@ import Testing
 
 @testable import MetadataDataSource
 
+@Suite("OpenAICompatibleHealthCheck default backend")
+struct OpenAICompatibleHealthCheckDefaultBackendTests {
+    @Test("defaultRequestPerformer invokes URLSession (errors on refused port)")
+    func defaultPerformerErrorPath() async {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:1/")!)
+        request.timeoutInterval = 1
+        await #expect(throws: (any Error).self) {
+            _ = try await OpenAICompatibleHealthCheck.defaultRequestPerformer(request)
+        }
+    }
+
+    @Test("defaultRequestPerformer returns Data + URLResponse on success")
+    func defaultPerformerSuccessPath() async throws {
+        URLProtocolMock.register(host: "openai.invalid") { _ in
+            (HTTPURLResponse(url: URL(string: "http://openai.invalid/")!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("{}".utf8))
+        }
+        URLProtocol.registerClass(URLProtocolMock.self)
+        defer { URLProtocolMock.unregister(host: "openai.invalid") }
+
+        let (data, response) = try await OpenAICompatibleHealthCheck.defaultRequestPerformer(
+            URLRequest(url: URL(string: "http://openai.invalid/")!)
+        )
+        #expect(String(data: data, encoding: .utf8) == "{}")
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+    }
+}
+
 @Suite("OpenAICompatibleHealthCheck")
 struct OpenAICompatibleHealthCheckTests {
     private let config = AIEndpoint(

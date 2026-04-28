@@ -116,4 +116,20 @@ struct RegexMetadataDataSourceImplTests {
         let keys = candidates.map { "\($0.title.lowercased())|\($0.artist.lowercased())" }
         #expect(keys.count == Set(keys).count)
     }
+
+    @Test("parseArtistTitle returns nil artist when only Japanese-bracket title is present")
+    func parseArtistTitleNoArtistBeforeBracket() {
+        // Input has 『Song』 with no artist prefix → trimmed prefix is empty → artist = nil
+        let parsed = parser.parseArtistTitle("『Brave Shine』")
+        #expect(parsed.artist == nil)
+        #expect(parsed.title == "Brave Shine")
+    }
+
+    @Test("resolve(track:) delegates to generateCandidates")
+    func resolveDelegatesToGenerateCandidates() async {
+        let track = Track(title: "Linkin Park - Numb (Official Video)", artist: "Linkin Park - Topic")
+        let resolved = await parser.resolve(track: track)
+        let direct = parser.generateCandidates(title: track.title, artist: track.artist)
+        #expect(resolved == direct)
+    }
 }
