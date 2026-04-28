@@ -11,6 +11,9 @@ public protocol LRCLib {
 
     @GET("/api/search")
     func search(q: String) async throws -> [LyricsResult]
+
+    @GET("/api/search?q=test")
+    func healthCheck() async throws -> Response
 }
 
 extension LRCLib {

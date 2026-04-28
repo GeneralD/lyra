@@ -17,7 +17,7 @@ struct MusicBrainzAPITests {
         let query = MusicBrainzAPI.luceneQuery(title: "Song", artist: nil, duration: nil)
 
         _ = try? await api.searchRecording(query: query, fmt: "json", limit: 5)
-        let captured = try? #require(recorder.captured)
+        let captured = recorder.captured
 
         #expect(captured?.httpMethod == "GET")
         #expect(captured?.url?.scheme == "https")
@@ -40,6 +40,23 @@ struct MusicBrainzAPITests {
         #expect(items.first(where: { $0.name == "query" })?.value == "\"Brave Shine\"")
         #expect(items.first(where: { $0.name == "fmt" })?.value == "json")
         #expect(items.first(where: { $0.name == "limit" })?.value == "5")
+    }
+
+    @Test("healthCheck builds fixed search request")
+    func healthCheckRequest() async {
+        let recorder = TestHTTPService(body: Data())
+        let api = makeAPI(recorder)
+
+        _ = try? await api.healthCheck()
+        let url = recorder.captured?.url
+        let components = URLComponents(url: url ?? URL(string: "about:blank")!, resolvingAgainstBaseURL: false)
+        let items = components?.queryItems ?? []
+
+        #expect(url?.path == "/ws/2/recording")
+        #expect(items.first(where: { $0.name == "query" })?.value == "test")
+        #expect(items.first(where: { $0.name == "fmt" })?.value == "json")
+        #expect(items.first(where: { $0.name == "limit" })?.value == "1")
+        #expect(recorder.captured?.httpMethod == "GET")
     }
 
     @Test("luceneQuery composes title-only filter")

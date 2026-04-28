@@ -1,23 +1,21 @@
 import Domain
 import Foundation
+@preconcurrency import Papyrus
 
 public struct LRCLibHealthCheck: Sendable {
-    private let requestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    private let healthCheckRunner: @Sendable () async throws -> Void
 
     public init() {
-        self.init(requestPerformer: Self.defaultRequestPerformer)
+        let api = LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL))
+        self.init {
+            _ = try await api.healthCheck()
+        }
     }
 
     init(
-        requestPerformer: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+        healthCheckRunner: @escaping @Sendable () async throws -> Void
     ) {
-        self.requestPerformer = requestPerformer
-    }
-
-    /// Default backend used by `init()`. Exposed `internal` so coverage tests
-    /// can invoke it directly without going through the network-bound init.
-    static let defaultRequestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
-        try await URLSession.shared.data(for: request)
+        self.healthCheckRunner = healthCheckRunner
     }
 }
 
@@ -25,24 +23,19 @@ extension LRCLibHealthCheck: HealthCheckable {
     public var serviceName: String { "LRCLIB API" }
 
     public func healthCheck() async -> HealthCheckResult {
-        // baseURL + literal path is a known-valid URL string; cannot fail.
-        let url = URL(string: "\(LRCLibAPI.baseURL)/api/search?q=test")!
-        var request = URLRequest(url: url)
-        request.setValue("lyra (https://github.com/GeneralD/lyra)", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10
-
         let start = ContinuousClock.now
         do {
-            let (_, response) = try await requestPerformer(request)
+            try await healthCheckRunner()
             let elapsed = ContinuousClock.now - start
             let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
-            guard let http = response as? HTTPURLResponse,
-                (200..<300).contains(http.statusCode)
-            else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            return HealthCheckResult(status: .pass, detail: "reachable (\(ms)ms)", latency: Double(ms) / 1000)
+        } catch let error as PapyrusError {
+            let elapsed = ContinuousClock.now - start
+            let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
+            if let code = error.response?.statusCode ?? (error.response != nil ? -1 : nil) {
                 return HealthCheckResult(status: .fail, detail: "HTTP \(code)", latency: Double(ms) / 1000)
             }
-            return HealthCheckResult(status: .pass, detail: "reachable (\(ms)ms)", latency: Double(ms) / 1000)
+            return HealthCheckResult(status: .fail, detail: error.message)
         } catch {
             return HealthCheckResult(status: .fail, detail: error.localizedDescription)
         }

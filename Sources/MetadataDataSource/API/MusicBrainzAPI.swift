@@ -6,6 +6,9 @@ import Foundation
 public protocol MusicBrainz {
     @GET("/ws/2/recording")
     func searchRecording(query: String, fmt: String, limit: Int) async throws -> MusicBrainzResponse
+
+    @GET("/ws/2/recording?query=test&fmt=json&limit=1")
+    func healthCheck() async throws -> Response
 }
 
 extension MusicBrainz {
