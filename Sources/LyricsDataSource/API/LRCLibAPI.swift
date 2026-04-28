@@ -7,7 +7,7 @@ import Foundation
 @Headers(["User-Agent": "lyra (https://github.com/GeneralD/lyra)"])
 public protocol LRCLib {
     @GET("/api/get")
-    func get(trackName: String, artistName: String, duration: Double?) async throws -> LyricsResult
+    func get(trackName: String, artistName: String, duration: Int?) async throws -> LyricsResult
 
     @GET("/api/search")
     func search(q: String) async throws -> [LyricsResult]
@@ -15,4 +15,5 @@ public protocol LRCLib {
 
 extension LRCLib {
     public static var baseURL: String { "https://lrclib.net" }
+    public static var userAgent: String { "lyra (https://github.com/GeneralD/lyra)" }
 }

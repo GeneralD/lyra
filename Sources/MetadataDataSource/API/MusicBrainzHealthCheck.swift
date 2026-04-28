@@ -21,11 +21,11 @@ extension MusicBrainzHealthCheck: HealthCheckable {
     public var serviceName: String { "MusicBrainz API" }
 
     public func healthCheck() async -> HealthCheckResult {
-        guard let url = URL(string: "https://musicbrainz.org/ws/2/recording?query=test&fmt=json&limit=1") else {
+        guard let url = URL(string: "\(MusicBrainzAPI.baseURL)/ws/2/recording?query=test&fmt=json&limit=1") else {
             return HealthCheckResult(status: .fail, detail: "invalid URL")
         }
         var request = URLRequest(url: url)
-        request.setValue("lyra (https://github.com/GeneralD/lyra)", forHTTPHeaderField: "User-Agent")
+        request.setValue(MusicBrainzAPI.userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10
 
         let start = ContinuousClock.now

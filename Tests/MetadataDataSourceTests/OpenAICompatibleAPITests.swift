@@ -52,22 +52,13 @@ struct OpenAICompatibleAPITests {
     }
 
     @Test("trailing slash in endpoint is normalized")
-    func providerNormalizesTrailingSlash() async {
-        let recorder = TestHTTPService()
+    func providerNormalizesTrailingSlash() {
+        // config.endpoint ends with "/"; the provider factory must strip it
+        // so requests don't get a double slash before the path.
         let provider = OpenAICompatibleAPI.provider(for: config)
-        // Force the recorder onto a fresh provider built the same way for assertion
-        let api = OpenAICompatibleAPI(
-            provider: Provider(baseURL: provider.baseURL, http: recorder).modifyRequests { req in
-                req.addHeader("Authorization", value: "Bearer \(self.config.apiKey)")
-            })
-        let request = ChatCompletionRequest.metadataExtraction(model: "x", rawTitle: "t", rawArtist: "a")
 
-        _ = try? await api.chatCompletion(request: request)
-        let url = recorder.captured?.url?.absoluteString ?? ""
-
-        // No double slash before "/chat/completions"
-        #expect(!url.contains("api.example.com//chat"))
-        #expect(url.contains("api.example.com/chat/completions"))
+        #expect(!provider.baseURL.hasSuffix("/"))
+        #expect(provider.baseURL == "https://api.example.com")
     }
 
     @Test("provider attaches Bearer token via modifyRequests")

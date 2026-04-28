@@ -63,7 +63,7 @@ struct LyricsDataSourceImplTests {
 
     @Test("get forwards arguments verbatim to the API")
     func getForwardsArguments() async {
-        let captured = ArgumentRecorder<(String, String, Double?)>()
+        let captured = ArgumentRecorder<(String, String, Int?)>()
         let dataSource = LyricsDataSourceImpl(
             api: LRCLibStub(get: { trackName, artistName, duration in
                 await captured.set((trackName, artistName, duration))
@@ -77,6 +77,23 @@ struct LyricsDataSourceImplTests {
         #expect(value?.0 == "Numb")
         #expect(value?.1 == "Linkin Park")
         #expect(value?.2 == 187)
+    }
+
+    @Test("get truncates fractional duration to integer seconds")
+    func getTruncatesDuration() async {
+        let captured = ArgumentRecorder<(String, String, Int?)>()
+        let dataSource = LyricsDataSourceImpl(
+            api: LRCLibStub(get: { trackName, artistName, duration in
+                await captured.set((trackName, artistName, duration))
+                return LyricsResult(plainLyrics: "x")
+            })
+        )
+
+        _ = await dataSource.get(title: "T", artist: "A", duration: 225.7)
+        let value = await captured.value
+
+        // LRCLib expects integer-second durations; the DataSource layer truncates.
+        #expect(value?.2 == 225)
     }
 
     @Test("search returns decoded results")

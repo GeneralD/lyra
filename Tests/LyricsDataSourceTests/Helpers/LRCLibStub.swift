@@ -6,11 +6,11 @@ import Foundation
 /// Manual mock of the `LRCLib` protocol for testing `LyricsDataSourceImpl`
 /// without exercising URL construction or networking.
 struct LRCLibStub: LRCLib, @unchecked Sendable {
-    let getResult: @Sendable (_ trackName: String, _ artistName: String, _ duration: Double?) async throws -> LyricsResult
+    let getResult: @Sendable (_ trackName: String, _ artistName: String, _ duration: Int?) async throws -> LyricsResult
     let searchResult: @Sendable (_ q: String) async throws -> [LyricsResult]
 
     init(
-        get: @escaping @Sendable (_ trackName: String, _ artistName: String, _ duration: Double?) async throws -> LyricsResult = { _, _, _ in .empty
+        get: @escaping @Sendable (_ trackName: String, _ artistName: String, _ duration: Int?) async throws -> LyricsResult = { _, _, _ in .empty
         },
         search: @escaping @Sendable (_ q: String) async throws -> [LyricsResult] = { _ in [] }
     ) {
@@ -18,7 +18,7 @@ struct LRCLibStub: LRCLib, @unchecked Sendable {
         self.searchResult = search
     }
 
-    func get(trackName: String, artistName: String, duration: Double?) async throws -> LyricsResult {
+    func get(trackName: String, artistName: String, duration: Int?) async throws -> LyricsResult {
         try await getResult(trackName, artistName, duration)
     }
 

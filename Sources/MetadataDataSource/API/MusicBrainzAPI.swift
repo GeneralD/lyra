@@ -10,6 +10,7 @@ public protocol MusicBrainz {
 
 extension MusicBrainz {
     public static var baseURL: String { "https://musicbrainz.org" }
+    public static var userAgent: String { "lyra (https://github.com/GeneralD/lyra)" }
 
     /// Build the Lucene-style query string used by MusicBrainz.
     public static func luceneQuery(title: String, artist: String?, duration: Double?) -> String {

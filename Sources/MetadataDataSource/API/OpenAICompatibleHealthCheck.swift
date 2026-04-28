@@ -44,7 +44,11 @@ extension OpenAICompatibleHealthCheck: HealthCheckable {
             "messages": [["role": "user", "content": "ping"]],
             "max_tokens": 1,
         ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            return HealthCheckResult(status: .fail, detail: "failed to serialize request body: \(error.localizedDescription)")
+        }
 
         let start = ContinuousClock.now
         do {

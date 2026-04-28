@@ -19,7 +19,7 @@ extension LyricsDataSourceImpl: @unchecked Sendable {}
 
 extension LyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
-        guard let result = try? await api.get(trackName: title, artistName: artist, duration: duration),
+        guard let result = try? await api.get(trackName: title, artistName: artist, duration: duration.map(Int.init)),
             result.plainLyrics != nil || result.syncedLyrics != nil
         else { return nil }
         return result
