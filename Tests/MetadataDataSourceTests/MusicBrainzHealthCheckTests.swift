@@ -60,6 +60,7 @@ struct MusicBrainzHealthCheckTests {
 
         #expect(result.status == .fail)
         #expect(result.detail == "HTTP -1")
+        #expect(result.latency != nil)
     }
 
     @Test("healthCheck reports request errors")

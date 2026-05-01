@@ -34,7 +34,7 @@ struct MusicBrainzAPITests {
 
         _ = try? await api.searchRecording(query: query, fmt: "json", limit: 5)
         let url = try? #require(recorder.captured?.url)
-        let components = URLComponents(url: url ?? URL(string: "about:blank")!, resolvingAgainstBaseURL: false)
+        let components = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
         let items = components?.queryItems ?? []
 
         #expect(items.first(where: { $0.name == "query" })?.value == "\"Brave Shine\"")
@@ -48,8 +48,8 @@ struct MusicBrainzAPITests {
         let api = makeAPI(recorder)
 
         _ = try? await api.healthCheck()
-        let url = recorder.captured?.url
-        let components = URLComponents(url: url ?? URL(string: "about:blank")!, resolvingAgainstBaseURL: false)
+        let url = try? #require(recorder.captured?.url)
+        let components = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
         let items = components?.queryItems ?? []
 
         #expect(url?.path == "/ws/2/recording")

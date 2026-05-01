@@ -92,6 +92,21 @@ struct OpenAICompatibleAPITests {
         #expect(metadataBlock.contains(#"\u0001"#))
     }
 
+    @Test("request factory escapes Unicode line and paragraph separators")
+    func requestFactoryEscapesUnicodeSeparators() throws {
+        let rawTitle = "title\u{2028}line"
+        let rawArtist = "artist\u{2029}paragraph"
+        let request = MetadataExtractionPrompt(rawTitle: rawTitle, rawArtist: rawArtist)
+            .request(model: config.model)
+        let prompt = request.messages[1].content
+        let metadataBlock = try rawMetadataBlockString(from: prompt)
+        let metadata = try parseRawMetadata(from: prompt)
+
+        #expect(metadata == RawMetadataBlock(title: rawTitle, artist: rawArtist))
+        #expect(metadataBlock.contains(#"\u2028"#))
+        #expect(metadataBlock.contains(#"\u2029"#))
+    }
+
     @Test("trailing slash in endpoint is normalized")
     func providerNormalizesTrailingSlash() {
         // config.endpoint ends with "/"; the provider factory must strip it

@@ -57,8 +57,7 @@ struct MetadataExtractionPrompt {
         8. Use the song's ORIGINAL LANGUAGE for both title and artist:
            - Japanese songs → Japanese title and artist (e.g. "大塚愛", not "Ai Otsuka")
            - Korean songs → Korean title and artist
-           - If romanized and native forms coexist (e.g. "しゃぼん玉 - Shabondama"), \
-        keep only the native-script form
+           - If romanized and native forms coexist (e.g. "しゃぼん玉 - Shabondama"), keep only the native-script form
         9. Normalize spacing and symbols.
 
         Output STRICT JSON only:
@@ -90,6 +89,10 @@ struct MetadataExtractionPrompt {
             "\\r"
         case "\t":
             "\\t"
+        case "\u{2028}":
+            "\\u2028"
+        case "\u{2029}":
+            "\\u2029"
         case _ where scalar.value < 0x20:
             "\\u" + paddedHex(scalar.value)
         default:
