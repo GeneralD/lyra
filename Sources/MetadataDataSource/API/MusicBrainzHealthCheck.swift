@@ -6,8 +6,8 @@ public struct MusicBrainzHealthCheck: Sendable {
     private let healthCheckRunner: @Sendable () async throws -> Void
 
     public init() {
-        let api = MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL))
         self.init {
+            let api = MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL))
             _ = try await api.healthCheck()
         }
     }

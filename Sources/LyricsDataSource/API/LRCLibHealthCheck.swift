@@ -6,8 +6,8 @@ public struct LRCLibHealthCheck: Sendable {
     private let healthCheckRunner: @Sendable () async throws -> Void
 
     public init() {
-        let api = LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL))
         self.init {
+            let api = LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL))
             _ = try await api.healthCheck()
         }
     }
