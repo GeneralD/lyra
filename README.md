@@ -237,9 +237,10 @@ If neither `yt-dlp` nor `uvx` is found, lyra will show an error. If `ffmpeg` is 
 location = "https://www.youtube.com/watch?v=XXXXX"
 start = "0:30"     # skip intro
 end = "3:45"       # stop before outro
+scale = 1.15       # enlarge this video to hide letterboxing
 ```
 
-Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` and `end` are optional. The bare string format (`wallpaper = "file.mp4"`) still works for simple cases.
+Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` and `end` are optional. `scale` defaults to `1.0`; values above `1.0` zoom the current video only. The bare string format (`wallpaper = "file.mp4"`) still works for simple cases.
 
 **Multiple wallpapers** (optional):
 
@@ -256,13 +257,16 @@ location = "loop.mp4"
 location = "https://www.youtube.com/watch?v=XXXXX"
 start = "0:30"
 end = "3:45"
+scale = 1.2
 
 [[wallpaper.items]]
 location = "https://example.com/bg.mp4"
+scale = 1.05
 ```
 
 - `cycle` plays items in the order written, advancing when each item finishes (wraps around at the end).
 - `shuffle` advances to a random item each time playback completes, never repeating the current one twice in a row.
+- `scale` is configured per item, so videos with different letterboxing can use different zoom values.
 - All items are resolved in parallel. In `cycle`, playback starts as soon as the first configured item is ready — later items play in configured order regardless of download speed. In `shuffle`, playback starts with whichever item resolves first.
 
 ### Full example
@@ -278,6 +282,7 @@ screen = "main"
 location = "https://www.youtube.com/watch?v=Sn1ieBOLGB0"
 start = "0:17"
 end = "3:37"
+scale = 1.1
 
 [text.default]
 font = "Helvetica Neue"

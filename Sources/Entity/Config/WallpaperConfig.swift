@@ -10,8 +10,13 @@ public struct WallpaperConfig {
     }
 
     /// Convenience for single-item config (backward-compatible with legacy call sites).
-    public init(location: String, start: TimeInterval? = nil, end: TimeInterval? = nil) {
-        self.items = [WallpaperItemConfig(location: location, start: start, end: end)]
+    public init(
+        location: String,
+        start: TimeInterval? = nil,
+        end: TimeInterval? = nil,
+        scale: Double = 1.0
+    ) {
+        self.items = [WallpaperItemConfig(location: location, start: start, end: end, scale: scale)]
         self.mode = .cycle
     }
 }
@@ -22,13 +27,13 @@ extension WallpaperConfig: Equatable {}
 extension WallpaperConfig: Codable {
     enum CodingKeys: String, CodingKey {
         case items, mode
-        case location, start, end
+        case location, start, end, scale
     }
 
     /// Decodes three shapes:
     /// - Bare string: `wallpaper = "clip.mp4"` → single item, no trim, cycle
-    /// - Legacy table: `[wallpaper] location = "x" start = "0:10" end = "0:40"` → single item with trim
-    /// - Multi table: `[wallpaper] mode = "shuffle" [[wallpaper.items]] ...` → items array
+    /// - Legacy table: `[wallpaper] location = "x" start = "0:10" end = "0:40" scale = 1.2`
+    /// - Multi table: `[wallpaper] mode = "shuffle" [[wallpaper.items]] ...` → per-item trim/scale
     public init(from decoder: Decoder) throws {
         if let container = try? decoder.singleValueContainer(),
             let value = try? container.decode(String.self)
@@ -49,7 +54,15 @@ extension WallpaperConfig: Codable {
         let rawStart = try c.decodeIfPresent(String.self, forKey: .start).flatMap(WallpaperItemConfig.parseTime)
         let rawEnd = try c.decodeIfPresent(String.self, forKey: .end).flatMap(WallpaperItemConfig.parseTime)
         let (validatedStart, validatedEnd) = WallpaperItemConfig.validate(start: rawStart, end: rawEnd)
-        items = [WallpaperItemConfig(location: location, start: validatedStart, end: validatedEnd)]
+        let scale = WallpaperItemConfig.validate(
+            scale: try c.decodeIfPresent(Double.self, forKey: .scale))
+        items = [
+            WallpaperItemConfig(
+                location: location,
+                start: validatedStart,
+                end: validatedEnd,
+                scale: scale)
+        ]
     }
 
     public func encode(to encoder: Encoder) throws {

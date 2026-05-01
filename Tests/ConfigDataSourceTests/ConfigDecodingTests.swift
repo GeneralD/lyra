@@ -76,6 +76,7 @@ struct WallpaperTomlDecodingTests {
         #expect(config.wallpaper?.items.first?.location == "loop.mp4")
         #expect(config.wallpaper?.items.first?.start == nil)
         #expect(config.wallpaper?.items.first?.end == nil)
+        #expect(config.wallpaper?.items.first?.scale == 1.0)
     }
 
     @Test("[wallpaper] table with location only")
@@ -88,6 +89,7 @@ struct WallpaperTomlDecodingTests {
         #expect(config.wallpaper?.items.first?.location == "bg.mp4")
         #expect(config.wallpaper?.items.first?.start == nil)
         #expect(config.wallpaper?.items.first?.end == nil)
+        #expect(config.wallpaper?.items.first?.scale == 1.0)
     }
 
     @Test("[wallpaper] table with start and end")
@@ -102,6 +104,36 @@ struct WallpaperTomlDecodingTests {
         #expect(config.wallpaper?.items.first?.location == "https://www.youtube.com/watch?v=XXXXX")
         #expect(config.wallpaper?.items.first?.start == 30.0)
         #expect(config.wallpaper?.items.first?.end == 225.0)
+    }
+
+    @Test("[wallpaper] table with scale")
+    func tableWithScale() throws {
+        let config = try decode(
+            """
+            [wallpaper]
+            location = "https://www.youtube.com/watch?v=XXXXX"
+            scale = 1.25
+            """)
+        #expect(config.wallpaper?.items.first?.location == "https://www.youtube.com/watch?v=XXXXX")
+        #expect(config.wallpaper?.items.first?.scale == 1.25)
+    }
+
+    @Test("[[wallpaper.items]] table with per-item scale")
+    func itemsWithScale() throws {
+        let config = try decode(
+            """
+            [wallpaper]
+            mode = "cycle"
+
+            [[wallpaper.items]]
+            location = "a.mp4"
+            scale = 1.1
+
+            [[wallpaper.items]]
+            location = "b.mp4"
+            scale = 1.35
+            """)
+        #expect(config.wallpaper?.items.map(\.scale) == [1.1, 1.35])
     }
 
     @Test("[wallpaper] table with start only")

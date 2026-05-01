@@ -9,6 +9,7 @@ public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var wallpaperURL: URL?
     @Published public private(set) var startTime: TimeInterval?
     @Published public private(set) var endTime: TimeInterval?
+    @Published public private(set) var wallpaperScale: Double = 1.0
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var player: AVPlayer?
 
@@ -38,6 +39,7 @@ public final class WallpaperPresenter: ObservableObject {
         isLoading = true
         items = []
         currentIndex = 0
+        wallpaperScale = 1.0
         mode = interactor.playbackMode
         observeSleepWake()
         let stream = interactor.resolvedWallpapers()
@@ -67,6 +69,7 @@ public final class WallpaperPresenter: ObservableObject {
         cancellables.removeAll()
         items = []
         currentIndex = 0
+        wallpaperScale = 1.0
     }
 
     /// Register a side-effect to run once when the player becomes available.
@@ -81,6 +84,13 @@ public final class WallpaperPresenter: ObservableObject {
             .sink { player in handler(player) }
             .store(in: &cancellables)
     }
+
+    public func onWallpaperScaleChange(_ handler: @escaping @MainActor (Double) -> Void) {
+        $wallpaperScale
+            .receive(on: DispatchQueue.main)
+            .sink { scale in handler(scale) }
+            .store(in: &cancellables)
+    }
 }
 
 extension WallpaperPresenter {
@@ -89,6 +99,7 @@ extension WallpaperPresenter {
             wallpaperURL = nil
             startTime = nil
             endTime = nil
+            wallpaperScale = 1.0
             controller.stop()
             return
         }
@@ -96,6 +107,7 @@ extension WallpaperPresenter {
         wallpaperURL = item.url
         startTime = item.start
         endTime = item.end
+        wallpaperScale = item.scale
         await controller.play(item: item)
     }
 

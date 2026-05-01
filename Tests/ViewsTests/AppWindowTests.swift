@@ -116,6 +116,42 @@ struct AppWindowTests {
         #expect(playerLayer?.player === player)
         #expect(playerLayer?.videoGravity == .resizeAspectFill)
         #expect(playerLayer?.autoresizingMask == [.layerWidthSizable, .layerHeightSizable])
+        #expect(playerLayer?.affineTransform() == .identity)
+    }
+
+    @Test("attachPlayer applies wallpaper scale to the player layer")
+    func attachPlayerAppliesScale() {
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 500)
+        )
+        surface.contentView = hostingView
+        let player = AVPlayer()
+
+        AppWindow.attachPlayer(player, to: surface, hostingView: hostingView, scale: 1.25)
+
+        let playerLayer = surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
+        #expect(playerLayer?.affineTransform().a == 1.25)
+        #expect(playerLayer?.affineTransform().d == 1.25)
+    }
+
+    @Test("applyWallpaperScale updates existing player layer and clamps shrink values")
+    func applyWallpaperScaleUpdatesLayer() {
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 500)
+        )
+        surface.contentView = hostingView
+        AppWindow.attachPlayer(AVPlayer(), to: surface, hostingView: hostingView)
+
+        AppWindow.applyWallpaperScale(1.5, to: surface)
+        let playerLayer = surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
+        #expect(playerLayer?.affineTransform().a == 1.5)
+        #expect(playerLayer?.affineTransform().d == 1.5)
+
+        AppWindow.applyWallpaperScale(0.5, to: surface)
+        #expect(playerLayer?.affineTransform().a == 1.0)
+        #expect(playerLayer?.affineTransform().d == 1.0)
     }
 }
 

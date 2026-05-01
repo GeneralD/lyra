@@ -39,6 +39,21 @@ struct ConfigRepositoryTests {
             }
         }
 
+        @Test("passes wallpaper scale through")
+        func wallpaperScale() {
+            let config = makeAppConfig(wallpaper: ["location": "bg.mp4", "scale": 1.3])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.wallpaper?.items.first?.location == "bg.mp4")
+                #expect(style.wallpaper?.items.first?.scale == 1.3)
+            }
+        }
+
         @Test("wallpaper is nil when wallpaper config is nil")
         func wallpaperNil() {
             let config = makeAppConfig(wallpaper: nil)
@@ -254,7 +269,7 @@ private enum StubError: Error, LocalizedError {
 
 // MARK: - Test fixtures
 
-private func makeAppConfig(wallpaper: String? = nil, ai: AIConfig? = nil) -> AppConfig {
+private func makeAppConfig(wallpaper: Any? = nil, ai: AIConfig? = nil) -> AppConfig {
     var fields = [String: Any]()
     wallpaper.map { fields["wallpaper"] = $0 }
     ai.map { fields["ai"] = ["endpoint": $0.endpoint, "model": $0.model, "api_key": $0.apiKey] }
