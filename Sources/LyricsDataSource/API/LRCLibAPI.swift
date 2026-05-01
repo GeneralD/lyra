@@ -11,9 +11,11 @@ public protocol LRCLib {
 
     @GET("/api/search")
     func search(q: String) async throws -> [LyricsResult]
+
+    @GET("/api/search?q=test")
+    func healthCheck() async throws -> Response
 }
 
 extension LRCLib {
     public static var baseURL: String { "https://lrclib.net" }
-    public static var userAgent: String { "lyra (https://github.com/GeneralD/lyra)" }
 }

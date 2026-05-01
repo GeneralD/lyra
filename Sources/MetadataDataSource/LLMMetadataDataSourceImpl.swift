@@ -33,9 +33,8 @@ extension LLMMetadataDataSourceImpl: MetadataDataSource {
 extension LLMMetadataDataSourceImpl {
     fileprivate func callAPI(config: AIEndpoint, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
         let api = apiFactory(config)
-        let request = ChatCompletionRequest.metadataExtraction(
-            model: config.model, rawTitle: rawTitle, rawArtist: rawArtist
-        )
+        let request = MetadataExtractionPrompt(rawTitle: rawTitle, rawArtist: rawArtist)
+            .request(model: config.model)
 
         let response: ChatCompletionResponse
         do {

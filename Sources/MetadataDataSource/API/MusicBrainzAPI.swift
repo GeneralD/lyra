@@ -6,11 +6,13 @@ import Foundation
 public protocol MusicBrainz {
     @GET("/ws/2/recording")
     func searchRecording(query: String, fmt: String, limit: Int) async throws -> MusicBrainzResponse
+
+    @GET("/ws/2/recording?query=test&fmt=json&limit=1")
+    func healthCheck() async throws -> Response
 }
 
 extension MusicBrainz {
     public static var baseURL: String { "https://musicbrainz.org" }
-    public static var userAgent: String { "lyra (https://github.com/GeneralD/lyra)" }
 
     /// Build the Lucene-style query string used by MusicBrainz.
     public static func luceneQuery(title: String, artist: String?, duration: Double?) -> String {

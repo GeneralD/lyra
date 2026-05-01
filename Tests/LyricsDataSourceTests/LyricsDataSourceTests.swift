@@ -51,6 +51,18 @@ struct LRCLibAPIURLConstructionTests {
         #expect(url.contains("q=hello%20world"))
     }
 
+    @Test("healthCheck builds fixed search request")
+    func healthCheckEndpointConstruction() async throws {
+        let recorder = TestHTTPService(body: Data())
+        let api = makeAPI(recorder)
+
+        _ = try await api.healthCheck()
+        let url = recorder.captured?.url?.absoluteString ?? ""
+
+        #expect(url == "https://lrclib.net/api/search?q=test")
+        #expect(recorder.captured?.httpMethod == "GET")
+    }
+
     @Test("requests carry the User-Agent header")
     func userAgentHeader() async throws {
         let recorder = TestHTTPService()

@@ -1,23 +1,24 @@
 import Domain
 import Foundation
+@preconcurrency import Papyrus
 
 public struct MusicBrainzHealthCheck: Sendable {
-    private let requestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    private let healthCheckRunner: @Sendable () async throws -> Void
 
     public init() {
-        self.init(requestPerformer: Self.defaultRequestPerformer)
+        self.init {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 10
+            let session = URLSession(configuration: configuration)
+            let api = MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: session))
+            _ = try await api.healthCheck()
+        }
     }
 
     init(
-        requestPerformer: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+        healthCheckRunner: @escaping @Sendable () async throws -> Void
     ) {
-        self.requestPerformer = requestPerformer
-    }
-
-    /// Default backend used by `init()`. Exposed `internal` so coverage tests
-    /// can invoke it directly without going through the network-bound init.
-    static let defaultRequestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
-        try await URLSession.shared.data(for: request)
+        self.healthCheckRunner = healthCheckRunner
     }
 }
 
@@ -25,24 +26,24 @@ extension MusicBrainzHealthCheck: HealthCheckable {
     public var serviceName: String { "MusicBrainz API" }
 
     public func healthCheck() async -> HealthCheckResult {
-        // baseURL + literal path is a known-valid URL string; cannot fail.
-        let url = URL(string: "\(MusicBrainzAPI.baseURL)/ws/2/recording?query=test&fmt=json&limit=1")!
-        var request = URLRequest(url: url)
-        request.setValue(MusicBrainzAPI.userAgent, forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10
-
         let start = ContinuousClock.now
-        do {
-            let (_, response) = try await requestPerformer(request)
+
+        func elapsedMs() -> Int64 {
             let elapsed = ContinuousClock.now - start
-            let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
-            guard let http = response as? HTTPURLResponse,
-                (200..<300).contains(http.statusCode)
-            else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            return elapsed.components.seconds * 1000
+                + elapsed.components.attoseconds / 1_000_000_000_000_000
+        }
+
+        do {
+            try await healthCheckRunner()
+            let ms = elapsedMs()
+            return HealthCheckResult(status: .pass, detail: "reachable (\(ms)ms)", latency: Double(ms) / 1000)
+        } catch let error as PapyrusError {
+            let ms = elapsedMs()
+            if let code = error.response?.statusCode ?? (error.response != nil ? -1 : nil) {
                 return HealthCheckResult(status: .fail, detail: "HTTP \(code)", latency: Double(ms) / 1000)
             }
-            return HealthCheckResult(status: .pass, detail: "reachable (\(ms)ms)", latency: Double(ms) / 1000)
+            return HealthCheckResult(status: .fail, detail: error.message, latency: Double(ms) / 1000)
         } catch {
             return HealthCheckResult(status: .fail, detail: error.localizedDescription)
         }

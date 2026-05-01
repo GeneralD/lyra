@@ -112,8 +112,8 @@ struct LLMMetadataDataSourceResolveTests {
         let request = await captured.value
 
         #expect(request?.model == "gpt-test")
-        #expect(request?.messages.first(where: { $0.role == "user" })?.content.contains("Title: Some Title") == true)
-        #expect(request?.messages.first(where: { $0.role == "user" })?.content.contains("Artist: Some Uploader") == true)
+        #expect(request?.messages.first(where: { $0.role == "user" })?.content.contains("\"title\": \"Some Title\"") == true)
+        #expect(request?.messages.first(where: { $0.role == "user" })?.content.contains("\"artist\": \"Some Uploader\"") == true)
         #expect(request?.responseFormat.type == "json_object")
         #expect(request?.temperature == 0)
     }
