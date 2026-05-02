@@ -276,26 +276,38 @@ scale = 1.05
 ```toml
 includes = ["ai.toml"]
 
-screen = "main"
+screen = "vacant"
+screen_debounce = 5
 
 [wallpaper]
+mode = "cycle"
+
+[[wallpaper.items]]
 location = "https://www.youtube.com/watch?v=Sn1ieBOLGB0"
 start = "0:17"
 end = "3:37"
-scale = 1.1
+
+[[wallpaper.items]]
+location = "https://www.youtube.com/watch?v=P0az9IS2XQQ"
+start = "0:24"
+end = "3:15"
+scale = 1.325
 
 [text.default]
-font = "Helvetica Neue"
-size = 14
+font = "Zen Maru Gothic"
+size = 12
 color = "#FFFFFFD9"
 shadow = "#000000E6"
-spacing = 8
+spacing = 6
 
 [text.title]
-size = 20
+font = "Zen Kaku Gothic New"
+size = 18
 weight = "bold"
 
 [text.artist]
+font = "Zen Kaku Gothic New"
+size = 12
 weight = "medium"
 
 [text.lyric]
@@ -304,20 +316,21 @@ color = "#FFFFFFE6"
 [text.highlight]
 color = ["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]
 
-[text.decode_effect]
-duration = 1.0
-charset = ["latin", "cyrillic"]
-
 [artwork]
-size = 120
-opacity = 0.9
+size = 96
+opacity = 0.8
 
 [ripple]
-# enabled = true
 color = "#AAAAFFFF"
-radius = 80
+radius = 60
 duration = 0.4
-idle = 1.5
+idle = 1.3
+```
+
+This example uses `Zen Maru Gothic` and `Zen Kaku Gothic New`. If those fonts are not installed, install them with Homebrew Cask:
+
+```sh
+brew install --cask font-zen-maru-gothic font-zen-kaku-gothic-new
 ```
 
 #### **ai.toml**
