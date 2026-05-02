@@ -27,6 +27,11 @@ Displays synced lyrics from [LRCLIB](https://lrclib.net) over your desktop, with
   <img src="assets/demo.gif" alt="lyra demo" width="600">
 </p>
 
+<p align="center">
+  If lyra is useful to you, please consider starring the repo.
+  It helps other macOS users find the project and supports future official Homebrew submission.
+</p>
+
 ## Install
 
 ```sh
