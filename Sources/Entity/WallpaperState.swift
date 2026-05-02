@@ -4,11 +4,18 @@ public struct ResolvedWallpaperItem {
     public let url: URL
     public let start: TimeInterval?
     public let end: TimeInterval?
+    public let scale: Double
 
-    public init(url: URL, start: TimeInterval? = nil, end: TimeInterval? = nil) {
+    public init(
+        url: URL,
+        start: TimeInterval? = nil,
+        end: TimeInterval? = nil,
+        scale: Double = 1.0
+    ) {
         self.url = url
         self.start = start
         self.end = end
+        self.scale = scale.isFinite ? max(1.0, scale) : 1.0
     }
 }
 

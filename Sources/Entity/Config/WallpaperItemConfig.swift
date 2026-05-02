@@ -4,11 +4,18 @@ public struct WallpaperItemConfig {
     public let location: String
     public let start: TimeInterval?
     public let end: TimeInterval?
+    public let scale: Double
 
-    public init(location: String, start: TimeInterval? = nil, end: TimeInterval? = nil) {
+    public init(
+        location: String,
+        start: TimeInterval? = nil,
+        end: TimeInterval? = nil,
+        scale: Double = 1.0
+    ) {
         self.location = location
         self.start = start
         self.end = end
+        self.scale = Self.validate(scale: scale)
     }
 }
 
@@ -17,7 +24,7 @@ extension WallpaperItemConfig: Equatable {}
 
 extension WallpaperItemConfig: Codable {
     enum CodingKeys: String, CodingKey {
-        case location, start, end
+        case location, start, end, scale
     }
 
     /// Decodes both bare string ("file.mp4") and table ({ location = "file.mp4", start = "0:30" })
@@ -28,6 +35,7 @@ extension WallpaperItemConfig: Codable {
             location = value
             start = nil
             end = nil
+            scale = 1.0
             return
         }
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -37,10 +45,11 @@ extension WallpaperItemConfig: Codable {
         let (validatedStart, validatedEnd) = Self.validate(start: rawStart, end: rawEnd)
         start = validatedStart
         end = validatedEnd
+        scale = Self.validate(scale: try c.decodeIfPresent(Double.self, forKey: .scale))
     }
 
     public func encode(to encoder: Encoder) throws {
-        guard start != nil || end != nil else {
+        guard start != nil || end != nil || scale != 1.0 else {
             var container = encoder.singleValueContainer()
             try container.encode(location)
             return
@@ -49,6 +58,9 @@ extension WallpaperItemConfig: Codable {
         try c.encode(location, forKey: .location)
         try c.encodeIfPresent(start.map(Self.formatTime), forKey: .start)
         try c.encodeIfPresent(end.map(Self.formatTime), forKey: .end)
+        if scale != 1.0 {
+            try c.encode(scale, forKey: .scale)
+        }
     }
 }
 
@@ -61,6 +73,11 @@ extension WallpaperItemConfig {
             return (clampedStart, clampedEnd)
         }
         return (clampedStart, nil)
+    }
+
+    static func validate(scale: Double?) -> Double {
+        guard let scale, scale.isFinite else { return 1.0 }
+        return max(1.0, scale)
     }
 
     /// Parse time string in M:SS, H:MM:SS, or fractional seconds format

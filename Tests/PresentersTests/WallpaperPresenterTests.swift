@@ -103,7 +103,7 @@ struct WallpaperPresenterTests {
         @Test("plays the first emitted item")
         func playsFirstItem() async {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
-            let item = ResolvedWallpaperItem(url: url, start: 5.0, end: 30.0)
+            let item = ResolvedWallpaperItem(url: url, start: 5.0, end: 30.0, scale: 1.25)
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
@@ -115,6 +115,7 @@ struct WallpaperPresenterTests {
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 5.0)
                 #expect(presenter.endTime == 30.0)
+                #expect(presenter.wallpaperScale == 1.25)
                 #expect(presenter.isLoading == false)
             }
         }
@@ -132,6 +133,7 @@ struct WallpaperPresenterTests {
                 #expect(presenter.wallpaperURL == nil)
                 #expect(presenter.startTime == nil)
                 #expect(presenter.endTime == nil)
+                #expect(presenter.wallpaperScale == 1.0)
                 #expect(presenter.isLoading == false)
                 #expect(presenter.player == nil)
             }
@@ -281,14 +283,47 @@ struct WallpaperPresenterTests {
         }
     }
 
+    @Suite("onWallpaperScaleChange")
+    struct OnWallpaperScaleChange {
+        @MainActor
+        @Test("fires current and subsequent item scales")
+        func firesScaleChanges() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"), scale: 1.2)
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"), scale: 1.6)
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+            } operation: {
+                let presenter = WallpaperPresenter()
+
+                final class Recorder: @unchecked Sendable {
+                    var scales: [Double] = []
+                }
+                let recorder = Recorder()
+
+                presenter.onWallpaperScaleChange { scale in
+                    recorder.scales.append(scale)
+                }
+                presenter.start()
+
+                await waitUntil { recorder.scales.contains(1.2) }
+                #expect(presenter.wallpaperScale == 1.2)
+
+                presenter.controller.handleItemEnd()
+                await waitUntil { recorder.scales.contains(1.6) }
+                #expect(presenter.wallpaperScale == 1.6)
+            }
+        }
+    }
+
     @Suite("multi-item advancement")
     struct MultiItem {
         @MainActor
         @Test("cycle mode advances items in configured order on item completion")
         func cycleAdvancesInOrder() async {
-            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
-            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
-            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"), scale: 1.0)
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"), scale: 1.3)
+            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"), scale: 1.6)
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .cycle)
@@ -297,16 +332,20 @@ struct WallpaperPresenterTests {
                 presenter.start()
                 await waitForItemsLoaded(presenter, count: 3)
                 #expect(presenter.wallpaperURL == a.url)
+                #expect(presenter.wallpaperScale == 1.0)
 
                 presenter.controller.handleItemEnd()
                 await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperScale == 1.3)
 
                 presenter.controller.handleItemEnd()
                 await waitUntil { presenter.wallpaperURL == c.url }
+                #expect(presenter.wallpaperScale == 1.6)
 
                 presenter.controller.handleItemEnd()
                 await waitUntil { presenter.wallpaperURL == a.url }
                 #expect(presenter.wallpaperURL == a.url)  // wraps around
+                #expect(presenter.wallpaperScale == 1.0)
             }
         }
 

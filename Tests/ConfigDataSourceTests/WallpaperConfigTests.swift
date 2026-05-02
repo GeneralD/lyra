@@ -161,6 +161,21 @@ struct WallpaperConfigTests {
             #expect(s == 0)
             #expect(e == nil)  // 0 >= 0 → end discarded
         }
+
+        @Test("scale defaults to 1.0")
+        func scaleDefaults() {
+            #expect(WallpaperItemConfig.validate(scale: nil) == 1.0)
+        }
+
+        @Test("scale preserves values above 1.0")
+        func scaleAboveDefault() {
+            #expect(WallpaperItemConfig.validate(scale: 1.25) == 1.25)
+        }
+
+        @Test("scale clamps values below 1.0")
+        func scaleBelowDefault() {
+            #expect(WallpaperItemConfig.validate(scale: 0.5) == 1.0)
+        }
     }
 
     // MARK: - Decoding
@@ -175,6 +190,7 @@ struct WallpaperConfigTests {
             #expect(config.items.first?.location == "loop.mp4")
             #expect(config.items.first?.start == nil)
             #expect(config.items.first?.end == nil)
+            #expect(config.items.first?.scale == 1.0)
             #expect(config.mode == .cycle)
         }
 
@@ -186,6 +202,7 @@ struct WallpaperConfigTests {
             #expect(config.items.first?.location == "bg.mp4")
             #expect(config.items.first?.start == nil)
             #expect(config.items.first?.end == nil)
+            #expect(config.items.first?.scale == 1.0)
             #expect(config.mode == .cycle)
         }
 
@@ -196,6 +213,21 @@ struct WallpaperConfigTests {
             #expect(config.items.first?.location == "video.mp4")
             #expect(config.items.first?.start == 30.0)
             #expect(config.items.first?.end == 225.0)
+        }
+
+        @Test("decodes legacy table with scale")
+        func tableWithScale() throws {
+            let json = #"{"location":"video.mp4","scale":1.25}"#.data(using: .utf8)!
+            let config = try JSONDecoder().decode(WallpaperConfig.self, from: json)
+            #expect(config.items.first?.location == "video.mp4")
+            #expect(config.items.first?.scale == 1.25)
+        }
+
+        @Test("clamps legacy table scale below 1.0")
+        func tableScaleBelowDefault() throws {
+            let json = #"{"location":"video.mp4","scale":0.75}"#.data(using: .utf8)!
+            let config = try JSONDecoder().decode(WallpaperConfig.self, from: json)
+            #expect(config.items.first?.scale == 1.0)
         }
 
         @Test("decodes legacy table with start only")
@@ -216,7 +248,17 @@ struct WallpaperConfigTests {
             #expect(config.items[0].location == "a.mp4")
             #expect(config.items[1].location == "b.mp4")
             #expect(config.items[1].start == 10.0)
+            #expect(config.items[0].scale == 1.0)
             #expect(config.mode == .cycle)
+        }
+
+        @Test("decodes items array with per-item scale")
+        func decodeItemsArrayScale() throws {
+            let json = #"""
+                {"items":[{"location":"a.mp4","scale":1.1},{"location":"b.mp4","scale":1.35}]}
+                """#.data(using: .utf8)!
+            let config = try JSONDecoder().decode(WallpaperConfig.self, from: json)
+            #expect(config.items.map(\.scale) == [1.1, 1.35])
         }
 
         @Test("decodes items array with explicit shuffle mode")
@@ -249,6 +291,15 @@ struct WallpaperConfigTests {
             #expect(decoded.items.first?.end == 120)
         }
 
+        @Test("encodes legacy table when single item has scale")
+        func encodeScaledTable() throws {
+            let config = WallpaperConfig(location: "file.mp4", scale: 1.2)
+            let data = try JSONEncoder().encode(config)
+            let decoded = try JSONDecoder().decode(WallpaperConfig.self, from: data)
+            #expect(decoded.items.first?.location == "file.mp4")
+            #expect(decoded.items.first?.scale == 1.2)
+        }
+
         @Test("round-trip preserves single legacy item")
         func roundTripLegacy() throws {
             let original = WallpaperConfig(location: "https://youtu.be/XXX", start: 90, end: 225)
@@ -261,8 +312,8 @@ struct WallpaperConfigTests {
         func roundTripMulti() throws {
             let original = WallpaperConfig(
                 items: [
-                    WallpaperItemConfig(location: "a.mp4"),
-                    WallpaperItemConfig(location: "b.mp4", start: 10, end: 30),
+                    WallpaperItemConfig(location: "a.mp4", scale: 1.1),
+                    WallpaperItemConfig(location: "b.mp4", start: 10, end: 30, scale: 1.4),
                 ],
                 mode: .shuffle
             )

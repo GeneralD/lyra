@@ -390,7 +390,8 @@ struct AppRouterTests {
         )
         let screenInteractor = MutableScreenInteractor(layout: initialLayout)
         let wallpaperInteractor = FixtureWallpaperInteractor(
-            wallpaperState: .init(items: [.init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"))])
+            wallpaperState: .init(
+                items: [.init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"), scale: 1.4)])
         )
         let window = SpyWindow()
         let driver = SpyFrameScheduler()
@@ -418,6 +419,7 @@ struct AppRouterTests {
 
         await waitUntil { window.attachedPlayers.count == 1 }
         #expect(window.attachedPlayers.count == 1)
+        #expect(window.appliedWallpaperScales.contains(1.4))
         #expect(driver.startedWindow === window)
 
         screenInteractor.updateLayout(updatedLayout)
@@ -432,6 +434,7 @@ struct AppRouterTests {
         var closeCallCount = 0
         var appliedLayouts: [ScreenLayout] = []
         var attachedPlayers: [AVPlayer] = []
+        var appliedWallpaperScales: [Double] = []
 
         func show() {
             showCallCount += 1
@@ -443,6 +446,10 @@ struct AppRouterTests {
 
         func attachPlayerLayer(for player: AVPlayer) {
             attachedPlayers.append(player)
+        }
+
+        func applyWallpaperScale(_ scale: Double) {
+            appliedWallpaperScales.append(scale)
         }
 
         func close() {

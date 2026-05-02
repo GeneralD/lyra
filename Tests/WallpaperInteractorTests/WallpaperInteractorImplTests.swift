@@ -60,7 +60,7 @@ struct WallpaperInteractorImplTests {
     @Test("resolvedWallpapers emits single item for legacy single-location config")
     func singleItem() async throws {
         let resolved = URL(fileURLWithPath: "/resolved/bg.mp4")
-        let wallpaper = WallpaperStyle(location: "bg.mp4", start: 10, end: 180)
+        let wallpaper = WallpaperStyle(location: "bg.mp4", start: 10, end: 180, scale: 1.25)
         let style = AppStyle(wallpaper: wallpaper, configDir: "/config")
 
         let interactor = withDependencies {
@@ -71,7 +71,7 @@ struct WallpaperInteractorImplTests {
         }
 
         let items = await collect(interactor.resolvedWallpapers())
-        #expect(items == [ResolvedWallpaperItem(url: resolved, start: 10, end: 180)])
+        #expect(items == [ResolvedWallpaperItem(url: resolved, start: 10, end: 180, scale: 1.25)])
     }
 
     @Test("cycle mode emits items in configured order even when later entries resolve first")
@@ -79,8 +79,8 @@ struct WallpaperInteractorImplTests {
         let style = AppStyle(
             wallpaper: WallpaperStyle(
                 items: [
-                    WallpaperItem(location: "slow.mp4"),
-                    WallpaperItem(location: "fast.mp4"),
+                    WallpaperItem(location: "slow.mp4", scale: 1.1),
+                    WallpaperItem(location: "fast.mp4", scale: 1.4),
                 ],
                 mode: .cycle
             ),
@@ -100,6 +100,7 @@ struct WallpaperInteractorImplTests {
 
         let items = await collect(interactor.resolvedWallpapers())
         #expect(items.map(\.url) == [slow, fast])
+        #expect(items.map(\.scale) == [1.1, 1.4])
         #expect(interactor.playbackMode == .cycle)
     }
 
@@ -135,8 +136,8 @@ struct WallpaperInteractorImplTests {
         let style = AppStyle(
             wallpaper: WallpaperStyle(
                 items: [
-                    WallpaperItem(location: "slow.mp4"),
-                    WallpaperItem(location: "fast.mp4"),
+                    WallpaperItem(location: "slow.mp4", scale: 1.2),
+                    WallpaperItem(location: "fast.mp4", scale: 1.5),
                 ],
                 mode: .shuffle
             ),
@@ -156,6 +157,7 @@ struct WallpaperInteractorImplTests {
 
         let items = await collect(interactor.resolvedWallpapers())
         #expect(items.first?.url == fast)
+        #expect(items.first?.scale == 1.5)
         #expect(Set(items.map(\.url)) == [fast, slow])
         #expect(interactor.playbackMode == .shuffle)
     }

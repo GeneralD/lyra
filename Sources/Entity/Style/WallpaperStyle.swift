@@ -4,11 +4,18 @@ public struct WallpaperItem {
     public let location: String
     public let start: TimeInterval?
     public let end: TimeInterval?
+    public let scale: Double
 
-    public init(location: String, start: TimeInterval? = nil, end: TimeInterval? = nil) {
+    public init(
+        location: String,
+        start: TimeInterval? = nil,
+        end: TimeInterval? = nil,
+        scale: Double = 1.0
+    ) {
         self.location = location
         self.start = start
         self.end = end
+        self.scale = scale.isFinite ? max(1.0, scale) : 1.0
     }
 }
 
@@ -25,8 +32,13 @@ public struct WallpaperStyle {
     }
 
     /// Convenience for single-item style (backward-compatible with legacy call sites).
-    public init(location: String, start: TimeInterval? = nil, end: TimeInterval? = nil) {
-        self.items = [WallpaperItem(location: location, start: start, end: end)]
+    public init(
+        location: String,
+        start: TimeInterval? = nil,
+        end: TimeInterval? = nil,
+        scale: Double = 1.0
+    ) {
+        self.items = [WallpaperItem(location: location, start: start, end: end, scale: scale)]
         self.mode = .cycle
     }
 }

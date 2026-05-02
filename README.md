@@ -237,9 +237,10 @@ If neither `yt-dlp` nor `uvx` is found, lyra will show an error. If `ffmpeg` is 
 location = "https://www.youtube.com/watch?v=XXXXX"
 start = "0:30"     # skip intro
 end = "3:45"       # stop before outro
+scale = 1.15       # enlarge this video to hide letterboxing
 ```
 
-Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` and `end` are optional. The bare string format (`wallpaper = "file.mp4"`) still works for simple cases.
+Time format: `M:SS`, `H:MM:SS`, or fractional seconds (`1:23.5`). Both `start` and `end` are optional. `scale` defaults to `1.0`; values above `1.0` zoom the current video only. The bare string format (`wallpaper = "file.mp4"`) still works for simple cases.
 
 **Multiple wallpapers** (optional):
 
@@ -256,13 +257,16 @@ location = "loop.mp4"
 location = "https://www.youtube.com/watch?v=XXXXX"
 start = "0:30"
 end = "3:45"
+scale = 1.2
 
 [[wallpaper.items]]
 location = "https://example.com/bg.mp4"
+scale = 1.05
 ```
 
 - `cycle` plays items in the order written, advancing when each item finishes (wraps around at the end).
 - `shuffle` advances to a random item each time playback completes, never repeating the current one twice in a row.
+- `scale` is configured per item, so videos with different letterboxing can use different zoom values.
 - All items are resolved in parallel. In `cycle`, playback starts as soon as the first configured item is ready — later items play in configured order regardless of download speed. In `shuffle`, playback starts with whichever item resolves first.
 
 ### Full example
@@ -272,25 +276,38 @@ location = "https://example.com/bg.mp4"
 ```toml
 includes = ["ai.toml"]
 
-screen = "main"
+screen = "vacant"
+screen_debounce = 5
 
 [wallpaper]
+mode = "cycle"
+
+[[wallpaper.items]]
 location = "https://www.youtube.com/watch?v=Sn1ieBOLGB0"
 start = "0:17"
 end = "3:37"
 
+[[wallpaper.items]]
+location = "https://www.youtube.com/watch?v=P0az9IS2XQQ"
+start = "0:24"
+end = "3:15"
+scale = 1.325
+
 [text.default]
-font = "Helvetica Neue"
-size = 14
+font = "Zen Maru Gothic"
+size = 12
 color = "#FFFFFFD9"
 shadow = "#000000E6"
-spacing = 8
+spacing = 6
 
 [text.title]
-size = 20
+font = "Zen Kaku Gothic New"
+size = 18
 weight = "bold"
 
 [text.artist]
+font = "Zen Kaku Gothic New"
+size = 12
 weight = "medium"
 
 [text.lyric]
@@ -299,20 +316,21 @@ color = "#FFFFFFE6"
 [text.highlight]
 color = ["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]
 
-[text.decode_effect]
-duration = 1.0
-charset = ["latin", "cyrillic"]
-
 [artwork]
-size = 120
-opacity = 0.9
+size = 96
+opacity = 0.8
 
 [ripple]
-# enabled = true
 color = "#AAAAFFFF"
-radius = 80
+radius = 60
 duration = 0.4
-idle = 1.5
+idle = 1.3
+```
+
+This example uses `Zen Maru Gothic` and `Zen Kaku Gothic New`. If those fonts are not installed, install them with Homebrew Cask:
+
+```sh
+brew install --cask font-zen-maru-gothic font-zen-kaku-gothic-new
 ```
 
 #### **ai.toml**

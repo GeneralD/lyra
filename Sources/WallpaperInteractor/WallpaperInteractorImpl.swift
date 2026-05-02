@@ -71,7 +71,16 @@ extension WallpaperInteractorImpl {
             for (index, item) in items.enumerated() {
                 group.addTask {
                     let url = try? await service.resolveWallpaper(value: item.location, configDir: configDir)
-                    return (index, url.map { ResolvedWallpaperItem(url: $0, start: item.start, end: item.end) })
+                    return (
+                        index,
+                        url.map {
+                            ResolvedWallpaperItem(
+                                url: $0,
+                                start: item.start,
+                                end: item.end,
+                                scale: item.scale)
+                        }
+                    )
                 }
             }
             var buffer = Array(repeating: ResolutionSlot.pending, count: items.count)
@@ -104,7 +113,13 @@ extension WallpaperInteractorImpl {
             for item in items {
                 group.addTask {
                     let url = try? await service.resolveWallpaper(value: item.location, configDir: configDir)
-                    return url.map { ResolvedWallpaperItem(url: $0, start: item.start, end: item.end) }
+                    return url.map {
+                        ResolvedWallpaperItem(
+                            url: $0,
+                            start: item.start,
+                            end: item.end,
+                            scale: item.scale)
+                    }
                 }
             }
             for await resolved in group {

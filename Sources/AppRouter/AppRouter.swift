@@ -94,8 +94,12 @@ public final class AppRouter {
             appPresenter.onWindowFrameChange { [weak window] layout in
                 window?.applyLayout(layout)
             }
-            wallpaperPresenter.onPlayerAvailable { [weak window] player in
+            wallpaperPresenter.onPlayerAvailable { [weak window, weak wallpaperPresenter] player in
                 window?.attachPlayerLayer(for: player)
+                window?.applyWallpaperScale(wallpaperPresenter?.wallpaperScale ?? 1.0)
+            }
+            wallpaperPresenter.onWallpaperScaleChange { [weak window] scale in
+                window?.applyWallpaperScale(scale)
             }
 
             let scheduler = frameSchedulerFactory { [weak self] in

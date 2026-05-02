@@ -37,7 +37,13 @@ extension ConfigRepositoryImpl: ConfigRepository {
             screenDebounce: config.screenDebounce.value,
             wallpaper: config.wallpaper.map { cfg in
                 WallpaperStyle(
-                    items: cfg.items.map { WallpaperItem(location: $0.location, start: $0.start, end: $0.end) },
+                    items: cfg.items.map {
+                        WallpaperItem(
+                            location: $0.location,
+                            start: $0.start,
+                            end: $0.end,
+                            scale: $0.scale)
+                    },
                     mode: cfg.mode
                 )
             },

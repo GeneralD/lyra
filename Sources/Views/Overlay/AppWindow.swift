@@ -70,6 +70,10 @@ public final class AppWindow: NSWindow {
         Self.attachPlayer(player, to: self, hostingView: hostingView)
     }
 
+    public func applyWallpaperScale(_ scale: Double) {
+        Self.applyWallpaperScale(scale, to: self)
+    }
+
     public override func close() {
         orderOut(nil)
         super.close()
@@ -108,7 +112,8 @@ extension AppWindow {
     static func attachPlayer(
         _ player: AVPlayer,
         to surface: OverlayWindowSurface,
-        hostingView: NSView
+        hostingView: NSView,
+        scale: Double = 1.0
     ) {
         surface.overlayBackgroundColor = .black
 
@@ -117,9 +122,30 @@ extension AppWindow {
         playerLayer.frame = containerView.bounds
         playerLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         playerLayer.videoGravity = .resizeAspectFill
+        applyWallpaperScale(scale, to: playerLayer)
         containerView.wantsLayer = true
         containerView.layer?.addSublayer(playerLayer)
         containerView.addSubview(hostingView)
         surface.contentView = containerView
+    }
+
+    static func applyWallpaperScale(_ scale: Double, to surface: OverlayWindowSurface) {
+        guard let playerLayer = playerLayer(in: surface) else { return }
+        applyWallpaperScale(scale, to: playerLayer)
+    }
+
+    static func sanitizedWallpaperScale(_ scale: Double) -> Double {
+        guard scale.isFinite else { return 1.0 }
+        return max(1.0, scale)
+    }
+
+    private static func applyWallpaperScale(_ scale: Double, to playerLayer: AVPlayerLayer) {
+        let sanitizedScale = sanitizedWallpaperScale(scale)
+        playerLayer.setAffineTransform(
+            CGAffineTransform(scaleX: sanitizedScale, y: sanitizedScale))
+    }
+
+    private static func playerLayer(in surface: OverlayWindowSurface) -> AVPlayerLayer? {
+        surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
     }
 }
