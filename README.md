@@ -167,6 +167,32 @@ Mouse-reactive ripple effect on the overlay.
 | `radius` | number | `60` | Ripple radius in points |
 | `duration` | number | `0.6` | Ripple animation duration in seconds |
 | `idle` | number | `1` | Seconds before ripple fades after mouse stops |
+| `shape` | string / table | `"circle"` | Ripple outline shape. See below |
+
+#### `[ripple.shape]`
+
+Polymorphic shape spec. Three accepted forms:
+
+```toml
+# 1. Omit entirely → defaults to circle
+[ripple]
+radius = 60
+
+# 2. Bare string for parameterless shapes
+[ripple]
+shape = "circle"
+
+# 3. Table form for shapes that take parameters
+[ripple.shape]
+type = "polygon"
+sides = 6
+angle = 15
+```
+
+| Shape | Required keys | Optional keys | Notes |
+|---|---|---|---|
+| `circle` | — | — | Same as omitting `shape` |
+| `polygon` | `sides` (int `3...256`) | `angle` (degrees, default `0`) | Out-of-range `sides` values fail config decoding. `angle = 0` orients one vertex straight up |
 
 ### `[ai]`
 

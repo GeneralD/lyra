@@ -484,3 +484,174 @@ struct SilentFallbackTests {
         }
     }
 }
+
+// MARK: - RippleShape polymorphic decoding
+
+@Suite("RippleShape polymorphic decoding")
+struct RippleShapeDecodingTests {
+    @Test("absent shape defaults to circle")
+    func defaultShape() throws {
+        let config = try decode("")
+        #expect(config.ripple.shape == .circle)
+    }
+
+    @Test("missing shape under existing [ripple] still defaults to circle")
+    func partialRippleDefaultsShape() throws {
+        let config = try decode(
+            """
+            [ripple]
+            color = "#FF0000FF"
+            """)
+        #expect(config.ripple.shape == .circle)
+    }
+
+    @Test("bare string \"circle\" decodes as circle")
+    func bareCircle() throws {
+        let config = try decode(
+            """
+            [ripple]
+            shape = "circle"
+            """)
+        #expect(config.ripple.shape == .circle)
+    }
+
+    @Test("polygon table decodes with sides and angle")
+    func polygonTable() throws {
+        let config = try decode(
+            """
+            [ripple.shape]
+            type = "polygon"
+            sides = 6
+            angle = 15
+            """)
+        #expect(config.ripple.shape == .polygon(sides: 6, angle: 15))
+    }
+
+    @Test("polygon without angle defaults angle to 0")
+    func polygonNoAngle() throws {
+        let config = try decode(
+            """
+            [ripple.shape]
+            type = "polygon"
+            sides = 5
+            """)
+        #expect(config.ripple.shape == .polygon(sides: 5, angle: 0))
+    }
+
+    @Test("polygon with sides < minimum throws dataCorrupted citing sides")
+    func polygonSidesTooSmallThrows() {
+        do {
+            _ = try decode(
+                """
+                [ripple.shape]
+                type = "polygon"
+                sides = 2
+                """)
+            Issue.record("Expected DecodingError.dataCorrupted")
+        } catch DecodingError.dataCorrupted(let context) {
+            #expect(context.debugDescription.contains("sides"))
+        } catch {
+            Issue.record("Expected DecodingError.dataCorrupted, got \(error)")
+        }
+    }
+
+    @Test("polygon with sides > maximum throws dataCorrupted citing sides")
+    func polygonSidesTooLargeThrows() {
+        do {
+            _ = try decode(
+                """
+                [ripple.shape]
+                type = "polygon"
+                sides = 9999
+                """)
+            Issue.record("Expected DecodingError.dataCorrupted")
+        } catch DecodingError.dataCorrupted(let context) {
+            #expect(context.debugDescription.contains("sides"))
+        } catch {
+            Issue.record("Expected DecodingError.dataCorrupted, got \(error)")
+        }
+    }
+
+    @Test("polygon at boundary sides = 3 decodes")
+    func polygonMinimumSides() throws {
+        let config = try decode(
+            """
+            [ripple.shape]
+            type = "polygon"
+            sides = 3
+            """)
+        #expect(config.ripple.shape == .polygon(sides: 3, angle: 0))
+    }
+
+    @Test("polygon at boundary sides = 256 decodes")
+    func polygonMaximumSides() throws {
+        let config = try decode(
+            """
+            [ripple.shape]
+            type = "polygon"
+            sides = 256
+            """)
+        #expect(config.ripple.shape == .polygon(sides: 256, angle: 0))
+    }
+
+    @Test("polygon angle accepts integer literal")
+    func polygonIntegerAngle() throws {
+        let config = try decode(
+            """
+            [ripple.shape]
+            type = "polygon"
+            sides = 6
+            angle = 30
+            """)
+        #expect(config.ripple.shape == .polygon(sides: 6, angle: 30))
+    }
+
+    @Test("unknown shape type throws")
+    func unknownShape() {
+        #expect(throws: DecodingError.self) {
+            _ = try decode(
+                """
+                [ripple.shape]
+                type = "blob"
+                """)
+        }
+    }
+
+    @Test("bare \"polygon\" requires table form (lacks sides)")
+    func barePolygonRequiresTable() {
+        #expect(throws: DecodingError.self) {
+            _ = try decode(
+                """
+                [ripple]
+                shape = "polygon"
+                """)
+        }
+    }
+
+    @Test("bare string with unknown name throws")
+    func bareUnknownNameThrows() {
+        #expect(throws: DecodingError.self) {
+            _ = try decode(
+                """
+                [ripple]
+                shape = "wibble"
+                """)
+        }
+    }
+
+    @Test("polygon encode roundtrip preserves sides and angle")
+    func polygonEncodeRoundtrip() throws {
+        let original = RippleShape.polygon(sides: 7, angle: 22.5)
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(RippleShape.self, from: encoded)
+        #expect(decoded == original)
+    }
+
+    @Test("circle encode emits type field")
+    func circleEncode() throws {
+        let encoded = try JSONEncoder().encode(RippleShape.circle)
+        let json = try #require(String(data: encoded, encoding: .utf8))
+        #expect(json.contains("\"type\""))
+        #expect(json.contains("\"circle\""))
+    }
+}

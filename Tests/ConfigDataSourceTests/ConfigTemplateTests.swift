@@ -66,6 +66,9 @@ enabled = true
 idle = 1.0
 radius = 60.0
 
+[ripple.shape]
+type = 'circle'
+
 [text.artist]
 color = '#FFFFFFD9'
 fontName = 'Helvetica Neue'
@@ -155,7 +158,10 @@ spacing = 6.0
     "duration" : 0.6,
     "enabled" : true,
     "idle" : 1,
-    "radius" : 60
+    "radius" : 60,
+    "shape" : {
+      "type" : "circle"
+    }
   },
   "screen" : "main",
   "screen_debounce" : 5,
@@ -228,6 +234,7 @@ spacing = 6.0
         #expect(decoded.artwork.opacity.value == 1.0)
         #expect(decoded.ripple.enabled == true)
         #expect(decoded.ripple.color == "#AAAAFFFF")
+        #expect(decoded.ripple.shape == .circle)
         #expect(decoded.text.title.fontSize == 18)
         #expect(decoded.text.title.fontWeight == "bold")
         #expect(decoded.text.artist.fontWeight == "medium")

@@ -14,6 +14,13 @@ private func render<Content: View>(_ view: Content, size: CGSize) {
     hostingView.frame = CGRect(origin: .zero, size: size)
     hostingView.layoutSubtreeIfNeeded()
     _ = hostingView.fittingSize
+    if let rep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) {
+        hostingView.cacheDisplay(in: hostingView.bounds, to: rep)
+    }
+    // ImageRenderer materializes SwiftUI views to a CGImage, which forces
+    // Canvas/TimelineView closures to run synchronously even outside a window.
+    let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
+    _ = renderer.cgImage
 }
 
 @MainActor
@@ -48,6 +55,15 @@ private struct DisabledRippleInteractor: WallpaperInteractor {
 private struct EnabledRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
     var rippleConfig: RippleStyle { .init(enabled: true) }
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
+}
+
+private struct PolygonRippleInteractor: WallpaperInteractor {
+    var playbackMode: WallpaperPlaybackMode { .cycle }
+    var rippleConfig: RippleStyle {
+        .init(enabled: true, shape: .polygon(sides: 6, angle: 15))
+    }
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
@@ -182,6 +198,145 @@ struct RippleViewRenderingTests {
         #expect(presenter.isEnabled)
         #expect(presenter.rippleState != nil)
         render(RippleView(presenter: presenter), size: CGSize(width: 400, height: 300))
+    }
+
+    @Test("polygon ripple renders without crashing")
+    func polygonRipple() {
+        withDependencies {
+            $0.wallpaperInteractor = PolygonRippleInteractor()
+            // Use real time so the seeded ripple's startTime is close to
+            // TimelineView's current frame time and survives the elapsed-vs-duration filter.
+            $0.date = .init(Date.init)
+        } operation: {
+            let presenter = RipplePresenter()
+            presenter.start()
+            defer { presenter.stop() }
+
+            #expect(presenter.rippleConfig.shape == .polygon(sides: 6, angle: 15))
+            // Seed an active ripple so the Canvas drawing closure exercises stroke().
+            presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 150))
+            #expect(
+                !presenter.drawingContexts(canvasSize: CGSize(width: 400, height: 300), now: Date())
+                    .isEmpty)
+            render(RippleView(presenter: presenter), size: CGSize(width: 400, height: 300))
+        }
+    }
+
+    @Test("circle ripple stroke executes for active ripples")
+    func circleRippleStrokeRuns() {
+        withDependencies {
+            $0.wallpaperInteractor = EnabledRippleInteractor()
+            $0.date = .init(Date.init)
+        } operation: {
+            let presenter = RipplePresenter()
+            presenter.start()
+            defer { presenter.stop() }
+
+            presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+            #expect(
+                !presenter.drawingContexts(canvasSize: CGSize(width: 400, height: 300), now: Date())
+                    .isEmpty)
+            render(RippleView(presenter: presenter), size: CGSize(width: 400, height: 300))
+        }
+    }
+}
+
+// MARK: - ripplePath geometry
+
+private func collectedPoints(_ path: Path) -> [CGPoint] {
+    var points: [CGPoint] = []
+    // swift-format-ignore: ReplaceForEachWithForLoop
+    // Path is not a Sequence; `forEach` is its only public element traversal API.
+    path.forEach { element in
+        switch element {
+        case .move(let p), .line(let p):
+            points.append(p)
+        default:
+            break
+        }
+    }
+    return points
+}
+
+private func approxEqual(_ a: CGPoint, _ b: CGPoint, tolerance: Double = 1e-6) -> Bool {
+    abs(a.x - b.x) < tolerance && abs(a.y - b.y) < tolerance
+}
+
+@Suite("ripplePath geometry")
+struct RipplePathGeometryTests {
+    private let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+    @Test("circle path encloses the given rect as an ellipse")
+    func circleBounds() {
+        let path = ripplePath(in: rect, shape: .circle)
+        // SwiftUI's Path(ellipseIn:) exposes its bounds equal to the input rect.
+        #expect(path.boundingRect == rect)
+    }
+
+    @Test("triangle has 3 distinct vertices, top vertex straight up")
+    func triangleVertices() {
+        let path = ripplePath(in: rect, shape: .polygon(sides: 3, angle: 0))
+        let points = collectedPoints(path)
+        #expect(points.count == 3)
+        // angle = 0 => first vertex is straight up at (midX, midY - radius).
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        #expect(approxEqual(points[0], CGPoint(x: center.x, y: center.y - radius)))
+    }
+
+    @Test("square at angle=0 forms a diamond (vertices on axes)")
+    func squareDiamondVertices() {
+        let path = ripplePath(in: rect, shape: .polygon(sides: 4, angle: 0))
+        let points = collectedPoints(path)
+        #expect(points.count == 4)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        // Going clockwise from top: (cx, cy-r), (cx+r, cy), (cx, cy+r), (cx-r, cy).
+        #expect(approxEqual(points[0], CGPoint(x: center.x, y: center.y - radius)))
+        #expect(approxEqual(points[1], CGPoint(x: center.x + radius, y: center.y)))
+        #expect(approxEqual(points[2], CGPoint(x: center.x, y: center.y + radius)))
+        #expect(approxEqual(points[3], CGPoint(x: center.x - radius, y: center.y)))
+    }
+
+    @Test("square at angle=45 forms an axis-aligned square")
+    func squareRotated45() {
+        let path = ripplePath(in: rect, shape: .polygon(sides: 4, angle: 45))
+        let points = collectedPoints(path)
+        #expect(points.count == 4)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        let s = radius * sin(Double.pi / 4)
+        #expect(approxEqual(points[0], CGPoint(x: center.x + s, y: center.y - s)))
+        #expect(approxEqual(points[1], CGPoint(x: center.x + s, y: center.y + s)))
+        #expect(approxEqual(points[2], CGPoint(x: center.x - s, y: center.y + s)))
+        #expect(approxEqual(points[3], CGPoint(x: center.x - s, y: center.y - s)))
+    }
+
+    @Test("hexagon has 6 vertices on circumscribed circle")
+    func hexagonOnCircle() {
+        let path = ripplePath(in: rect, shape: .polygon(sides: 6, angle: 0))
+        let points = collectedPoints(path)
+        #expect(points.count == 6)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        for p in points {
+            let d = sqrt(pow(p.x - center.x, 2) + pow(p.y - center.y, 2))
+            #expect(abs(d - radius) < 1e-6)
+        }
+    }
+
+    @Test("polygon with sides below minimum falls back to circle")
+    func tooFewSidesFallsBack() {
+        let circlePath = ripplePath(in: rect, shape: .circle)
+        let fallback = ripplePath(in: rect, shape: .polygon(sides: 0, angle: 0))
+        #expect(fallback.boundingRect == circlePath.boundingRect)
+    }
+
+    @Test("polygon with sides above maximum is clamped to maximum")
+    func tooManySidesClamped() {
+        let path = ripplePath(in: rect, shape: .polygon(sides: 10_000, angle: 0))
+        let points = collectedPoints(path)
+        #expect(points.count == RippleShape.maximumPolygonSides)
     }
 }
 

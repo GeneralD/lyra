@@ -31,7 +31,8 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 color: .solid(config.ripple.color),
                 radius: config.ripple.radius.value,
                 duration: config.ripple.duration.value,
-                idle: config.ripple.idle.value
+                idle: config.ripple.idle.value,
+                shape: config.ripple.shape
             ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,
