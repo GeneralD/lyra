@@ -8,16 +8,6 @@ public protocol ConfigHandler: Sendable {
     func openConfig() -> ConfigLaunchResult
 }
 
-extension ConfigHandler {
-    public func editConfig() -> ConfigLaunchResult {
-        .failure(.failed(detail: "Config edit is not supported"))
-    }
-
-    public func openConfig() -> ConfigLaunchResult {
-        .failure(.failed(detail: "Config open is not supported"))
-    }
-}
-
 public enum ConfigHandlerKey: TestDependencyKey {
     public static let testValue: any ConfigHandler = UnimplementedConfigHandler()
 }

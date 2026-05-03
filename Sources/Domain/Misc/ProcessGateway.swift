@@ -33,12 +33,6 @@ public protocol ProcessGateway: Sendable {
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String>
 }
 
-extension ProcessGateway {
-    public func runInteractive(executable: String, arguments: [String]) -> Int32 {
-        run(executable: executable, arguments: arguments)
-    }
-}
-
 public enum ProcessGatewayKey: TestDependencyKey {
     public static let testValue: any ProcessGateway = UnimplementedProcessGateway()
 }
@@ -62,6 +56,9 @@ private struct UnimplementedProcessGateway: ProcessGateway {
     func runLaunchctl(_ arguments: [String]) -> Int32 { fatalError("ProcessGateway.runLaunchctl not implemented") }
     func findExecutable(_ name: String) -> String? { fatalError("ProcessGateway.findExecutable not implemented") }
     func run(executable: String, arguments: [String]) -> Int32 { fatalError("ProcessGateway.run not implemented") }
+    func runInteractive(executable: String, arguments: [String]) -> Int32 {
+        fatalError("ProcessGateway.runInteractive not implemented")
+    }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? {
         fatalError("ProcessGateway.runCapturingOutput not implemented")
     }
