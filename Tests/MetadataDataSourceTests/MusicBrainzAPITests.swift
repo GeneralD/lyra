@@ -42,6 +42,20 @@ struct MusicBrainzAPITests {
         #expect(items.first(where: { $0.name == "limit" })?.value == "5")
     }
 
+    @Test("preserves escaped Lucene query through URL construction")
+    func escapedQueryEncoding() async {
+        let recorder = TestHTTPService()
+        let api = makeAPI(recorder)
+        let query = MusicBrainzAPI.luceneQuery(title: #"C++ / "Live""#, artist: "Aimer && Co.", duration: nil)
+
+        _ = try? await api.searchRecording(query: query, fmt: "json", limit: 5)
+        let url = try? #require(recorder.captured?.url)
+        let components = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+        let items = components?.queryItems ?? []
+
+        #expect(items.first(where: { $0.name == "query" })?.value == #""C\+\+ \/ \"Live\"" AND artist:"Aimer \&\& Co.""#)
+    }
+
     @Test("healthCheck builds fixed search request")
     func healthCheckRequest() async {
         let recorder = TestHTTPService(body: Data())
