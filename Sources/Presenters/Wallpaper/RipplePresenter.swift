@@ -40,6 +40,7 @@ public final class RipplePresenter: ObservableObject {
     public struct RippleDrawingContext {
         public let rect: CGRect
         public let color: ColorConfig
+        public let shape: RippleShape
     }
 
     /// Computes draw commands for all visible ripples.
@@ -64,7 +65,8 @@ public final class RipplePresenter: ObservableObject {
                 rect: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2),
                 color: ColorConfig(
                     hue: (baseHSB.hue + ripple.hueShift).truncatingRemainder(dividingBy: 1), saturation: baseHSB.saturation,
-                    brightness: baseHSB.brightness, alpha: pow(1 - t, 0.6))
+                    brightness: baseHSB.brightness, alpha: pow(1 - t, 0.6)),
+                shape: config.shape
             )
         }
     }

@@ -4,12 +4,20 @@ public struct RippleConfig {
     public let radius: FlexibleDouble
     public let duration: FlexibleDouble
     public let idle: FlexibleDouble
+    public let shape: RippleShape
 }
 
 extension RippleConfig: Sendable {}
 
 extension RippleConfig {
-    static let defaults = RippleConfig(enabled: true, color: "#AAAAFFFF", radius: 60, duration: 0.6, idle: 1)
+    static let defaults = RippleConfig(
+        enabled: true,
+        color: "#AAAAFFFF",
+        radius: 60,
+        duration: 0.6,
+        idle: 1,
+        shape: .default
+    )
 }
 
 extension RippleConfig: Codable {
@@ -20,5 +28,6 @@ extension RippleConfig: Codable {
         radius = try container.decodeIfPresent(FlexibleDouble.self, forKey: .radius) ?? Self.defaults.radius
         duration = try container.decodeIfPresent(FlexibleDouble.self, forKey: .duration) ?? Self.defaults.duration
         idle = try container.decodeIfPresent(FlexibleDouble.self, forKey: .idle) ?? Self.defaults.idle
+        shape = try container.decodeIfPresent(RippleShape.self, forKey: .shape) ?? Self.defaults.shape
     }
 }

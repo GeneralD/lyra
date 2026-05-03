@@ -98,6 +98,35 @@ struct ConfigRepositoryTests {
                 #expect(style.ai == nil)
             }
         }
+
+        @Test("ripple shape defaults to circle when [ripple] is absent")
+        func rippleShapeDefaultsToCircle() {
+            let config = makeAppConfig()
+            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.ripple.shape == .circle)
+            }
+        }
+
+        @Test("ripple shape passes polygon spec through to RippleStyle")
+        func ripplePolygonShapePassthrough() {
+            let config = makeAppConfig(
+                ripple: ["shape": ["type": "polygon", "sides": 6, "angle": 15]])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.ripple.shape == .polygon(sides: 6, angle: 15))
+            }
+        }
     }
 
     @Suite("validate")
@@ -269,10 +298,15 @@ private enum StubError: Error, LocalizedError {
 
 // MARK: - Test fixtures
 
-private func makeAppConfig(wallpaper: Any? = nil, ai: AIConfig? = nil) -> AppConfig {
+private func makeAppConfig(
+    wallpaper: Any? = nil,
+    ai: AIConfig? = nil,
+    ripple: [String: Any]? = nil
+) -> AppConfig {
     var fields = [String: Any]()
     wallpaper.map { fields["wallpaper"] = $0 }
     ai.map { fields["ai"] = ["endpoint": $0.endpoint, "model": $0.model, "api_key": $0.apiKey] }
+    ripple.map { fields["ripple"] = $0 }
     let data = try! JSONSerialization.data(withJSONObject: fields)
     return try! JSONDecoder().decode(AppConfig.self, from: data)
 }

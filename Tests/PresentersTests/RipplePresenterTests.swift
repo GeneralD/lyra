@@ -262,5 +262,41 @@ struct RipplePresenterTests {
                 #expect(abs(centerY - 300) < 1)
             }
         }
+
+        @MainActor
+        @Test("circle shape is propagated to drawing context")
+        func circleShapePropagated() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(
+                    rippleConfig: .init(enabled: true, duration: 2.0, shape: .circle))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                let commands = presenter.drawingContexts(
+                    canvasSize: CGSize(width: 400, height: 300), now: fixedDate)
+                #expect(commands.first?.shape == .circle)
+            }
+        }
+
+        @MainActor
+        @Test("polygon shape is propagated to drawing context")
+        func polygonShapePropagated() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(
+                    rippleConfig: .init(
+                        enabled: true, duration: 2.0,
+                        shape: .polygon(sides: 6, angle: 15)))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                let commands = presenter.drawingContexts(
+                    canvasSize: CGSize(width: 400, height: 300), now: fixedDate)
+                #expect(commands.first?.shape == .polygon(sides: 6, angle: 15))
+            }
+        }
     }
 }

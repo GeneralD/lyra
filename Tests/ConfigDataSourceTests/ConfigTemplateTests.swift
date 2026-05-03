@@ -66,6 +66,9 @@ enabled = true
 idle = 1.0
 radius = 60.0
 
+[ripple.shape]
+type = 'circle'
+
 [text.artist]
 color = '#FFFFFFD9'
 fontName = 'Helvetica Neue'
@@ -155,7 +158,10 @@ spacing = 6.0
     "duration" : 0.6,
     "enabled" : true,
     "idle" : 1,
-    "radius" : 60
+    "radius" : 60,
+    "shape" : {
+      "type" : "circle"
+    }
   },
   "screen" : "main",
   "screen_debounce" : 5,
