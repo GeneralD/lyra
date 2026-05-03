@@ -188,6 +188,16 @@ extension DarwinGateway: ProcessGateway {
         return task.terminationStatus
     }
 
+    @discardableResult
+    public func runInteractive(executable: String, arguments: [String]) -> Int32 {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: executable)
+        task.arguments = arguments
+        guard (try? task.run()) != nil else { return -1 }
+        task.waitUntilExit()
+        return task.terminationStatus
+    }
+
     public func runCapturingOutput(executable: String, arguments: [String]) -> String? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executable)

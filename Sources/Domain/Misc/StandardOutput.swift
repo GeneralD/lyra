@@ -27,6 +27,17 @@ public protocol StandardOutput: Sendable {
     func write(_ update: BenchmarkUpdate)
 }
 
+extension StandardOutput {
+    public func write(_ result: ConfigLaunchResult) {
+        switch result {
+        case .success:
+            break
+        case .failure(.failed(let detail)):
+            writeError("Config error: \(detail)")
+        }
+    }
+}
+
 public enum StandardOutputKey: TestDependencyKey {
     public static let testValue: any StandardOutput = UnimplementedStandardOutput()
 }

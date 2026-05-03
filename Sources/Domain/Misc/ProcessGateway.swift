@@ -28,8 +28,15 @@ public protocol ProcessGateway: Sendable {
 
     // Subprocess execution
     func run(executable: String, arguments: [String]) -> Int32
+    func runInteractive(executable: String, arguments: [String]) -> Int32
     func runCapturingOutput(executable: String, arguments: [String]) -> String?
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String>
+}
+
+extension ProcessGateway {
+    public func runInteractive(executable: String, arguments: [String]) -> Int32 {
+        run(executable: executable, arguments: arguments)
+    }
 }
 
 public enum ProcessGatewayKey: TestDependencyKey {
