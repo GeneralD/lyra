@@ -548,7 +548,7 @@ struct RippleShapeDecodingTests {
                 sides = 2
                 """)
             Issue.record("Expected DecodingError.dataCorrupted")
-        } catch let DecodingError.dataCorrupted(context) {
+        } catch DecodingError.dataCorrupted(let context) {
             #expect(context.debugDescription.contains("sides"))
         } catch {
             Issue.record("Expected DecodingError.dataCorrupted, got \(error)")
@@ -565,7 +565,7 @@ struct RippleShapeDecodingTests {
                 sides = 9999
                 """)
             Issue.record("Expected DecodingError.dataCorrupted")
-        } catch let DecodingError.dataCorrupted(context) {
+        } catch DecodingError.dataCorrupted(let context) {
             #expect(context.debugDescription.contains("sides"))
         } catch {
             Issue.record("Expected DecodingError.dataCorrupted, got \(error)")
