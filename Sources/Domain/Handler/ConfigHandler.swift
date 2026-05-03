@@ -4,6 +4,8 @@ public protocol ConfigHandler: Sendable {
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) -> ConfigWriteResult
     func configPath() -> ConfigPathResult
+    func editConfig() -> ConfigLaunchResult
+    func openConfig() -> ConfigLaunchResult
 }
 
 public enum ConfigHandlerKey: TestDependencyKey {
@@ -23,4 +25,6 @@ private struct UnimplementedConfigHandler: ConfigHandler {
         fatalError("ConfigHandler.writeTemplate not implemented")
     }
     func configPath() -> ConfigPathResult { fatalError("ConfigHandler.configPath not implemented") }
+    func editConfig() -> ConfigLaunchResult { fatalError("ConfigHandler.editConfig not implemented") }
+    func openConfig() -> ConfigLaunchResult { fatalError("ConfigHandler.openConfig not implemented") }
 }

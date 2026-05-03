@@ -20,6 +20,7 @@ public protocol StandardOutput: Sendable {
     func write(_ result: ServiceUninstallResult)
     func write(_ result: ConfigWriteResult)
     func write(_ result: ConfigPathResult)
+    func write(_ result: ConfigLaunchResult)
 
     // MARK: - Benchmark
 
@@ -47,6 +48,7 @@ private struct UnimplementedStandardOutput: StandardOutput {
     func write(_ result: ServiceUninstallResult) { fatalError("StandardOutput.output not implemented") }
     func write(_ result: ConfigWriteResult) { fatalError("StandardOutput.output not implemented") }
     func write(_ result: ConfigPathResult) { fatalError("StandardOutput.output not implemented") }
+    func write(_ result: ConfigLaunchResult) { fatalError("StandardOutput.output not implemented") }
     func write(_ result: HealthCheckReport) { fatalError("StandardOutput.output not implemented") }
     func write(_ update: BenchmarkUpdate) { fatalError("StandardOutput.output not implemented") }
 }
