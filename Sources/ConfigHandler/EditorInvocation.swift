@@ -55,32 +55,32 @@ struct EditorInvocation: Equatable {
             }
 
             if let quote = quotedBy {
-                if character == quote {
+                switch character {
+                case quote:
                     quotedBy = nil
-                    hasWord = true
-                } else if quote == "\"", character == "\\" {
+                case "\\" where quote == "\"":
                     escaping = true
-                    hasWord = true
-                } else {
+                default:
                     word.append(character)
-                    hasWord = true
                 }
+                hasWord = true
                 continue
             }
 
-            if character == "\\" {
+            switch character {
+            case "\\":
                 escaping = true
                 hasWord = true
-            } else if character == "'" || character == "\"" {
+            case "'", "\"":
                 quotedBy = character
                 hasWord = true
-            } else if isWhitespace(character) {
+            case _ where isWhitespace(character):
                 if hasWord {
                     words.append(word)
                     word = ""
                     hasWord = false
                 }
-            } else {
+            default:
                 word.append(character)
                 hasWord = true
             }
