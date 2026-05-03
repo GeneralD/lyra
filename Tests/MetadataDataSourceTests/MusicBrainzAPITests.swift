@@ -71,6 +71,23 @@ struct MusicBrainzAPITests {
         #expect(q == "\"Brave Shine\" AND artist:\"Aimer\"")
     }
 
+    @Test("luceneQuery escapes reserved Lucene metacharacters in title")
+    func luceneEscapesTitleMetacharacters() {
+        let q = MusicBrainzAPI.luceneQuery(
+            title: #"+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /"#,
+            artist: nil,
+            duration: nil
+        )
+
+        #expect(q == #""\+ \- \&\& \|\| \! \( \) \{ \} \[ \] \^ \" \~ \* \? \: \\ \/""#)
+    }
+
+    @Test("luceneQuery escapes reserved Lucene metacharacters in artist")
+    func luceneEscapesArtistMetacharacters() {
+        let q = MusicBrainzAPI.luceneQuery(title: "Song", artist: #"Aimer + "Band" / Solo"#, duration: nil)
+        #expect(q == #""Song" AND artist:"Aimer \+ \"Band\" \/ Solo""#)
+    }
+
     @Test("luceneQuery adds duration window in milliseconds")
     func luceneDurationWindow() {
         let q = MusicBrainzAPI.luceneQuery(title: "Brave Shine", artist: "Aimer", duration: 225)
