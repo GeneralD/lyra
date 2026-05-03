@@ -1,14 +1,14 @@
 import Domain
 import Foundation
 
-struct EditorCommand: Equatable {
+struct EditorInvocation: Equatable {
     var executable: String
     var arguments: [String]
 
     static func parsed(
         from source: String,
         executableResolver: (String) -> String?
-    ) -> Result<EditorCommand, ConfigFailure> {
+    ) -> Result<EditorInvocation, ConfigFailure> {
         guard source.rangeOfCharacter(from: .newlines) == nil else {
             return .failure(.failed(detail: "$EDITOR must not contain newline characters"))
         }

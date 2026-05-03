@@ -44,7 +44,7 @@ extension ConfigHandlerImpl: ConfigHandler {
         }
 
         @Dependency(\.processGateway) var processGateway
-        switch EditorCommand.parsed(from: editor, executableResolver: processGateway.findExecutable) {
+        switch EditorInvocation.parsed(from: editor, executableResolver: processGateway.findExecutable) {
         case .success(let command):
             return launchConfig { path in
                 processGateway.runInteractive(
