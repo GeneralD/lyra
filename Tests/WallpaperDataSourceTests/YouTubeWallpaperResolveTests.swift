@@ -230,6 +230,7 @@ private struct StubGateway: ProcessGateway {
     func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
     func findExecutable(_ name: String) -> String? { executables[name] }
     func run(executable: String, arguments: [String]) -> Int32 { 0 }
+    func runInteractiveShell(_ command: String) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         AsyncStream { continuation in continuation.finish() }

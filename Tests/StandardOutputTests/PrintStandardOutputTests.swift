@@ -184,11 +184,19 @@ struct PrintStandardOutputTests {
         let pathError = try captureStderr { output in
             output.write(.failure(.failed(detail: "missing")) as ConfigPathResult)
         }
+        let launchSuccess = try captureStdout { output in
+            output.write(.success(.launched(path: "/tmp/config.toml")) as ConfigLaunchResult)
+        }
+        let launchError = try captureStderr { output in
+            output.write(.failure(.failed(detail: "launch failed")) as ConfigLaunchResult)
+        }
 
         #expect(created == "Config file created at /tmp/config.toml\n")
         #expect(configError == "Config error: bad config\n")
         #expect(found == "/tmp/config.toml\n")
         #expect(pathError == "Config error: missing\n")
+        #expect(launchSuccess.isEmpty)
+        #expect(launchError == "Config error: launch failed\n")
     }
 
     @Test("write benchmark header prints table headings")

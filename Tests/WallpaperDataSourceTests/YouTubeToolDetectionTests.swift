@@ -30,6 +30,7 @@ private struct LiveGateway: ProcessGateway {
     }
 
     func run(executable: String, arguments: [String]) -> Int32 { 0 }
+    func runInteractiveShell(_ command: String) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executable)

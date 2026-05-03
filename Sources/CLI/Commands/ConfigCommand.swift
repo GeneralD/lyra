@@ -2,7 +2,6 @@ import ArgumentParser
 import Dependencies
 import Domain
 import Entity
-import Foundation
 
 struct ConfigCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -72,22 +71,9 @@ struct ConfigEditCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = handler.configPath()
-        guard case .success(.found(let path)) = result else {
-            output.write(result)
-            throw ExitCode.failure
-        }
-
-        guard let editor = ProcessInfo.processInfo.environment["EDITOR"] else {
-            throw ValidationError("$EDITOR is not set. Set it with: export EDITOR=vim")
-        }
-
-        let escapedPath = path.replacingOccurrences(of: "'", with: "'\"'\"'")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "\(editor) '\(escapedPath)'"]
-        try process.run()
-        process.waitUntilExit()
+        let result = handler.editConfig()
+        output.write(result)
+        guard case .success = result else { throw ExitCode.failure }
     }
 }
 
@@ -102,17 +88,9 @@ struct ConfigOpenCommand: ParsableCommand {
     func run() throws {
         @Dependency(\.configHandler) var handler
         @Dependency(\.standardOutput) var output
-        let result = handler.configPath()
-        guard case .success(.found(let path)) = result else {
-            output.write(result)
-            throw ExitCode.failure
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = [path]
-        try process.run()
-        process.waitUntilExit()
+        let result = handler.openConfig()
+        output.write(result)
+        guard case .success = result else { throw ExitCode.failure }
     }
 }
 

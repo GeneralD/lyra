@@ -3,6 +3,13 @@ import Domain
 import Foundation
 import os
 
+// libc's system(3): runs a shell command, blocking SIGINT/SIGQUIT in the
+// parent so Ctrl+C reaches the child editor instead of killing the CLI.
+// Apple marks `Darwin.system` unavailable to Swift; bind the C symbol
+// directly so we can use it on macOS where the call is appropriate.
+@_silgen_name("system")
+private func libcSystem(_ command: UnsafePointer<CChar>?) -> Int32
+
 public final class DarwinGateway: @unchecked Sendable {
     private let lockState = OSAllocatedUnfairLock(initialState: LockState())
     private let lockDirectory: URL
@@ -186,6 +193,15 @@ extension DarwinGateway: ProcessGateway {
         guard (try? task.run()) != nil else { return -1 }
         task.waitUntilExit()
         return task.terminationStatus
+    }
+
+    @discardableResult
+    public func runInteractiveShell(_ command: String) -> Int32 {
+        let raw = command.withCString { libcSystem($0) }
+        guard raw != -1 else { return -1 }
+        let signal = raw & 0x7f
+        if signal != 0 { return 128 + signal }
+        return (raw >> 8) & 0xff
     }
 
     public func runCapturingOutput(executable: String, arguments: [String]) -> String? {

@@ -36,10 +36,14 @@ private struct StubConfigHandler: ConfigHandler {
     var templateResult: String? = "# config template"
     var writeResult: ConfigWriteResult = .success(.created(path: "/tmp/config.toml"))
     var pathResult: ConfigPathResult = .success(.found(path: "/tmp/config.toml"))
+    var editResult: ConfigLaunchResult = .success(.launched(path: "/tmp/config.toml"))
+    var openResult: ConfigLaunchResult = .success(.launched(path: "/tmp/config.toml"))
 
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) -> ConfigWriteResult { writeResult }
     func configPath() -> ConfigPathResult { pathResult }
+    func editConfig() -> ConfigLaunchResult { editResult }
+    func openConfig() -> ConfigLaunchResult { openResult }
 }
 
 private struct StubTrackHandler: TrackHandler {
@@ -94,6 +98,7 @@ private final class SpyStandardOutput: StandardOutput, @unchecked Sendable {
     func write(_ result: ServiceUninstallResult) {}
     func write(_ result: ConfigWriteResult) {}
     func write(_ result: ConfigPathResult) {}
+    func write(_ result: ConfigLaunchResult) {}
     func write(_ result: HealthCheckReport) {}
     func write(_ update: BenchmarkUpdate) { writtenBenchmarkUpdates.append(update) }
 }
@@ -422,11 +427,39 @@ struct ConfigInitCommandTests {
 
 @Suite("ConfigEditCommand")
 struct ConfigEditCommandTests {
+    @Test("success path does not throw")
+    func successPath() throws {
+        try withDependencies {
+            $0.configHandler = StubConfigHandler(
+                editResult: .success(.launched(path: "/tmp/config.toml"))
+            )
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            let cmd = ConfigEditCommand()
+            try cmd.run()
+        }
+    }
+
     @Test("failure path when config not found throws ExitCode.failure")
     func configNotFound() {
         withDependencies {
             $0.configHandler = StubConfigHandler(
-                pathResult: .failure(.failed(detail: "not found"))
+                editResult: .failure(.failed(detail: "not found"))
+            )
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            let cmd = ConfigEditCommand()
+            #expect(throws: ExitCode.failure) {
+                try cmd.run()
+            }
+        }
+    }
+
+    @Test("launch failure throws ExitCode.failure")
+    func launchFailure() {
+        withDependencies {
+            $0.configHandler = StubConfigHandler(
+                editResult: .failure(.failed(detail: "launch failed"))
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
@@ -442,11 +475,39 @@ struct ConfigEditCommandTests {
 
 @Suite("ConfigOpenCommand")
 struct ConfigOpenCommandTests {
+    @Test("success path does not throw")
+    func successPath() throws {
+        try withDependencies {
+            $0.configHandler = StubConfigHandler(
+                openResult: .success(.launched(path: "/tmp/config.toml"))
+            )
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            let cmd = ConfigOpenCommand()
+            try cmd.run()
+        }
+    }
+
     @Test("failure path when config not found throws ExitCode.failure")
     func configNotFound() {
         withDependencies {
             $0.configHandler = StubConfigHandler(
-                pathResult: .failure(.failed(detail: "not found"))
+                openResult: .failure(.failed(detail: "not found"))
+            )
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            let cmd = ConfigOpenCommand()
+            #expect(throws: ExitCode.failure) {
+                try cmd.run()
+            }
+        }
+    }
+
+    @Test("launch failure throws ExitCode.failure")
+    func launchFailure() {
+        withDependencies {
+            $0.configHandler = StubConfigHandler(
+                openResult: .failure(.failed(detail: "launch failed"))
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {

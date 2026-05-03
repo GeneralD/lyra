@@ -61,6 +61,12 @@ struct DarwinGatewayProcessTests {
         #expect(status == 0)
     }
 
+    @Test("runInteractiveShell returns child termination status")
+    func runInteractiveShellReturnsTerminationStatus() {
+        let status = gateway.runInteractiveShell("exit 7")
+        #expect(status == 7)
+    }
+
     @Test("runLaunchctl returns launchctl exit status")
     func runLaunchctlReturnsStatus() {
         let status = gateway.runLaunchctl(["help"])

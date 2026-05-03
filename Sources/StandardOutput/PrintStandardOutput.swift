@@ -146,6 +146,15 @@ public struct PrintStandardOutput: StandardOutput {
         }
     }
 
+    public func write(_ result: ConfigLaunchResult) {
+        switch result {
+        case .success:
+            break
+        case .failure(.failed(let detail)):
+            writeError("Config error: \(detail)")
+        }
+    }
+
     // MARK: - Benchmark
 
     public func write(_ update: BenchmarkUpdate) {

@@ -100,6 +100,250 @@ struct ConfigHandlerImplTests {
             }
         }
     }
+
+    // MARK: - editConfig
+
+    @Suite("editConfig")
+    struct EditConfig {
+        @Test("returns failure when editor is unset")
+        func editorUnset() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { nil },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
+            #expect(gateway.shellCommandCalls.isEmpty)
+        }
+
+        @Test("returns failure when editor is whitespace only")
+        func editorWhitespace() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "   \n\t" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
+            #expect(gateway.shellCommandCalls.isEmpty)
+        }
+
+        @Test("returns failure when editor is the empty string")
+        func editorEmptyString() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
+            #expect(gateway.shellCommandCalls.isEmpty)
+        }
+
+        @Test("invokes editor via /bin/sh with single-quoted path")
+        func invokesViaShell() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/config.toml'"])
+        }
+
+        @Test("passes editor flags through to shell unchanged")
+        func passesEditorFlags() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "code --wait" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(gateway.shellCommandCalls == ["code --wait '/tmp/config.toml'"])
+        }
+
+        @Test("escapes single quote in config path")
+        func escapesSingleQuote() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/it's/config.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/it's/config.toml")))
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/it'\\''s/config.toml'"])
+        }
+
+        @Test("escapes every single quote in a path with multiple quotes")
+        func escapesMultipleSingleQuotes() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/'a'/'b'/c.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/'a'/'b'/c.toml")))
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/'\\''a'\\''/'\\''b'\\''/c.toml'"])
+        }
+
+        @Test("neutralizes shell metacharacters in path via single-quoting")
+        func shellMetacharsAreNeutralized() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/$HOME/`whoami`/*.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/$HOME/`whoami`/*.toml")))
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/$HOME/`whoami`/*.toml'"])
+        }
+
+        @Test("trims surrounding whitespace from editor value")
+        func trimsWhitespace() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "  vim  " },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/config.toml'"])
+        }
+
+        @Test("returns failure when editor exits non-zero")
+        func editorFailure() {
+            let gateway = ProcessGatewaySpy(runStatus: 7)
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "false" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .failure(.failed(detail: "Editor command failed with exit status 7")))
+        }
+
+        @Test("returns launch failure when shell cannot start")
+        func editorLaunchFailure() {
+            let gateway = ProcessGatewaySpy(runStatus: -1)
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .failure(.failed(detail: "Editor process failed to launch")))
+        }
+
+        @Test("returns config path failure without launching")
+        func configPathFailureWithoutLaunching() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: nil,
+                writeError: true,
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            guard case .failure = result else {
+                Issue.record("Expected failure")
+                return
+            }
+            #expect(gateway.runCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
+        }
+    }
+
+    // MARK: - openConfig
+
+    @Suite("openConfig")
+    struct OpenConfig {
+        @Test("launches open through process gateway")
+        func launchesOpen() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway
+            ) {
+                $0.openConfig()
+            }
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(
+                gateway.runCalls == [
+                    ProcessRunCall(executable: "/usr/bin/open", arguments: ["/tmp/config.toml"])
+                ]
+            )
+        }
+
+        @Test("returns failure when open exits non-zero")
+        func openFailure() {
+            let gateway = ProcessGatewaySpy(runStatus: 1)
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway
+            ) {
+                $0.openConfig()
+            }
+
+            #expect(result == .failure(.failed(detail: "Open command failed with exit status 1")))
+        }
+
+        @Test("returns launch failure when open process cannot start")
+        func openLaunchFailure() {
+            let gateway = ProcessGatewaySpy(runStatus: -1)
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway
+            ) {
+                $0.openConfig()
+            }
+
+            #expect(result == .failure(.failed(detail: "Open process failed to launch")))
+        }
+
+        @Test("returns config path failure without launching")
+        func configPathFailure() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: nil,
+                writeError: true,
+                processGateway: gateway
+            ) {
+                $0.openConfig()
+            }
+
+            guard case .failure = result else {
+                Issue.record("Expected failure")
+                return
+            }
+            #expect(gateway.runCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
+        }
+    }
 }
 
 // MARK: - Helpers
@@ -116,6 +360,8 @@ private func withConfig<T>(
     writePath: String? = "/tmp/config.toml",
     writeError: Bool = false,
     forceTracker: ForceTracker? = nil,
+    processGateway: (any ProcessGateway)? = nil,
+    editorProvider: @escaping @Sendable () -> String? = { "vi" },
     operation: (ConfigHandlerImpl) -> T
 ) -> T {
     withDependencies {
@@ -126,8 +372,11 @@ private func withConfig<T>(
             writeError: writeError,
             forceTracker: forceTracker
         )
+        if let processGateway {
+            $0.processGateway = processGateway
+        }
     } operation: {
-        operation(ConfigHandlerImpl())
+        operation(ConfigHandlerImpl(editorProvider: editorProvider))
     }
 }
 
@@ -152,4 +401,42 @@ private struct StubConfigUseCase: ConfigUseCase {
 
 private enum ConfigWriteError: Error {
     case fileExists
+}
+
+private struct ProcessRunCall: Equatable {
+    var executable: String
+    var arguments: [String]
+}
+
+private final class ProcessGatewaySpy: ProcessGateway, @unchecked Sendable {
+    private(set) var runCalls: [ProcessRunCall] = []
+    private(set) var shellCommandCalls: [String] = []
+    private let runStatus: Int32
+
+    init(runStatus: Int32 = 0) {
+        self.runStatus = runStatus
+    }
+
+    var resourceSnapshot: ResourceSnapshot { .init(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0) }
+    var overlayPIDs: [Int32] { [] }
+    func spawnDaemon(executablePath: String) -> Int32? { nil }
+    func sendSignal(_ pid: Int32, signal: Int32) -> Bool { false }
+    func isRunning(_ pid: Int32) -> Bool { false }
+    func acquireLock() -> Bool { false }
+    var isLocked: Bool { false }
+    func releaseLock() {}
+    func runLaunchctl(_ arguments: [String]) -> Int32 { runStatus }
+    func findExecutable(_ name: String) -> String? { nil }
+    func run(executable: String, arguments: [String]) -> Int32 {
+        runCalls.append(ProcessRunCall(executable: executable, arguments: arguments))
+        return runStatus
+    }
+    func runInteractiveShell(_ command: String) -> Int32 {
+        shellCommandCalls.append(command)
+        return runStatus
+    }
+    func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
+        AsyncStream { $0.finish() }
+    }
 }

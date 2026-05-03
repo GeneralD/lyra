@@ -1,8 +1,15 @@
 import Dependencies
 import Domain
+import Foundation
 
 public struct ConfigHandlerImpl {
-    public init() {}
+    private let editorProvider: @Sendable () -> String?
+
+    public init(
+        editorProvider: @escaping @Sendable () -> String? = { ProcessInfo.processInfo.environment["EDITOR"] }
+    ) {
+        self.editorProvider = editorProvider
+    }
 }
 
 extension ConfigHandlerImpl: ConfigHandler {
@@ -28,6 +35,54 @@ extension ConfigHandlerImpl: ConfigHandler {
         switch writeTemplate(format: .toml, force: false) {
         case .success(.created(let path)): return .success(.found(path: path))
         case .failure(let error): return .failure(error)
+        }
+    }
+
+    public func editConfig() -> ConfigLaunchResult {
+        let editor = editorProvider()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !editor.isEmpty else {
+            return .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim"))
+        }
+        return launchConfig { path in
+            @Dependency(\.processGateway) var processGateway
+            let escaped = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            return processGateway.runInteractiveShell("\(editor) \(escaped)")
+        } exitFailureDetail: {
+            "Editor command failed with exit status \($0)"
+        } launchFailureDetail: {
+            "Editor process failed to launch"
+        }
+    }
+
+    public func openConfig() -> ConfigLaunchResult {
+        launchConfig { path in
+            @Dependency(\.processGateway) var processGateway
+            return processGateway.run(executable: "/usr/bin/open", arguments: [path])
+        } exitFailureDetail: {
+            "Open command failed with exit status \($0)"
+        } launchFailureDetail: {
+            "Open process failed to launch"
+        }
+    }
+
+    private func launchConfig(
+        using launcher: (String) -> Int32,
+        exitFailureDetail: (Int32) -> String,
+        launchFailureDetail: () -> String
+    ) -> ConfigLaunchResult {
+        switch configPath() {
+        case .success(.found(let path)):
+            let status = launcher(path)
+            switch status {
+            case 0:
+                return .success(.launched(path: path))
+            case -1:
+                return .failure(.failed(detail: launchFailureDetail()))
+            default:
+                return .failure(.failed(detail: exitFailureDetail(status)))
+            }
+        case .failure(let error):
+            return .failure(error)
         }
     }
 }
