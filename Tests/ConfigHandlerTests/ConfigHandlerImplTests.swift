@@ -133,6 +133,20 @@ struct ConfigHandlerImplTests {
             #expect(gateway.interactiveRunCalls.isEmpty)
         }
 
+        @Test("returns failure when editor is the empty string")
+        func editorEmptyString() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
+            #expect(gateway.interactiveRunCalls.isEmpty)
+        }
+
         @Test("invokes editor via /bin/sh with single-quoted path")
         func invokesViaShell() {
             let gateway = ProcessGatewaySpy()
@@ -187,6 +201,48 @@ struct ConfigHandlerImplTests {
             )
         }
 
+        @Test("escapes every single quote in a path with multiple quotes")
+        func escapesMultipleSingleQuotes() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/'a'/'b'/c.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/'a'/'b'/c.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(
+                        executable: "/bin/sh",
+                        arguments: ["-c", "vim '/tmp/'\\''a'\\''/'\\''b'\\''/c.toml'"]
+                    )
+                ]
+            )
+        }
+
+        @Test("neutralizes shell metacharacters in path via single-quoting")
+        func shellMetacharsAreNeutralized() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/$HOME/`whoami`/*.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/$HOME/`whoami`/*.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(
+                        executable: "/bin/sh",
+                        arguments: ["-c", "vim '/tmp/$HOME/`whoami`/*.toml'"]
+                    )
+                ]
+            )
+        }
+
         @Test("trims surrounding whitespace from editor value")
         func trimsWhitespace() {
             let gateway = ProcessGatewaySpy()
@@ -229,6 +285,25 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .failure(.failed(detail: "Editor process failed to launch")))
+        }
+
+        @Test("returns config path failure without launching")
+        func configPathFailureWithoutLaunching() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: nil,
+                writeError: true,
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            guard case .failure = result else {
+                Issue.record("Expected failure")
+                return
+            }
+            #expect(gateway.runCalls.isEmpty)
+            #expect(gateway.interactiveRunCalls.isEmpty)
         }
     }
 
