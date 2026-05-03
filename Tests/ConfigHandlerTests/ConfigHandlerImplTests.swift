@@ -185,6 +185,52 @@ struct ConfigHandlerImplTests {
             )
         }
 
+        @Test("launches editor from quoted executable path")
+        func quotedExecutablePath() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { #""/Applications/Code App/code" --wait"# },
+                operation: {
+                    $0.editConfig()
+                }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(
+                        executable: "/Applications/Code App/code",
+                        arguments: ["--wait", "/tmp/config.toml"]
+                    )
+                ]
+            )
+        }
+
+        @Test("preserves escaped editor arguments")
+        func escapedEditorArguments() {
+            let gateway = ProcessGatewaySpy(executablePaths: ["code": "/usr/local/bin/code"])
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { #"code foo\ bar "baz\"qux""# },
+                operation: {
+                    $0.editConfig()
+                }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(
+                        executable: "/usr/local/bin/code",
+                        arguments: ["foo bar", "baz\"qux", "/tmp/config.toml"]
+                    )
+                ]
+            )
+        }
+
         @Test("returns failure when editor contains newline")
         func editorNewline() {
             let gateway = ProcessGatewaySpy(executablePaths: ["code": "/usr/local/bin/code"])
@@ -198,6 +244,54 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .failure(.failed(detail: "$EDITOR must not contain newline characters")))
+            #expect(gateway.interactiveRunCalls.isEmpty)
+        }
+
+        @Test("returns failure when editor command is empty after parsing")
+        func editorEmptyCommand() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "\"\"" },
+                operation: {
+                    $0.editConfig()
+                }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR does not contain an executable command")))
+            #expect(gateway.interactiveRunCalls.isEmpty)
+        }
+
+        @Test("returns failure when editor has unfinished escape")
+        func editorUnfinishedEscape() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "code\\" },
+                operation: {
+                    $0.editConfig()
+                }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR ends with an unfinished escape")))
+            #expect(gateway.interactiveRunCalls.isEmpty)
+        }
+
+        @Test("returns failure when editor has unclosed quote")
+        func editorUnclosedQuote() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { #"code "unterminated"# },
+                operation: {
+                    $0.editConfig()
+                }
+            )
+
+            #expect(result == .failure(.failed(detail: "$EDITOR contains an unclosed quote")))
             #expect(gateway.interactiveRunCalls.isEmpty)
         }
 
