@@ -192,7 +192,7 @@ angle = 15
 | Shape | Required keys | Optional keys | Notes |
 |---|---|---|---|
 | `circle` | — | — | Same as omitting `shape` |
-| `polygon` | `sides` (int ≥ 3) | `angle` (degrees, default `0`) | `sides < 3` is silently clamped to `3`. `angle = 0` orients one vertex straight up |
+| `polygon` | `sides` (int `3...256`) | `angle` (degrees, default `0`) | Out-of-range `sides` values fail config decoding. `angle = 0` orients one vertex straight up |
 
 ### `[ai]`
 

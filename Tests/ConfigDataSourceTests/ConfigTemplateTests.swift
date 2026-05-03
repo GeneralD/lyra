@@ -234,6 +234,7 @@ spacing = 6.0
         #expect(decoded.artwork.opacity.value == 1.0)
         #expect(decoded.ripple.enabled == true)
         #expect(decoded.ripple.color == "#AAAAFFFF")
+        #expect(decoded.ripple.shape == .circle)
         #expect(decoded.text.title.fontSize == 18)
         #expect(decoded.text.title.fontWeight == "bold")
         #expect(decoded.text.artist.fontWeight == "medium")

@@ -538,27 +538,37 @@ struct RippleShapeDecodingTests {
         #expect(config.ripple.shape == .polygon(sides: 5, angle: 0))
     }
 
-    @Test("polygon with sides < minimum throws")
+    @Test("polygon with sides < minimum throws dataCorrupted citing sides")
     func polygonSidesTooSmallThrows() {
-        #expect(throws: DecodingError.self) {
+        do {
             _ = try decode(
                 """
                 [ripple.shape]
                 type = "polygon"
                 sides = 2
                 """)
+            Issue.record("Expected DecodingError.dataCorrupted")
+        } catch let DecodingError.dataCorrupted(context) {
+            #expect(context.debugDescription.contains("sides"))
+        } catch {
+            Issue.record("Expected DecodingError.dataCorrupted, got \(error)")
         }
     }
 
-    @Test("polygon with sides > maximum throws")
+    @Test("polygon with sides > maximum throws dataCorrupted citing sides")
     func polygonSidesTooLargeThrows() {
-        #expect(throws: DecodingError.self) {
+        do {
             _ = try decode(
                 """
                 [ripple.shape]
                 type = "polygon"
                 sides = 9999
                 """)
+            Issue.record("Expected DecodingError.dataCorrupted")
+        } catch let DecodingError.dataCorrupted(context) {
+            #expect(context.debugDescription.contains("sides"))
+        } catch {
+            Issue.record("Expected DecodingError.dataCorrupted, got \(error)")
         }
     }
 

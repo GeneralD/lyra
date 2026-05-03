@@ -245,6 +245,8 @@ struct RippleViewRenderingTests {
 
 private func collectedPoints(_ path: Path) -> [CGPoint] {
     var points: [CGPoint] = []
+    // swift-format-ignore: ReplaceForEachWithForLoop
+    // Path is not a Sequence; `forEach` is its only public element traversal API.
     path.forEach { element in
         switch element {
         case .move(let p), .line(let p):
