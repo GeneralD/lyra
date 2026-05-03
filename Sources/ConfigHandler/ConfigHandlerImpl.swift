@@ -39,25 +39,21 @@ extension ConfigHandlerImpl: ConfigHandler {
     }
 
     public func editConfig() -> ConfigLaunchResult {
-        guard let editor = editorProvider() else {
+        let editor = editorProvider()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !editor.isEmpty else {
             return .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim"))
         }
-
-        @Dependency(\.processGateway) var processGateway
-        switch EditorInvocation.parsed(from: editor, executableResolver: processGateway.findExecutable) {
-        case .success(let command):
-            return launchConfig { path in
-                processGateway.runInteractive(
-                    executable: command.executable,
-                    arguments: command.arguments + [path]
-                )
-            } exitFailureDetail: {
-                "Editor command failed with exit status \($0)"
-            } launchFailureDetail: {
-                "Editor process failed to launch"
-            }
-        case .failure(let error):
-            return .failure(error)
+        return launchConfig { path in
+            @Dependency(\.processGateway) var processGateway
+            let escaped = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            return processGateway.runInteractive(
+                executable: "/bin/sh",
+                arguments: ["-c", "\(editor) \(escaped)"]
+            )
+        } exitFailureDetail: {
+            "Editor command failed with exit status \($0)"
+        } launchFailureDetail: {
+            "Editor process failed to launch"
         }
     }
 

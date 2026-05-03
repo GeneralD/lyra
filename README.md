@@ -58,7 +58,7 @@ lyra healthcheck      # check API connectivity
 
 lyra config template  # print default config to stdout
 lyra config init      # create config file with defaults
-lyra config edit      # open config in $EDITOR (see note below)
+lyra config edit      # open config in $EDITOR
 lyra config open      # open config in GUI app
 
 lyra track            # show now-playing info as JSON
@@ -70,12 +70,6 @@ lyra benchmark        # measure CPU/memory baselines
 lyra benchmark -d 30  # 30s per scenario
 lyra benchmark --json # JSON output for CI
 ```
-
-> **Note:** `lyra config edit` invokes `$EDITOR` as a literal `cmd args...`
-> command (no shell, no `~` or `$VAR` expansion). Quoted arguments and
-> backslash escapes are honored, e.g. `EDITOR='code --wait'` or
-> `EDITOR='/Applications/Code App/code --wait'`. To use shell features,
-> wrap them yourself: `EDITOR='sh -c "exec code --wait \"$@\"" --'`.
 
 ### Auto-start
 

@@ -112,230 +112,120 @@ struct ConfigHandlerImplTests {
                 existingPath: "/tmp/config.toml",
                 processGateway: gateway,
                 editorProvider: { nil },
-                operation: {
-                    $0.editConfig()
-                }
+                operation: { $0.editConfig() }
             )
 
             #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
-            #expect(gateway.runCalls.isEmpty)
             #expect(gateway.interactiveRunCalls.isEmpty)
         }
 
-        @Test("returns failure when editor is whitespace")
+        @Test("returns failure when editor is whitespace only")
         func editorWhitespace() {
             let gateway = ProcessGatewaySpy()
             let result = withConfig(
                 existingPath: "/tmp/config.toml",
                 processGateway: gateway,
-                editorProvider: { "   " },
-                operation: {
-                    $0.editConfig()
-                }
+                editorProvider: { "   \n\t" },
+                operation: { $0.editConfig() }
             )
 
             #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
-            #expect(gateway.runCalls.isEmpty)
             #expect(gateway.interactiveRunCalls.isEmpty)
         }
 
-        @Test("launches editor through process gateway")
-        func launchesEditor() {
-            let gateway = ProcessGatewaySpy(executablePaths: ["code": "/usr/local/bin/code"])
+        @Test("invokes editor via /bin/sh with single-quoted path")
+        func invokesViaShell() {
+            let gateway = ProcessGatewaySpy()
             let result = withConfig(
                 existingPath: "/tmp/config.toml",
                 processGateway: gateway,
-                editorProvider: { "code --wait" },
-                operation: {
-                    $0.editConfig()
-                }
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
             )
 
             #expect(result == .success(.launched(path: "/tmp/config.toml")))
             #expect(
                 gateway.interactiveRunCalls == [
-                    ProcessRunCall(
-                        executable: "/usr/local/bin/code",
-                        arguments: ["--wait", "/tmp/config.toml"]
-                    )
+                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "vim '/tmp/config.toml'"])
                 ]
             )
         }
 
-        @Test("preserves quoted editor arguments")
-        func quotedEditorArguments() {
-            let gateway = ProcessGatewaySpy(executablePaths: ["code": "/usr/local/bin/code"])
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { #"code --profile "Lyra Dev" --wait"# },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .success(.launched(path: "/tmp/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(
-                        executable: "/usr/local/bin/code",
-                        arguments: ["--profile", "Lyra Dev", "--wait", "/tmp/config.toml"]
-                    )
-                ]
-            )
-        }
-
-        @Test("launches editor from quoted executable path")
-        func quotedExecutablePath() {
-            let gateway = ProcessGatewaySpy()
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { #""/Applications/Code App/code" --wait"# },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .success(.launched(path: "/tmp/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(
-                        executable: "/Applications/Code App/code",
-                        arguments: ["--wait", "/tmp/config.toml"]
-                    )
-                ]
-            )
-        }
-
-        @Test("preserves escaped editor arguments")
-        func escapedEditorArguments() {
-            let gateway = ProcessGatewaySpy(executablePaths: ["code": "/usr/local/bin/code"])
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { #"code foo\ bar "baz\"qux""# },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .success(.launched(path: "/tmp/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(
-                        executable: "/usr/local/bin/code",
-                        arguments: ["foo bar", "baz\"qux", "/tmp/config.toml"]
-                    )
-                ]
-            )
-        }
-
-        @Test("returns failure when editor contains newline")
-        func editorNewline() {
-            let gateway = ProcessGatewaySpy(executablePaths: ["code": "/usr/local/bin/code"])
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { "code\n--wait" },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .failure(.failed(detail: "$EDITOR must not contain newline characters")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
-        }
-
-        @Test("returns failure when editor command is empty after parsing")
-        func editorEmptyCommand() {
-            let gateway = ProcessGatewaySpy()
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { "\"\"" },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .failure(.failed(detail: "$EDITOR does not contain an executable command")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
-        }
-
-        @Test("returns failure when editor has unfinished escape")
-        func editorUnfinishedEscape() {
-            let gateway = ProcessGatewaySpy()
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { "code\\" },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .failure(.failed(detail: "$EDITOR ends with an unfinished escape")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
-        }
-
-        @Test("returns failure when editor has unclosed quote")
-        func editorUnclosedQuote() {
-            let gateway = ProcessGatewaySpy()
-            let result = withConfig(
-                existingPath: "/tmp/config.toml",
-                processGateway: gateway,
-                editorProvider: { #"code "unterminated"# },
-                operation: {
-                    $0.editConfig()
-                }
-            )
-
-            #expect(result == .failure(.failed(detail: "$EDITOR contains an unclosed quote")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
-        }
-
-        @Test("returns failure when editor executable is missing")
-        func editorExecutableMissing() {
+        @Test("passes editor flags through to shell unchanged")
+        func passesEditorFlags() {
             let gateway = ProcessGatewaySpy()
             let result = withConfig(
                 existingPath: "/tmp/config.toml",
                 processGateway: gateway,
                 editorProvider: { "code --wait" },
-                operation: {
-                    $0.editConfig()
-                }
+                operation: { $0.editConfig() }
             )
 
-            #expect(result == .failure(.failed(detail: "Editor executable not found: code")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "code --wait '/tmp/config.toml'"])
+                ]
+            )
+        }
+
+        @Test("escapes single quote in config path")
+        func escapesSingleQuote() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/it's/config.toml",
+                processGateway: gateway,
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/it's/config.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "vim '/tmp/it'\\''s/config.toml'"])
+                ]
+            )
+        }
+
+        @Test("trims surrounding whitespace from editor value")
+        func trimsWhitespace() {
+            let gateway = ProcessGatewaySpy()
+            let result = withConfig(
+                existingPath: "/tmp/config.toml",
+                processGateway: gateway,
+                editorProvider: { "  vim  " },
+                operation: { $0.editConfig() }
+            )
+
+            #expect(result == .success(.launched(path: "/tmp/config.toml")))
+            #expect(
+                gateway.interactiveRunCalls == [
+                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "vim '/tmp/config.toml'"])
+                ]
+            )
         }
 
         @Test("returns failure when editor exits non-zero")
         func editorFailure() {
-            let gateway = ProcessGatewaySpy(runStatus: 7, executablePaths: ["false": "/usr/bin/false"])
+            let gateway = ProcessGatewaySpy(runStatus: 7)
             let result = withConfig(
                 existingPath: "/tmp/config.toml",
                 processGateway: gateway,
                 editorProvider: { "false" },
-                operation: {
-                    $0.editConfig()
-                }
+                operation: { $0.editConfig() }
             )
 
             #expect(result == .failure(.failed(detail: "Editor command failed with exit status 7")))
         }
 
-        @Test("returns launch failure when editor process cannot start")
+        @Test("returns launch failure when shell cannot start")
         func editorLaunchFailure() {
-            let gateway = ProcessGatewaySpy(runStatus: -1, executablePaths: ["missing-editor": "/missing/editor"])
+            let gateway = ProcessGatewaySpy(runStatus: -1)
             let result = withConfig(
                 existingPath: "/tmp/config.toml",
                 processGateway: gateway,
-                editorProvider: { "missing-editor" },
-                operation: {
-                    $0.editConfig()
-                }
+                editorProvider: { "vim" },
+                operation: { $0.editConfig() }
             )
 
             #expect(result == .failure(.failed(detail: "Editor process failed to launch")))
@@ -477,11 +367,9 @@ private final class ProcessGatewaySpy: ProcessGateway, @unchecked Sendable {
     private(set) var runCalls: [ProcessRunCall] = []
     private(set) var interactiveRunCalls: [ProcessRunCall] = []
     private let runStatus: Int32
-    private let executablePaths: [String: String]
 
-    init(runStatus: Int32 = 0, executablePaths: [String: String] = [:]) {
+    init(runStatus: Int32 = 0) {
         self.runStatus = runStatus
-        self.executablePaths = executablePaths
     }
 
     var resourceSnapshot: ResourceSnapshot { .init(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0) }
@@ -493,7 +381,7 @@ private final class ProcessGatewaySpy: ProcessGateway, @unchecked Sendable {
     var isLocked: Bool { false }
     func releaseLock() {}
     func runLaunchctl(_ arguments: [String]) -> Int32 { runStatus }
-    func findExecutable(_ name: String) -> String? { executablePaths[name] }
+    func findExecutable(_ name: String) -> String? { nil }
     func run(executable: String, arguments: [String]) -> Int32 {
         runCalls.append(ProcessRunCall(executable: executable, arguments: arguments))
         return runStatus
