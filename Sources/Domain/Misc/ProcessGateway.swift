@@ -28,7 +28,10 @@ public protocol ProcessGateway: Sendable {
 
     // Subprocess execution
     func run(executable: String, arguments: [String]) -> Int32
-    func runInteractive(executable: String, arguments: [String]) -> Int32
+    /// Runs a shell command interactively with proper TTY job-control handoff.
+    /// Parent blocks SIGINT/SIGQUIT during execution so Ctrl+C reaches the
+    /// child editor instead of killing both.
+    func runInteractiveShell(_ command: String) -> Int32
     func runCapturingOutput(executable: String, arguments: [String]) -> String?
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String>
 }
@@ -56,8 +59,8 @@ private struct UnimplementedProcessGateway: ProcessGateway {
     func runLaunchctl(_ arguments: [String]) -> Int32 { fatalError("ProcessGateway.runLaunchctl not implemented") }
     func findExecutable(_ name: String) -> String? { fatalError("ProcessGateway.findExecutable not implemented") }
     func run(executable: String, arguments: [String]) -> Int32 { fatalError("ProcessGateway.run not implemented") }
-    func runInteractive(executable: String, arguments: [String]) -> Int32 {
-        fatalError("ProcessGateway.runInteractive not implemented")
+    func runInteractiveShell(_ command: String) -> Int32 {
+        fatalError("ProcessGateway.runInteractiveShell not implemented")
     }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? {
         fatalError("ProcessGateway.runCapturingOutput not implemented")

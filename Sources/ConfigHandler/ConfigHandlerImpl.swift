@@ -46,10 +46,7 @@ extension ConfigHandlerImpl: ConfigHandler {
         return launchConfig { path in
             @Dependency(\.processGateway) var processGateway
             let escaped = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
-            return processGateway.runInteractive(
-                executable: "/bin/sh",
-                arguments: ["-c", "\(editor) \(escaped)"]
-            )
+            return processGateway.runInteractiveShell("\(editor) \(escaped)")
         } exitFailureDetail: {
             "Editor command failed with exit status \($0)"
         } launchFailureDetail: {
@@ -60,7 +57,7 @@ extension ConfigHandlerImpl: ConfigHandler {
     public func openConfig() -> ConfigLaunchResult {
         launchConfig { path in
             @Dependency(\.processGateway) var processGateway
-            return processGateway.runInteractive(executable: "/usr/bin/open", arguments: [path])
+            return processGateway.run(executable: "/usr/bin/open", arguments: [path])
         } exitFailureDetail: {
             "Open command failed with exit status \($0)"
         } launchFailureDetail: {

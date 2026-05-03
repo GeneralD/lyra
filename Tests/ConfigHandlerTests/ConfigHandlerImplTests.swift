@@ -116,7 +116,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
         }
 
         @Test("returns failure when editor is whitespace only")
@@ -130,7 +130,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
         }
 
         @Test("returns failure when editor is the empty string")
@@ -144,7 +144,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .failure(.failed(detail: "$EDITOR is not set. Set it with: export EDITOR=vim")))
-            #expect(gateway.interactiveRunCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
         }
 
         @Test("invokes editor via /bin/sh with single-quoted path")
@@ -158,11 +158,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .success(.launched(path: "/tmp/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "vim '/tmp/config.toml'"])
-                ]
-            )
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/config.toml'"])
         }
 
         @Test("passes editor flags through to shell unchanged")
@@ -176,11 +172,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .success(.launched(path: "/tmp/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "code --wait '/tmp/config.toml'"])
-                ]
-            )
+            #expect(gateway.shellCommandCalls == ["code --wait '/tmp/config.toml'"])
         }
 
         @Test("escapes single quote in config path")
@@ -194,11 +186,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .success(.launched(path: "/tmp/it's/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "vim '/tmp/it'\\''s/config.toml'"])
-                ]
-            )
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/it'\\''s/config.toml'"])
         }
 
         @Test("escapes every single quote in a path with multiple quotes")
@@ -212,14 +200,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .success(.launched(path: "/tmp/'a'/'b'/c.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(
-                        executable: "/bin/sh",
-                        arguments: ["-c", "vim '/tmp/'\\''a'\\''/'\\''b'\\''/c.toml'"]
-                    )
-                ]
-            )
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/'\\''a'\\''/'\\''b'\\''/c.toml'"])
         }
 
         @Test("neutralizes shell metacharacters in path via single-quoting")
@@ -233,14 +214,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .success(.launched(path: "/tmp/$HOME/`whoami`/*.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(
-                        executable: "/bin/sh",
-                        arguments: ["-c", "vim '/tmp/$HOME/`whoami`/*.toml'"]
-                    )
-                ]
-            )
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/$HOME/`whoami`/*.toml'"])
         }
 
         @Test("trims surrounding whitespace from editor value")
@@ -254,11 +228,7 @@ struct ConfigHandlerImplTests {
             )
 
             #expect(result == .success(.launched(path: "/tmp/config.toml")))
-            #expect(
-                gateway.interactiveRunCalls == [
-                    ProcessRunCall(executable: "/bin/sh", arguments: ["-c", "vim '/tmp/config.toml'"])
-                ]
-            )
+            #expect(gateway.shellCommandCalls == ["vim '/tmp/config.toml'"])
         }
 
         @Test("returns failure when editor exits non-zero")
@@ -303,7 +273,7 @@ struct ConfigHandlerImplTests {
                 return
             }
             #expect(gateway.runCalls.isEmpty)
-            #expect(gateway.interactiveRunCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
         }
     }
 
@@ -323,7 +293,7 @@ struct ConfigHandlerImplTests {
 
             #expect(result == .success(.launched(path: "/tmp/config.toml")))
             #expect(
-                gateway.interactiveRunCalls == [
+                gateway.runCalls == [
                     ProcessRunCall(executable: "/usr/bin/open", arguments: ["/tmp/config.toml"])
                 ]
             )
@@ -371,7 +341,7 @@ struct ConfigHandlerImplTests {
                 return
             }
             #expect(gateway.runCalls.isEmpty)
-            #expect(gateway.interactiveRunCalls.isEmpty)
+            #expect(gateway.shellCommandCalls.isEmpty)
         }
     }
 }
@@ -440,7 +410,7 @@ private struct ProcessRunCall: Equatable {
 
 private final class ProcessGatewaySpy: ProcessGateway, @unchecked Sendable {
     private(set) var runCalls: [ProcessRunCall] = []
-    private(set) var interactiveRunCalls: [ProcessRunCall] = []
+    private(set) var shellCommandCalls: [String] = []
     private let runStatus: Int32
 
     init(runStatus: Int32 = 0) {
@@ -461,8 +431,8 @@ private final class ProcessGatewaySpy: ProcessGateway, @unchecked Sendable {
         runCalls.append(ProcessRunCall(executable: executable, arguments: arguments))
         return runStatus
     }
-    func runInteractive(executable: String, arguments: [String]) -> Int32 {
-        interactiveRunCalls.append(ProcessRunCall(executable: executable, arguments: arguments))
+    func runInteractiveShell(_ command: String) -> Int32 {
+        shellCommandCalls.append(command)
         return runStatus
     }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
