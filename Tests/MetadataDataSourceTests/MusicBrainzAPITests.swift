@@ -42,6 +42,20 @@ struct MusicBrainzAPITests {
         #expect(items.first(where: { $0.name == "limit" })?.value == "5")
     }
 
+    @Test("preserves escaped Lucene query through URL construction")
+    func escapedQueryEncoding() async {
+        let recorder = TestHTTPService()
+        let api = makeAPI(recorder)
+        let query = MusicBrainzAPI.luceneQuery(title: #"C++ / "Live""#, artist: "Aimer && Co.", duration: nil)
+
+        _ = try? await api.searchRecording(query: query, fmt: "json", limit: 5)
+        let url = try? #require(recorder.captured?.url)
+        let components = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+        let items = components?.queryItems ?? []
+
+        #expect(items.first(where: { $0.name == "query" })?.value == #""C\+\+ \/ \"Live\"" AND artist:"Aimer \&\& Co.""#)
+    }
+
     @Test("healthCheck builds fixed search request")
     func healthCheckRequest() async {
         let recorder = TestHTTPService(body: Data())
@@ -69,6 +83,23 @@ struct MusicBrainzAPITests {
     func luceneArtistFilter() {
         let q = MusicBrainzAPI.luceneQuery(title: "Brave Shine", artist: "Aimer", duration: nil)
         #expect(q == "\"Brave Shine\" AND artist:\"Aimer\"")
+    }
+
+    @Test("luceneQuery escapes reserved Lucene metacharacters in title")
+    func luceneEscapesTitleMetacharacters() {
+        let q = MusicBrainzAPI.luceneQuery(
+            title: #"+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /"#,
+            artist: nil,
+            duration: nil
+        )
+
+        #expect(q == #""\+ \- \&\& \|\| \! \( \) \{ \} \[ \] \^ \" \~ \* \? \: \\ \/""#)
+    }
+
+    @Test("luceneQuery escapes reserved Lucene metacharacters in artist")
+    func luceneEscapesArtistMetacharacters() {
+        let q = MusicBrainzAPI.luceneQuery(title: "Song", artist: #"Aimer + "Band" / Solo"#, duration: nil)
+        #expect(q == #""Song" AND artist:"Aimer \+ \"Band\" \/ Solo""#)
     }
 
     @Test("luceneQuery adds duration window in milliseconds")
