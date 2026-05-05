@@ -11,10 +11,33 @@ struct WallpaperCache {
     ///   environment is global). When `nil`, reads `XDG_CACHE_HOME` from the
     ///   process environment, falling back to `~/.cache`.
     init(cachePath: String? = nil) throws {
-        let resolvedCachePath = cachePath ?? Self.cachePathFromEnvironment()
+        let resolvedCachePath = try Self.normalizedCachePath(cachePath) ?? Self.cachePathFromEnvironment()
         let wallpaperPath = "\(resolvedCachePath)/lyra/wallpapers"
         try FileManager.default.createDirectory(atPath: wallpaperPath, withIntermediateDirectories: true)
         folder = try Folder(path: wallpaperPath)
+    }
+
+    private static func normalizedCachePath(_ cachePath: String?) throws -> String? {
+        guard let cachePath else {
+            return nil
+        }
+
+        let trimmedCachePath = cachePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCachePath.isEmpty else {
+            return nil
+        }
+
+        guard NSString(string: trimmedCachePath).isAbsolutePath else {
+            throw NSError(
+                domain: "WallpaperCache",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "cachePath must be an absolute path."
+                ]
+            )
+        }
+
+        return trimmedCachePath
     }
 
     private static func cachePathFromEnvironment() -> String {
