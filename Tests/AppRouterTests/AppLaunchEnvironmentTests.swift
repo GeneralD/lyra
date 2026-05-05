@@ -301,7 +301,7 @@ struct AppRouterTests {
                     .lyricsLines: "One\nTwo",
                 ]
             ),
-            windowFactory: { _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -350,7 +350,7 @@ struct AppRouterTests {
 
         let router = AppRouter(
             launchEnvironment: .init(environment: [.uiTestMode: "true"]),
-            windowFactory: { _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -407,7 +407,7 @@ struct AppRouterTests {
                 dependencies.wallpaperInteractor = wallpaperInteractor
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
             },
-            windowFactory: { _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -551,6 +551,11 @@ struct AccessibilityHooksTests {
         } operation: {
             RipplePresenter()
         }
+        let wallpaperPresenter = withDependencies {
+            $0.wallpaperInteractor = EnabledRippleWallpaperInteractor()
+        } operation: {
+            WallpaperPresenter()
+        }
 
         headerPresenter.start()
         lyricsPresenter.start()
@@ -573,7 +578,8 @@ struct AccessibilityHooksTests {
             OverlayContentView(
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
-                ripplePresenter: overlayRipplePresenter
+                ripplePresenter: overlayRipplePresenter,
+                wallpaperPresenter: wallpaperPresenter
             ),
             size: CGSize(width: 800, height: 500)
         )

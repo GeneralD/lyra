@@ -370,3 +370,95 @@ struct LyricsColumnViewRenderingTests {
         #expect(presenter.displayLyricLines == ["Line 1", "Line 2", "Line 3"])
     }
 }
+
+// MARK: - OverlayContentView wallpaper loading
+
+private struct PendingWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
+    var playbackMode: WallpaperPlaybackMode { .cycle }
+    var rippleConfig: RippleStyle { .init(enabled: false) }
+    /// Stream that never yields and never finishes — keeps WallpaperPresenter.isLoading == true.
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        AsyncStream { _ in }
+    }
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
+}
+
+@MainActor
+@Suite("OverlayContentView wallpaper loading indicator")
+struct OverlayContentViewLoadingTests {
+    @Test("renders with idle wallpaper presenter (no loading state)")
+    func rendersWithIdlePresenter() async {
+        let headerPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            HeaderPresenter()
+        }
+        let lyricsPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            LyricsPresenter()
+        }
+        let ripplePresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+            $0.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+        } operation: {
+            RipplePresenter()
+        }
+        let wallpaperPresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+        } operation: {
+            WallpaperPresenter()
+        }
+
+        // Don't call wallpaperPresenter.start() — isLoading stays false
+        #expect(wallpaperPresenter.isLoading == false)
+        render(
+            OverlayContentView(
+                headerPresenter: headerPresenter,
+                lyricsPresenter: lyricsPresenter,
+                ripplePresenter: ripplePresenter,
+                wallpaperPresenter: wallpaperPresenter
+            ),
+            size: CGSize(width: 800, height: 500)
+        )
+    }
+
+    @Test("renders with loading wallpaper presenter (pending download)")
+    func rendersWithLoadingPresenter() async {
+        let headerPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            HeaderPresenter()
+        }
+        let lyricsPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            LyricsPresenter()
+        }
+        let ripplePresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+            $0.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+        } operation: {
+            RipplePresenter()
+        }
+        let wallpaperPresenter = withDependencies {
+            $0.wallpaperInteractor = PendingWallpaperInteractor()
+        } operation: {
+            WallpaperPresenter()
+        }
+
+        wallpaperPresenter.start()
+        defer { wallpaperPresenter.stop() }
+
+        #expect(wallpaperPresenter.isLoading == true)
+        render(
+            OverlayContentView(
+                headerPresenter: headerPresenter,
+                lyricsPresenter: lyricsPresenter,
+                ripplePresenter: ripplePresenter,
+                wallpaperPresenter: wallpaperPresenter
+            ),
+            size: CGSize(width: 800, height: 500)
+        )
+    }
+}

@@ -8,7 +8,7 @@ import Views
 @MainActor
 public final class AppRouter {
     private let bootstrap: AppDependencyBootstrap
-    private let windowFactory: @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any OverlayWindow
+    private let windowFactory: @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, WallpaperPresenter) -> any OverlayWindow
     private let frameSchedulerFactory: @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
     private var appPresenter: AppPresenter?
     private var headerPresenter: HeaderPresenter?
@@ -28,12 +28,13 @@ public final class AppRouter {
     public convenience init(launchEnvironment: AppLaunchEnvironment = .current) {
         self.init(
             bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
-            windowFactory: { layout, headerPresenter, lyricsPresenter, ripplePresenter in
+            windowFactory: { layout, headerPresenter, lyricsPresenter, ripplePresenter, wallpaperPresenter in
                 AppWindow(
                     initialLayout: layout,
                     headerPresenter: headerPresenter,
                     lyricsPresenter: lyricsPresenter,
-                    ripplePresenter: ripplePresenter
+                    ripplePresenter: ripplePresenter,
+                    wallpaperPresenter: wallpaperPresenter
                 )
             },
             frameSchedulerFactory: Self.defaultFrameSchedulerFactory
@@ -42,7 +43,8 @@ public final class AppRouter {
 
     convenience init(
         launchEnvironment: AppLaunchEnvironment,
-        windowFactory: @escaping @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any OverlayWindow,
+        windowFactory:
+            @escaping @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, WallpaperPresenter) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
     ) {
         self.init(
@@ -54,7 +56,8 @@ public final class AppRouter {
 
     init(
         bootstrap: AppDependencyBootstrap,
-        windowFactory: @escaping @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter) -> any OverlayWindow,
+        windowFactory:
+            @escaping @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, WallpaperPresenter) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
     ) {
         self.bootstrap = bootstrap
@@ -86,7 +89,7 @@ public final class AppRouter {
             ripplePresenter.start()
             wallpaperPresenter.start()
 
-            let window = windowFactory(layout, headerPresenter, lyricsPresenter, ripplePresenter)
+            let window = windowFactory(layout, headerPresenter, lyricsPresenter, ripplePresenter, wallpaperPresenter)
             appWindow = window
             window.show()
 
