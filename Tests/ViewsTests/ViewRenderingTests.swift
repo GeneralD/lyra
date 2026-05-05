@@ -443,6 +443,7 @@ struct OverlayContentViewLoadingTests {
         }
         let wallpaperPresenter = withDependencies {
             $0.wallpaperInteractor = PendingWallpaperInteractor()
+            $0.continuousClock = ImmediateClock()
         } operation: {
             WallpaperPresenter()
         }

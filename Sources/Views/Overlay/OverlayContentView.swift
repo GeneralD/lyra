@@ -39,7 +39,6 @@ public struct OverlayContentView: View {
 
 private struct WallpaperLoadingOverlay: View {
     @ObservedObject var presenter: WallpaperPresenter
-    @State private var visible: Bool = false
 
     var body: some View {
         ProgressView()
@@ -47,17 +46,8 @@ private struct WallpaperLoadingOverlay: View {
             .controlSize(.large)
             .tint(.white)
             .accessibilityIdentifier("wallpaper-loading-indicator")
-            .opacity(visible ? 1 : 0)
+            .opacity(presenter.showLoadingIndicator ? 1 : 0)
             .allowsHitTesting(false)
-            .task(id: presenter.isLoading) {
-                guard presenter.isLoading else {
-                    visible = false
-                    return
-                }
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled, presenter.isLoading else { return }
-                visible = true
-            }
     }
 }
 

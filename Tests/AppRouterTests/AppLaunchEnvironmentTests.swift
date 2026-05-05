@@ -406,6 +406,7 @@ struct AppRouterTests {
                 )
                 dependencies.wallpaperInteractor = wallpaperInteractor
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
             },
             windowFactory: { _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in

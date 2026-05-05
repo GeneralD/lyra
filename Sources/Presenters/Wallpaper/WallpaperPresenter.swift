@@ -6,11 +6,19 @@ import Foundation
 
 @MainActor
 public final class WallpaperPresenter: ObservableObject {
+    /// Delay before the loading indicator becomes visible. Fast loads finish
+    /// before this and never show the spinner; slow loads (network downloads,
+    /// yt-dlp) cross the threshold and reveal it.
+    static let loadingIndicatorDelay: Duration = .milliseconds(300)
+
     @Published public private(set) var wallpaperURL: URL?
     @Published public private(set) var startTime: TimeInterval?
     @Published public private(set) var endTime: TimeInterval?
     @Published public private(set) var wallpaperScale: Double = 1.0
     @Published public private(set) var isLoading: Bool = false
+    /// Debounced view of `isLoading`: stays `false` until the load has been in
+    /// flight for `loadingIndicatorDelay`. Drives the spinner overlay.
+    @Published public private(set) var showLoadingIndicator: Bool = false
     @Published public private(set) var player: AVPlayer?
 
     private(set) var items: [ResolvedWallpaperItem] = []
@@ -19,11 +27,13 @@ public final class WallpaperPresenter: ObservableObject {
 
     let controller = WallpaperPlaybackController()
     private var loadTask: Task<Void, Never>?
+    private var indicatorTask: Task<Void, Never>?
     private var sleepWakeCancellable: AnyCancellable?
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.wallpaperInteractor) private var interactor
     @Dependency(\.randomSource) private var randomSource
+    @Dependency(\.continuousClock) private var clock
 
     public init() {
         controller.$player.assign(to: &$player)
@@ -36,7 +46,7 @@ public final class WallpaperPresenter: ObservableObject {
 
     public func start() {
         loadTask?.cancel()
-        isLoading = true
+        setLoading(true)
         items = []
         currentIndex = 0
         wallpaperScale = 1.0
@@ -49,13 +59,13 @@ public final class WallpaperPresenter: ObservableObject {
                 let wasEmpty = items.isEmpty
                 items.append(resolved)
                 if wasEmpty {
-                    isLoading = false
+                    setLoading(false)
                     currentIndex = 0
                     await activateCurrentItem()
                 }
             }
             if items.isEmpty {
-                isLoading = false
+                setLoading(false)
             }
         }
     }
@@ -63,6 +73,10 @@ public final class WallpaperPresenter: ObservableObject {
     public func stop() {
         loadTask?.cancel()
         loadTask = nil
+        indicatorTask?.cancel()
+        indicatorTask = nil
+        isLoading = false
+        showLoadingIndicator = false
         controller.stop()
         sleepWakeCancellable?.cancel()
         sleepWakeCancellable = nil
@@ -145,6 +159,24 @@ extension WallpaperPresenter {
             let candidates = (0..<items.count).filter { $0 != current }
             guard !candidates.isEmpty else { return current }
             return candidates[randomSource.next(below: candidates.count)]
+        }
+    }
+
+    /// Updates `isLoading` and debounces `showLoadingIndicator`. Loads that
+    /// finish before `loadingIndicatorDelay` never reveal the spinner.
+    private func setLoading(_ loading: Bool) {
+        isLoading = loading
+        indicatorTask?.cancel()
+        indicatorTask = nil
+        guard loading else {
+            showLoadingIndicator = false
+            return
+        }
+        let clock = clock
+        indicatorTask = Task { @MainActor [weak self] in
+            try? await clock.sleep(for: Self.loadingIndicatorDelay)
+            guard !Task.isCancelled else { return }
+            self?.showLoadingIndicator = true
         }
     }
 }
