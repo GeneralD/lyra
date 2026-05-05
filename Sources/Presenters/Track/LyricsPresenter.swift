@@ -59,7 +59,6 @@ public final class LyricsPresenter: ObservableObject {
         public struct Entry: Identifiable {
             public let index: Int
             public let displayText: String
-            public let sourceText: String
             public var id: Int { index }
         }
     }
@@ -93,8 +92,7 @@ public final class LyricsPresenter: ObservableObject {
             let entries = (start..<end).map { i in
                 LyricColumn.Entry(
                     index: i,
-                    displayText: i < displayLyricLines.count ? displayLyricLines[i] : sourceTexts[i],
-                    sourceText: sourceTexts[i]
+                    displayText: i < displayLyricLines.count ? displayLyricLines[i] : sourceTexts[i]
                 )
             }
             return LyricColumn(id: col, entries: entries, highlightIndex: highlightIndex)

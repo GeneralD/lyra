@@ -18,7 +18,7 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         else { return nil }
         let configDir = file.parent?.path ?? Folder.home.path
         guard let config = decode(content: content, path: file.path, configDir: configDir) else { return nil }
-        return ConfigLoadResult(config: config, configDir: configDir, path: file.path)
+        return ConfigLoadResult(config: config, configDir: configDir)
     }
 
     public func template(format: ConfigFormat) -> String? {

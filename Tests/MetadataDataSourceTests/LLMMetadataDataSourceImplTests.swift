@@ -54,7 +54,7 @@ private func makeLLMConfig(endpoint: String) throws -> ConfigLoadResult {
         """
     guard let data = json.data(using: .utf8) else { throw LLMConfigFixtureError.invalidUTF8 }
     let config = try JSONDecoder().decode(AppConfig.self, from: data)
-    return ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/lyra.toml")
+    return ConfigLoadResult(config: config, configDir: "/tmp")
 }
 
 private struct StubConfigDataSource: ConfigDataSource {
