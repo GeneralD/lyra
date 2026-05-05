@@ -40,7 +40,10 @@ extension LyricsRepositoryImpl: LyricsRepository {
 
         for c in candidates where !c.artist.isEmpty {
             guard let result = await dataSource.get(title: c.title, artist: c.artist, duration: c.duration) else { continue }
-            let displayResult = result.withDisplay(title: first.title, artist: first.artist)
+            let displayResult =
+                (result.trackName?.isEmpty ?? true)
+                ? result.withDisplay(title: c.title, artist: c.artist)
+                : result
             await store(displayResult, track: first)
             return displayResult
         }

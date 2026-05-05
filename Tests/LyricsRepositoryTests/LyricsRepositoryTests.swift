@@ -195,6 +195,52 @@ struct LyricsRepositoryTests {
                 #expect(result?.plainLyrics == "Found")
             }
         }
+
+        @Test("matched candidate's display name is preserved, not overridden by first candidate")
+        func preservesMatchedCandidateDisplay() async {
+            let lrclibResult = LyricsResult(
+                trackName: "Resolved Title", artistName: "Resolved Artist",
+                plainLyrics: "Lyrics body"
+            )
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = StubLyricsDataSource(
+                    getHandler: { _, artist, _ in
+                        artist == "Real Artist" ? lrclibResult : nil
+                    })
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                #expect(result?.trackName == "Resolved Title")
+                #expect(result?.artistName == "Resolved Artist")
+                #expect(result?.plainLyrics == "Lyrics body")
+            }
+        }
+
+        @Test("falls back to matched candidate's title/artist when LRCLIB returns empty trackName")
+        func fallsBackToMatchedCandidate() async {
+            let lrclibResult = LyricsResult(plainLyrics: "Lyrics body")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = StubLyricsDataSource(
+                    getHandler: { _, artist, _ in
+                        artist == "Real Artist" ? lrclibResult : nil
+                    })
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                #expect(result?.trackName == "Real Title")
+                #expect(result?.artistName == "Real Artist")
+            }
+        }
     }
 }
 

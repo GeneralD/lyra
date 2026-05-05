@@ -113,8 +113,8 @@ struct LyricsRepositoryEdgeCaseTests {
         }
     }
 
-    @Test("candidates applies withDisplay from first candidate")
-    func candidatesAppliesWithDisplayFromFirst() async {
+    @Test("candidates returns LRCLIB display name when present, not the first candidate's")
+    func candidatesPreservesLRCLIBDisplay() async {
         let raw = LyricsResult(trackName: "Raw", artistName: "RawArtist", syncedLyrics: "[00:01.00] Line")
 
         await withDependencies {
@@ -126,8 +126,8 @@ struct LyricsRepositoryEdgeCaseTests {
                 Track(title: "Display Title", artist: "Display Artist"),
                 Track(title: "Alt", artist: "AltArtist"),
             ])
-            #expect(result?.trackName == "Display Title")
-            #expect(result?.artistName == "Display Artist")
+            #expect(result?.trackName == "Raw")
+            #expect(result?.artistName == "RawArtist")
             #expect(result?.syncedLyrics == "[00:01.00] Line")
         }
     }
