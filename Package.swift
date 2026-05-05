@@ -137,6 +137,7 @@ let package = Package(
             name: "App",
             dependencies: [
                 "AppRouter",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .target(
@@ -417,11 +418,13 @@ let package = Package(
         .testTarget(
             name: "CLITests",
             dependencies: [
+                "App",
                 "CLI",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
+        .testTarget(name: "AppTests", dependencies: ["App"]),
         .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),

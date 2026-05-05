@@ -51,7 +51,8 @@ Shared conventions:
 
 - `Entity` owns pure data types.
 - `Domain` owns protocols and `DependencyKey` definitions only.
-- `DependencyInjection` owns live registrations.
+- `DependencyInjection` owns Domain-facing live registrations.
+- `App` owns AppKit foreground lifecycle and termination-signal seams.
 - `Presenters` own display state.
 - `Views` stay declarative and rendering-focused.
 - `StandardOutput` owns terminal formatting.

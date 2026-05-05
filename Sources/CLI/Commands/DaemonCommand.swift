@@ -1,5 +1,4 @@
 import App
-import AppKit
 import ArgumentParser
 import Dependencies
 import Domain
@@ -12,6 +11,7 @@ struct DaemonCommand: ParsableCommand {
     )
 
     func run() throws {
+        @Dependency(\.foregroundApplicationRunner) var applicationRunner
         @Dependency(\.processHandler) var handler
         @Dependency(\.standardOutput) var output
 
@@ -21,12 +21,7 @@ struct DaemonCommand: ParsableCommand {
         }
 
         MainActor.assumeIsolated {
-            let app = NSApplication.shared
-            app.setActivationPolicy(.accessory)
-            let delegate = AppDelegate()
-            app.delegate = delegate
-            _ = delegate  // retain until app.run() returns
-            app.run()
+            applicationRunner.runAccessory()
         }
     }
 }
