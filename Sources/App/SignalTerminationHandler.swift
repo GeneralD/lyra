@@ -45,32 +45,70 @@ protocol AppSignalSource: AnyObject {
 }
 
 @MainActor
-private final class LiveSignalHandlingBackend: SignalHandlingBackend {
+final class LiveSignalHandlingBackend: SignalHandlingBackend {
+    private let ignoreSignalCall: @MainActor (Int32) -> Void
+    private let makeSignalSourceCall: @MainActor (Int32, DispatchQueue) -> any AppSignalSource
+    private let terminateProcessCall: @MainActor (Int32) -> Void
+
+    convenience init() {
+        self.init(
+            ignoreSignal: { signal($0, SIG_IGN) },
+            makeSignalSource: {
+                LiveAppSignalSource(
+                    source: DispatchSource.makeSignalSource(signal: $0, queue: $1)
+                )
+            },
+            terminateProcess: { exit($0) }
+        )
+    }
+
+    init(
+        ignoreSignal: @escaping @MainActor (Int32) -> Void,
+        makeSignalSource: @escaping @MainActor (Int32, DispatchQueue) -> any AppSignalSource,
+        terminateProcess: @escaping @MainActor (Int32) -> Void
+    ) {
+        ignoreSignalCall = ignoreSignal
+        makeSignalSourceCall = makeSignalSource
+        terminateProcessCall = terminateProcess
+    }
+
     func ignoreSignal(_ signalType: Int32) {
-        signal(signalType, SIG_IGN)
+        ignoreSignalCall(signalType)
     }
 
     func makeSignalSource(signal signalType: Int32, queue: DispatchQueue) -> any AppSignalSource {
-        LiveAppSignalSource(source: DispatchSource.makeSignalSource(signal: signalType, queue: queue))
+        makeSignalSourceCall(signalType, queue)
     }
 
     func terminateProcess(_ status: Int32) {
-        exit(status)
+        terminateProcessCall(status)
     }
 }
 
-private final class LiveAppSignalSource: AppSignalSource {
-    private let source: DispatchSourceSignal
+final class LiveAppSignalSource: AppSignalSource {
+    private let installEventHandler: (@escaping () -> Void) -> Void
+    private let resumeSource: () -> Void
 
-    init(source: DispatchSourceSignal) {
-        self.source = source
+    convenience init(source: DispatchSourceSignal) {
+        self.init(
+            installEventHandler: { source.setEventHandler(handler: $0) },
+            resume: { source.resume() }
+        )
+    }
+
+    init(
+        installEventHandler: @escaping (@escaping () -> Void) -> Void,
+        resume: @escaping () -> Void
+    ) {
+        self.installEventHandler = installEventHandler
+        resumeSource = resume
     }
 
     func setEventHandler(_ handler: @escaping () -> Void) {
-        source.setEventHandler(handler: handler)
+        installEventHandler(handler)
     }
 
     func resume() {
-        source.resume()
+        resumeSource()
     }
 }

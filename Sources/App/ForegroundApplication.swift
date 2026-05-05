@@ -31,10 +31,20 @@ protocol ForegroundApplicationBackend: AnyObject {
 }
 
 @MainActor
-private final class NSApplicationForegroundBackend: ForegroundApplicationBackend {
-    private let application: NSApplication
+protocol ForegroundApplicationProcess: AnyObject {
+    @discardableResult
+    func setActivationPolicy(_ activationPolicy: NSApplication.ActivationPolicy) -> Bool
+    var delegate: (any NSApplicationDelegate)? { get set }
+    func run()
+}
 
-    init(application: NSApplication = .shared) {
+extension NSApplication: ForegroundApplicationProcess {}
+
+@MainActor
+final class NSApplicationForegroundBackend: ForegroundApplicationBackend {
+    private let application: any ForegroundApplicationProcess
+
+    init(application: any ForegroundApplicationProcess = NSApplication.shared) {
         self.application = application
     }
 

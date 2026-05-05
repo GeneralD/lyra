@@ -45,6 +45,23 @@ private final class SpyForegroundApplicationBackend: ForegroundApplicationBacken
     }
 }
 
+@MainActor
+private final class SpyForegroundApplicationProcess: ForegroundApplicationProcess {
+    private(set) var activationPolicies: [NSApplication.ActivationPolicy] = []
+    private(set) var runCount = 0
+    var delegate: (any NSApplicationDelegate)?
+
+    @discardableResult
+    func setActivationPolicy(_ activationPolicy: NSApplication.ActivationPolicy) -> Bool {
+        activationPolicies.append(activationPolicy)
+        return true
+    }
+
+    func run() {
+        runCount += 1
+    }
+}
+
 private final class SpySignalSource: AppSignalSource {
     private(set) var resumeCount = 0
     private(set) var installedHandler: (() -> Void)?
@@ -80,6 +97,19 @@ private final class SpySignalHandlingBackend: SignalHandlingBackend {
 
     func terminateProcess(_ status: Int32) {
         terminationStatuses.append(status)
+    }
+}
+
+private final class SpyLiveAppSignalSourceBackend {
+    private(set) var resumeCount = 0
+    private(set) var installedHandler: (() -> Void)?
+
+    func installEventHandler(_ handler: @escaping () -> Void) {
+        installedHandler = handler
+    }
+
+    func resume() {
+        resumeCount += 1
     }
 }
 
@@ -146,6 +176,25 @@ struct ForegroundApplicationTests {
 }
 
 @MainActor
+@Suite("NSApplicationForegroundBackend")
+struct NSApplicationForegroundBackendTests {
+    @Test("forwards activation policy delegate and run to application process")
+    func forwardsToApplicationProcess() {
+        let application = SpyForegroundApplicationProcess()
+        let delegate = SpyApplicationDelegate()
+        let backend = NSApplicationForegroundBackend(application: application)
+
+        backend.setAccessoryActivationPolicy()
+        backend.setDelegate(delegate)
+        backend.run()
+
+        #expect(application.activationPolicies == [.accessory])
+        #expect((application.delegate as AnyObject?) === delegate)
+        #expect(application.runCount == 1)
+    }
+}
+
+@MainActor
 @Suite("SignalTerminationHandler")
 struct SignalTerminationHandlerTests {
     @Test("installs ignored signal sources and resumes them")
@@ -182,5 +231,59 @@ struct SignalTerminationHandlerTests {
 
         #expect(events == ["stop"])
         #expect(backend.terminationStatuses == [0])
+    }
+}
+
+@MainActor
+@Suite("LiveSignalHandlingBackend")
+struct LiveSignalHandlingBackendTests {
+    @Test("forwards signal operations to injected system calls")
+    func forwardsToSystemCalls() {
+        let source = SpySignalSource()
+        var ignoredSignals: [Int32] = []
+        var sourceRequests: [(Int32, DispatchQueue)] = []
+        var terminationStatuses: [Int32] = []
+        let backend = LiveSignalHandlingBackend(
+            ignoreSignal: { ignoredSignals.append($0) },
+            makeSignalSource: {
+                sourceRequests.append(($0, $1))
+                return source
+            },
+            terminateProcess: { terminationStatuses.append($0) }
+        )
+
+        backend.ignoreSignal(15)
+        let returnedSource = backend.makeSignalSource(signal: 2, queue: .main)
+        backend.terminateProcess(0)
+
+        #expect(ignoredSignals == [15])
+        #expect(sourceRequests.count == 1)
+        #expect(sourceRequests.first?.0 == 2)
+        #expect(sourceRequests.first?.1 == .main)
+        #expect(returnedSource === source)
+        #expect(terminationStatuses == [0])
+    }
+}
+
+@Suite("LiveAppSignalSource")
+struct LiveAppSignalSourceTests {
+    @Test("forwards handler installation and resume")
+    func forwardsToSourceBackend() throws {
+        let backend = SpyLiveAppSignalSourceBackend()
+        let source = LiveAppSignalSource(
+            installEventHandler: backend.installEventHandler,
+            resume: backend.resume
+        )
+        var eventCount = 0
+
+        source.setEventHandler {
+            eventCount += 1
+        }
+        source.resume()
+        let installedHandler = try #require(backend.installedHandler)
+        installedHandler()
+
+        #expect(backend.resumeCount == 1)
+        #expect(eventCount == 1)
     }
 }
