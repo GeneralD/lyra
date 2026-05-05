@@ -16,7 +16,11 @@ struct WallpaperCacheTests {
         try withTempCacheDir { tmp in
             let cache = try WallpaperCache(cachePath: tmp)
             let url = URL(string: "https://example.com/video.mp4")!
-            #expect(cache.tempPath(for: url) == cache.tempPath(for: url))
+            let tempPath = cache.tempPath(for: url)
+            let expectedRoot = URL(fileURLWithPath: tmp).standardizedFileURL.path + "/"
+            let standardizedTempPath = URL(fileURLWithPath: tempPath).standardizedFileURL.path
+            #expect(tempPath == cache.tempPath(for: url))
+            #expect(standardizedTempPath.hasPrefix(expectedRoot), "Expected temp path to be rooted under injected cache path '\(tmp)', got: \(tempPath)")
         }
     }
 
