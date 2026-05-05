@@ -5,7 +5,6 @@ import AppRouter
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let routerFactory: @MainActor () -> any AppRouting
     private let terminationHandler: any TerminationHandling
-    private var router: (any AppRouting)?
 
     public override convenience init() {
         self.init(
@@ -25,7 +24,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         let router = routerFactory()
-        self.router = router
         router.start()
 
         terminationHandler.install {
