@@ -50,8 +50,13 @@ CLI/App -> AppRouter/Views/Presenters -> Interactors -> UseCases
 Shared conventions:
 
 - `Entity` owns pure data types.
-- `Domain` owns protocols and `DependencyKey` definitions only.
-- `DependencyInjection` owns Domain-facing live registrations.
+- `Domain` owns protocols and `DependencyKey` definitions for
+  cross-layer contracts. The one exception is the `App`-module
+  AppKit foreground lifecycle key (`ForegroundApplicationRunnerKey`),
+  which lives in `App` because its live implementation owns
+  `NSApplication` and `AppDelegate` setup.
+- `DependencyInjection` owns Domain-facing live registrations. The
+  App-module bootstrap key is the lone non-Domain registration site.
 - `App` owns AppKit foreground lifecycle and termination-signal seams.
 - `Presenters` own display state.
 - `Views` stay declarative and rendering-focused.
