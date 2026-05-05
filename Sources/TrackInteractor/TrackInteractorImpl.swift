@@ -51,8 +51,8 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
+        .removeDuplicates { $0.title == $1.title && $0.artist == $1.artist }
         .map(\.artworkData)
-        .removeDuplicates()
         .eraseToAnyPublisher()
 
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
