@@ -20,7 +20,8 @@ struct WallpaperCacheTests {
             let expectedRoot = URL(fileURLWithPath: tmp).standardizedFileURL.path + "/"
             let standardizedTempPath = URL(fileURLWithPath: tempPath).standardizedFileURL.path
             #expect(tempPath == cache.tempPath(for: url))
-            #expect(standardizedTempPath.hasPrefix(expectedRoot), "Expected temp path to be rooted under injected cache path '\(tmp)', got: \(tempPath)")
+            #expect(
+                standardizedTempPath.hasPrefix(expectedRoot), "Expected temp path to be rooted under injected cache path '\(tmp)', got: \(tempPath)")
         }
     }
 
@@ -85,6 +86,29 @@ struct WallpaperCacheTests {
             let cache2 = try WallpaperCache(cachePath: tmp)
             let url = URL(string: "https://example.com/deterministic.mp4")!
             #expect(cache1.tempPath(for: url) == cache2.tempPath(for: url))
+        }
+    }
+
+    @Test("empty cachePath falls back to environment lookup")
+    func emptyCachePathFallsBack() throws {
+        // Empty trims to nil → falls back to env (or ~/.cache when env is unset).
+        // Must NOT resolve to "/lyra/wallpapers" (root-relative).
+        let cache = try WallpaperCache(cachePath: "")
+        #expect(!cache.folder.path.hasPrefix("/lyra/wallpapers"))
+    }
+
+    @Test("whitespace-only cachePath falls back to environment lookup")
+    func whitespaceCachePathFallsBack() throws {
+        let cache = try WallpaperCache(cachePath: "   ")
+        #expect(!cache.folder.path.hasPrefix("/lyra/wallpapers"))
+    }
+
+    @Test("relative cachePath throws an error")
+    func relativeCachePathThrows() {
+        // Defensive validation: a relative override would silently resolve
+        // against the process working directory, which is rarely intentional.
+        #expect(throws: (any Error).self) {
+            _ = try WallpaperCache(cachePath: "relative/path")
         }
     }
 }
