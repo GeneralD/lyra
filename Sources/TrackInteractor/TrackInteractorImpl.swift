@@ -108,8 +108,6 @@ extension TrackInteractorImpl {
         let loading = TrackUpdate(
             title: info.title,
             artist: info.artist,
-            artworkData: info.artworkData,
-            duration: info.duration,
             lyricsState: .loading
         )
 
@@ -121,9 +119,6 @@ extension TrackInteractorImpl {
         let metadata = metadataService
         let lyrics = lyricsService
         let clock = self.clock
-
-        let artworkData = info.artworkData
-        let duration = info.duration
 
         return Just(loading)
             .append(
@@ -156,8 +151,6 @@ extension TrackInteractorImpl {
                                         TrackUpdate(
                                             title: resolvedTitle,
                                             artist: resolvedArtist,
-                                            artworkData: artworkData,
-                                            duration: duration,
                                             lyricsState: .loading
                                         ))
 
@@ -178,8 +171,6 @@ extension TrackInteractorImpl {
                                         TrackUpdate(
                                             title: finalTitle,
                                             artist: finalArtist,
-                                            artworkData: artworkData,
-                                            duration: duration,
                                             lyrics: content,
                                             lyricsState: content != nil ? .resolved : .notFound
                                         ))

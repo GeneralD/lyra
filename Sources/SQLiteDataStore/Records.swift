@@ -70,7 +70,6 @@ struct LyricsLookupRecord {
 
 extension LyricsLookupRecord: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "lyrics_lookup"
-    static let track = belongsTo(LRCLibTrackRecord.self, using: ForeignKey(["lrclib_id"]))
 }
 
 struct MusicBrainzCacheRecord {
