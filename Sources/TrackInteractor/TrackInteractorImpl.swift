@@ -33,14 +33,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
         activeNowPlaying
-        .removeDuplicates {
-            let prevArtist = ($0.artist ?? "")
-            let curArtist = ($1.artist ?? "")
-            guard !prevArtist.isEmpty, !curArtist.isEmpty else {
-                return $0.title == $1.title
-            }
-            return $0.title == $1.title && prevArtist == curArtist
-        }
+        .removeDuplicates(by: Self.sameTrack)
         .map { [weak self] info -> AnyPublisher<TrackUpdate, Never> in
             guard let self else { return Empty().eraseToAnyPublisher() }
             return resolveTrack(from: info)
@@ -51,9 +44,21 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
+        .removeDuplicates(by: Self.sameTrack)
         .map(\.artworkData)
-        .removeDuplicates()
         .eraseToAnyPublisher()
+
+    /// Returns `true` when two `NowPlaying` values represent the same track.
+    /// Treats `nil` and empty-string artist as the same value, so transitions
+    /// between them (e.g. system volume mute) are not seen as track changes.
+    static func sameTrack(_ lhs: NowPlaying, _ rhs: NowPlaying) -> Bool {
+        let lhsArtist = lhs.artist ?? ""
+        let rhsArtist = rhs.artist ?? ""
+        guard !lhsArtist.isEmpty, !rhsArtist.isEmpty else {
+            return lhs.title == rhs.title
+        }
+        return lhs.title == rhs.title && lhsArtist == rhsArtist
+    }
 
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
