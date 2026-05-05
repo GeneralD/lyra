@@ -4,13 +4,50 @@ import Dependencies
 @MainActor
 public enum ForegroundApplication {
     public static func runAccessory() {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
-        let delegate = AppDelegate()
-        app.delegate = delegate
+        runAccessory(
+            backend: NSApplicationForegroundBackend(),
+            delegateFactory: { AppDelegate() }
+        )
+    }
+
+    static func runAccessory(
+        backend: any ForegroundApplicationBackend,
+        delegateFactory: @escaping @MainActor () -> any NSApplicationDelegate
+    ) {
+        backend.setAccessoryActivationPolicy()
+        let delegate = delegateFactory()
+        backend.setDelegate(delegate)
         withExtendedLifetime(delegate) {
-            app.run()
+            backend.run()
         }
+    }
+}
+
+@MainActor
+protocol ForegroundApplicationBackend: AnyObject {
+    func setAccessoryActivationPolicy()
+    func setDelegate(_ delegate: any NSApplicationDelegate)
+    func run()
+}
+
+@MainActor
+private final class NSApplicationForegroundBackend: ForegroundApplicationBackend {
+    private let application: NSApplication
+
+    init(application: NSApplication = .shared) {
+        self.application = application
+    }
+
+    func setAccessoryActivationPolicy() {
+        application.setActivationPolicy(.accessory)
+    }
+
+    func setDelegate(_ delegate: any NSApplicationDelegate) {
+        application.delegate = delegate
+    }
+
+    func run() {
+        application.run()
     }
 }
 
@@ -24,7 +61,7 @@ public struct ForegroundApplicationRunner: Sendable {
 
 public enum ForegroundApplicationRunnerKey: DependencyKey {
     public static let liveValue = ForegroundApplicationRunner(
-        runAccessory: ForegroundApplication.runAccessory
+        runAccessory: { ForegroundApplication.runAccessory() }
     )
     public static let testValue = ForegroundApplicationRunner {
         fatalError("ForegroundApplicationRunner.runAccessory not implemented")
