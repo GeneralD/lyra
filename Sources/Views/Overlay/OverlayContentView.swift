@@ -48,6 +48,9 @@ private struct WallpaperLoadingOverlay: View {
             .accessibilityIdentifier("wallpaper-loading-indicator")
             .opacity(presenter.showLoadingIndicator ? 1 : 0)
             .allowsHitTesting(false)
+            // `.opacity(0)` keeps the view in the accessibility tree, so VoiceOver
+            // would still surface a "loading" indicator while it's visually hidden.
+            .accessibilityHidden(!presenter.showLoadingIndicator)
     }
 }
 
