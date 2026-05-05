@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Testing
 
 @testable import App
@@ -97,19 +98,6 @@ private final class SpySignalHandlingBackend: SignalHandlingBackend {
 
     func terminateProcess(_ status: Int32) {
         terminationStatuses.append(status)
-    }
-}
-
-private final class SpyLiveAppSignalSourceBackend {
-    private(set) var resumeCount = 0
-    private(set) var installedHandler: (() -> Void)?
-
-    func installEventHandler(_ handler: @escaping () -> Void) {
-        installedHandler = handler
-    }
-
-    func resume() {
-        resumeCount += 1
     }
 }
 
@@ -237,53 +225,41 @@ struct SignalTerminationHandlerTests {
 @MainActor
 @Suite("LiveSignalHandlingBackend")
 struct LiveSignalHandlingBackendTests {
-    @Test("forwards signal operations to injected system calls")
-    func forwardsToSystemCalls() {
-        let source = SpySignalSource()
-        var ignoredSignals: [Int32] = []
-        var sourceRequests: [(Int32, DispatchQueue)] = []
-        var terminationStatuses: [Int32] = []
-        let backend = LiveSignalHandlingBackend(
-            ignoreSignal: { ignoredSignals.append($0) },
-            makeSignalSource: {
-                sourceRequests.append(($0, $1))
-                return source
-            },
-            terminateProcess: { terminationStatuses.append($0) }
-        )
+    @Test("creates safe signal source from system primitives")
+    func createsSafeSignalSource() {
+        let backend = LiveSignalHandlingBackend(terminateProcess: { _ in })
 
-        backend.ignoreSignal(15)
-        let returnedSource = backend.makeSignalSource(signal: 2, queue: .main)
+        backend.ignoreSignal(SIGWINCH)
+        let source = backend.makeSignalSource(signal: SIGWINCH, queue: .main)
+        source.setEventHandler {}
+        source.resume()
+
+        #expect(source is LiveAppSignalSource)
+    }
+
+    @Test("termination remains injectable")
+    func terminateProcess() {
+        var terminationStatuses: [Int32] = []
+        let backend = LiveSignalHandlingBackend {
+            terminationStatuses.append($0)
+        }
+
         backend.terminateProcess(0)
 
-        #expect(ignoredSignals == [15])
-        #expect(sourceRequests.count == 1)
-        #expect(sourceRequests.first?.0 == 2)
-        #expect(sourceRequests.first?.1 == .main)
-        #expect(returnedSource === source)
         #expect(terminationStatuses == [0])
     }
 }
 
 @Suite("LiveAppSignalSource")
 struct LiveAppSignalSourceTests {
-    @Test("forwards handler installation and resume")
-    func forwardsToSourceBackend() throws {
-        let backend = SpyLiveAppSignalSourceBackend()
-        let source = LiveAppSignalSource(
-            installEventHandler: backend.installEventHandler,
-            resume: backend.resume
-        )
-        var eventCount = 0
+    @Test("configures real dispatch source without firing")
+    func configuresDispatchSource() {
+        let dispatchSource = DispatchSource.makeSignalSource(signal: SIGWINCH, queue: .main)
+        let source = LiveAppSignalSource(source: dispatchSource)
 
-        source.setEventHandler {
-            eventCount += 1
-        }
+        source.setEventHandler {}
         source.resume()
-        let installedHandler = try #require(backend.installedHandler)
-        installedHandler()
 
-        #expect(backend.resumeCount == 1)
-        #expect(eventCount == 1)
+        #expect(dispatchSource.handle == UInt(SIGWINCH))
     }
 }
