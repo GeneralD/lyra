@@ -44,6 +44,15 @@ public final class WallpaperPresenter: ObservableObject {
         }
     }
 
+    /// Cancel outstanding tasks even if `stop()` was never called. Without this,
+    /// an `indicatorTask` suspended on `clock.sleep(...)` would keep the clock
+    /// (and itself) alive past the presenter's lifetime — under CI parallelism
+    /// this leaks tasks across test suites and saturates the main actor.
+    deinit {
+        loadTask?.cancel()
+        indicatorTask?.cancel()
+    }
+
     public func start() {
         loadTask?.cancel()
         setLoading(true)

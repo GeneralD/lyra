@@ -642,6 +642,7 @@ struct WallpaperPresenterTests {
                 $0.continuousClock = testClock
             } operation: {
                 let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
                 presenter.start()
                 #expect(presenter.isLoading)
                 #expect(!presenter.showLoadingIndicator)
@@ -671,6 +672,7 @@ struct WallpaperPresenterTests {
                 $0.continuousClock = testClock
             } operation: {
                 let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
                 presenter.start()
                 #expect(presenter.isLoading)
                 #expect(!presenter.showLoadingIndicator)
@@ -728,6 +730,7 @@ struct WallpaperPresenterTests {
                 $0.continuousClock = testClock
             } operation: {
                 let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
                 presenter.start()
                 await waitUntil { !presenter.isLoading }
                 #expect(!presenter.showLoadingIndicator)
