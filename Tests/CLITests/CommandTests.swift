@@ -1,3 +1,4 @@
+import App
 import ArgumentParser
 import Dependencies
 import Domain
@@ -11,11 +12,12 @@ private struct StubProcessHandler: ProcessHandler {
     var startResult: StartResult = .success(.started(pid: 42))
     var stopResult: StopResult = .success(.stopped)
     var restartResult: StartResult = .success(.started(pid: 43))
+    var acquireDaemonLockResult = false
 
     func start() -> StartResult { startResult }
     func stop() -> StopResult { stopResult }
     func restart() -> StartResult { restartResult }
-    func acquireDaemonLock() -> Bool { false }
+    func acquireDaemonLock() -> Bool { acquireDaemonLockResult }
 }
 
 private struct StubServiceHandler: ServiceHandler {
@@ -101,6 +103,15 @@ private final class SpyStandardOutput: StandardOutput, @unchecked Sendable {
     func write(_ result: ConfigLaunchResult) {}
     func write(_ result: HealthCheckReport) {}
     func write(_ update: BenchmarkUpdate) { writtenBenchmarkUpdates.append(update) }
+}
+
+@MainActor
+private final class SpyForegroundApplicationRunner {
+    private(set) var runCount = 0
+
+    func runAccessory() {
+        runCount += 1
+    }
 }
 
 // MARK: - StartCommand
@@ -213,6 +224,52 @@ struct RestartCommandTests {
                 try cmd.run()
             }
         }
+    }
+}
+
+// MARK: - DaemonCommand
+
+@MainActor
+@Suite("DaemonCommand")
+struct DaemonCommandTests {
+    @Test("acquires daemon lock and runs foreground app")
+    func successPath() throws {
+        let applicationRunner = SpyForegroundApplicationRunner()
+
+        try withDependencies {
+            $0.foregroundApplicationRunner = ForegroundApplicationRunner {
+                applicationRunner.runAccessory()
+            }
+            $0.processHandler = StubProcessHandler(acquireDaemonLockResult: true)
+            $0.standardOutput = SpyStandardOutput()
+        } operation: {
+            let cmd = DaemonCommand()
+            try cmd.run()
+        }
+
+        #expect(applicationRunner.runCount == 1)
+    }
+
+    @Test("throws and writes message when daemon lock is unavailable")
+    func lockUnavailable() {
+        let output = SpyStandardOutput()
+        let applicationRunner = SpyForegroundApplicationRunner()
+
+        withDependencies {
+            $0.foregroundApplicationRunner = ForegroundApplicationRunner {
+                applicationRunner.runAccessory()
+            }
+            $0.processHandler = StubProcessHandler(acquireDaemonLockResult: false)
+            $0.standardOutput = output
+        } operation: {
+            let cmd = DaemonCommand()
+            #expect(throws: ExitCode.failure) {
+                try cmd.run()
+            }
+        }
+
+        #expect(applicationRunner.runCount == 0)
+        #expect(output.writtenMessages == ["Another lyra daemon is already running"])
     }
 }
 
