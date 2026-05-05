@@ -143,7 +143,7 @@ private func makeConfig() throws -> ConfigLoadResult {
         throw LLMFixtureError.invalidUTF8
     }
     let config = try JSONDecoder().decode(AppConfig.self, from: data)
-    return ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/lyra.toml")
+    return ConfigLoadResult(config: config, configDir: "/tmp")
 }
 
 private struct StubConfigDataSource: ConfigDataSource {

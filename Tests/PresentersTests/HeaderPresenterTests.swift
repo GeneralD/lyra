@@ -92,7 +92,7 @@ struct HeaderPresenterTests {
         @MainActor
         @Test("receiving a track update sets displayTitle via decode effect")
         func receivesTrackUpdateTitle() async throws {
-            let update = TrackUpdate(title: "Hello", artist: "World", artworkData: Data([0xFF]))
+            let update = TrackUpdate(title: "Hello", artist: "World")
             let subject = PassthroughSubject<TrackUpdate, Never>()
 
             await withDependencies {

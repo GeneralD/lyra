@@ -27,7 +27,7 @@ struct ConfigRepositoryTests {
         @Test("passes raw wallpaper value and configDir through")
         func wallpaperRawValue() {
             let config = makeAppConfig(wallpaper: "bg.mp4")
-            let result = ConfigLoadResult(config: config, configDir: "/Users/test/.config/lyra", path: "/Users/test/.config/lyra/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/Users/test/.config/lyra")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)
@@ -42,7 +42,7 @@ struct ConfigRepositoryTests {
         @Test("passes wallpaper scale through")
         func wallpaperScale() {
             let config = makeAppConfig(wallpaper: ["location": "bg.mp4", "scale": 1.3])
-            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)
@@ -57,7 +57,7 @@ struct ConfigRepositoryTests {
         @Test("wallpaper is nil when wallpaper config is nil")
         func wallpaperNil() {
             let config = makeAppConfig(wallpaper: nil)
-            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)
@@ -72,7 +72,7 @@ struct ConfigRepositoryTests {
         func aiConfigPresent() {
             let ai = makeAIConfig(endpoint: "https://api.example.com", model: "gpt-4", apiKey: "sk-test")
             let config = makeAppConfig(ai: ai)
-            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)
@@ -88,7 +88,7 @@ struct ConfigRepositoryTests {
         @Test("ai is nil when AIConfig is absent")
         func aiConfigAbsent() {
             let config = makeAppConfig(ai: nil)
-            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)
@@ -102,7 +102,7 @@ struct ConfigRepositoryTests {
         @Test("ripple shape defaults to circle when [ripple] is absent")
         func rippleShapeDefaultsToCircle() {
             let config = makeAppConfig()
-            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)
@@ -117,7 +117,7 @@ struct ConfigRepositoryTests {
         func ripplePolygonShapePassthrough() {
             let config = makeAppConfig(
                 ripple: ["shape": ["type": "polygon", "sides": 6, "angle": 15]])
-            let result = ConfigLoadResult(config: config, configDir: "/tmp", path: "/tmp/config.toml")
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
                 $0.configDataSource = StubConfigDataSource(loadResult: result)

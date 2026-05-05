@@ -6,8 +6,6 @@ import Testing
 
 @Suite("LyricsUseCaseImpl.parseLyricsContent")
 struct LyricsContentParsingTests {
-    private let parser = LyricsUseCaseImpl()
-
     // MARK: - From LyricsResult
 
     @Suite("from LyricsResult")
