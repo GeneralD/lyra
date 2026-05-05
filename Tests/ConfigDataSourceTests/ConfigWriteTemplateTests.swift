@@ -96,4 +96,17 @@ struct ConfigWriteTemplateTests {
 
         #expect(FileManager.default.fileExists(atPath: "\(tmp)/lyra"))
     }
+
+    @Test("load() returns ConfigLoadResult with config and configDir from written template")
+    func loadReturnsResultFromTemplate() throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+        let ds = ConfigDataSourceImpl(configHome: tmp)
+        _ = try ds.writeTemplate(format: .toml, force: false)
+
+        let result = ds.load()
+        #expect(result != nil)
+        #expect(result?.configDir.hasSuffix("/lyra") == true || result?.configDir.hasSuffix("/lyra/") == true)
+    }
 }
