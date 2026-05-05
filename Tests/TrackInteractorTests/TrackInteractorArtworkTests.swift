@@ -62,6 +62,17 @@ private final class ArtworkCollector: @unchecked Sendable {
             try? await Task.sleep(for: .milliseconds(10))
         }
     }
+
+    /// Polls until `timeout` and returns `true` if the emission count stayed at `expected`.
+    /// Use for negative assertions ("no new emission arrived"). Fails fast on extra emission.
+    func isStableAt(_ expected: Int, timeout: Duration = .milliseconds(200)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+            if snapshot.count != expected { return false }
+        }
+        return snapshot.count == expected
+    }
 }
 
 private func makeInteractor(playback: StubPlaybackUseCase) -> TrackInteractorImpl {
@@ -104,12 +115,14 @@ struct TrackInteractorArtworkTests {
         #expect(collector.snapshot == [trackArt])
 
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: chromeIcon))
-        try? await Task.sleep(for: .milliseconds(50))
-        #expect(collector.snapshot == [trackArt], "Chrome icon at volume 0 must not propagate to artwork stream")
+        let stableAfterChrome = await collector.isStableAt(1)
+        #expect(stableAfterChrome, "Chrome icon at volume 0 must not propagate to artwork stream")
+        #expect(collector.snapshot == [trackArt])
 
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: trackArt))
-        try? await Task.sleep(for: .milliseconds(50))
-        #expect(collector.snapshot == [trackArt], "Restoring artwork on the same track must not re-emit")
+        let stableAfterRestore = await collector.isStableAt(1)
+        #expect(stableAfterRestore, "Restoring artwork on the same track must not re-emit")
+        #expect(collector.snapshot == [trackArt])
     }
 
     @Test("artwork emits anew when title changes")
@@ -150,5 +163,17 @@ struct TrackInteractorArtworkTests {
         await collector.waitForCount(2)
 
         #expect(collector.snapshot == [artA, artB])
+    }
+
+    @Test("sameTrack treats nil and empty-string artist as the same value")
+    func sameTrackNormalizesEmptyArtist() {
+        let withArtist = nowPlaying(title: "Song", artist: "Artist", artwork: nil)
+        let nilArtist = nowPlaying(title: "Song", artist: nil, artwork: nil)
+        let emptyArtist = nowPlaying(title: "Song", artist: "", artwork: nil)
+        let differentTitle = nowPlaying(title: "Other", artist: "Artist", artwork: nil)
+
+        #expect(TrackInteractorImpl.sameTrack(nilArtist, emptyArtist), "nil and empty should match (both treated as missing artist)")
+        #expect(TrackInteractorImpl.sameTrack(withArtist, nilArtist), "non-empty and nil should match when title is identical (artist degradation)")
+        #expect(!TrackInteractorImpl.sameTrack(withArtist, differentTitle), "different title must not match")
     }
 }
