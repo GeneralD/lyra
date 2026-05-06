@@ -6,15 +6,18 @@ public struct OverlayContentView: View {
     let headerPresenter: HeaderPresenter
     let lyricsPresenter: LyricsPresenter
     let ripplePresenter: RipplePresenter
+    @ObservedObject var wallpaperPresenter: WallpaperPresenter
 
     public init(
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
-        ripplePresenter: RipplePresenter
+        ripplePresenter: RipplePresenter,
+        wallpaperPresenter: WallpaperPresenter
     ) {
         self.headerPresenter = headerPresenter
         self.lyricsPresenter = lyricsPresenter
         self.ripplePresenter = ripplePresenter
+        self.wallpaperPresenter = wallpaperPresenter
     }
 
     public var body: some View {
@@ -27,8 +30,27 @@ public struct OverlayContentView: View {
             .padding(48)
             .padding(.bottom, 32)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            WallpaperLoadingOverlay(presenter: wallpaperPresenter)
         }
         .accessibilityIdentifier("overlay-content")
+    }
+}
+
+private struct WallpaperLoadingOverlay: View {
+    @ObservedObject var presenter: WallpaperPresenter
+
+    var body: some View {
+        ProgressView()
+            .progressViewStyle(.circular)
+            .controlSize(.large)
+            .tint(.white)
+            .accessibilityIdentifier("wallpaper-loading-indicator")
+            .opacity(presenter.showLoadingIndicator ? 1 : 0)
+            .allowsHitTesting(false)
+            // `.opacity(0)` keeps the view in the accessibility tree, so VoiceOver
+            // would still surface a "loading" indicator while it's visually hidden.
+            .accessibilityHidden(!presenter.showLoadingIndicator)
     }
 }
 
@@ -37,7 +59,8 @@ public struct OverlayContentView: View {
         OverlayContentView(
             headerPresenter: HeaderPresenter(),
             lyricsPresenter: LyricsPresenter(),
-            ripplePresenter: RipplePresenter()
+            ripplePresenter: RipplePresenter(),
+            wallpaperPresenter: WallpaperPresenter()
         )
         .frame(width: 800, height: 500)
         .background(.black)

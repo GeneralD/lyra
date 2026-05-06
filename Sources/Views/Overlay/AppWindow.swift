@@ -37,13 +37,15 @@ public final class AppWindow: NSWindow {
         initialLayout: ScreenLayout,
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
-        ripplePresenter: RipplePresenter
+        ripplePresenter: RipplePresenter,
+        wallpaperPresenter: WallpaperPresenter
     ) {
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
-                ripplePresenter: ripplePresenter
+                ripplePresenter: ripplePresenter,
+                wallpaperPresenter: wallpaperPresenter
             ))
         hostingView.frame = initialLayout.hostingFrame
         self.hostingView = hostingView

@@ -19,6 +19,12 @@ import Foundation
                 dependencies.screenInteractor = UITestScreenInteractor()
                 dependencies.trackInteractor = UITestTrackInteractor(fixture: fixture)
                 dependencies.wallpaperInteractor = UITestWallpaperInteractor()
+                // Pin to the live clock so unit tests that exercise this bootstrap
+                // don't trip swift-dependencies' unimplemented test value when a
+                // presenter (e.g. WallpaperPresenter loading-indicator debounce)
+                // touches `continuousClock`. UI tests run as a separate process
+                // and would already get the live value.
+                dependencies.continuousClock = ContinuousClock()
             }
         }
 

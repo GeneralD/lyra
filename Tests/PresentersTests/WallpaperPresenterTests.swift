@@ -107,6 +107,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -125,6 +126,7 @@ struct WallpaperPresenterTests {
         func emptyStream() async {
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor()
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -147,6 +149,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -166,6 +169,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -188,6 +192,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
 
@@ -215,6 +220,7 @@ struct WallpaperPresenterTests {
         func doesNotFireWhenNoPlayer() async {
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor()
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 final class Counter: @unchecked Sendable { var count = 0 }
@@ -237,6 +243,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
 
@@ -272,6 +279,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.onPlayerAvailable { _ in }
@@ -293,6 +301,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
 
@@ -327,6 +336,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -362,6 +372,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .shuffle)
+                $0.continuousClock = ImmediateClock()
                 $0.randomSource = fake
             } operation: {
                 let presenter = WallpaperPresenter()
@@ -389,6 +400,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -414,6 +426,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -437,6 +450,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -461,6 +475,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b, c], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -491,6 +506,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = interactor
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -520,6 +536,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = interactor
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -561,6 +578,7 @@ struct WallpaperPresenterTests {
 
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: items, mode: .shuffle)
+                $0.continuousClock = ImmediateClock()
                 $0.randomSource = fake
             } operation: {
                 let presenter = WallpaperPresenter()
@@ -593,6 +611,7 @@ struct WallpaperPresenterTests {
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(
                     items: [a, b, c], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -609,6 +628,120 @@ struct WallpaperPresenterTests {
         }
     }
 
+    @Suite("loading indicator debounce")
+    struct LoadingIndicatorDebounce {
+        @MainActor
+        @Test("indicator stays hidden when load resolves before the debounce threshold")
+        func fastLoadKeepsIndicatorHidden() async {
+            let item = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/fast.mp4"))
+            let interactor = LiveStubWallpaperInteractor(mode: .cycle)
+            let testClock = TestClock()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.continuousClock = testClock
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                #expect(presenter.isLoading)
+                #expect(!presenter.showLoadingIndicator)
+
+                // Resolve before the 300ms threshold elapses.
+                interactor.emit(item)
+                interactor.finish()
+                await waitUntil { !presenter.isLoading }
+                #expect(!presenter.showLoadingIndicator)
+
+                // Advancing past the threshold must not now flip the indicator —
+                // the debounce task should have been cancelled when isLoading went false.
+                await testClock.advance(by: WallpaperPresenter.loadingIndicatorDelay + .milliseconds(100))
+                await Task.yield()
+                #expect(!presenter.showLoadingIndicator)
+            }
+        }
+
+        @MainActor
+        @Test("indicator becomes visible after the debounce threshold while still loading")
+        func slowLoadRevealsIndicator() async {
+            let interactor = LiveStubWallpaperInteractor(mode: .cycle)
+            let testClock = TestClock()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.continuousClock = testClock
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                #expect(presenter.isLoading)
+                #expect(!presenter.showLoadingIndicator)
+
+                // Yield so the indicator task reaches its `clock.sleep(...)` suspension
+                // point before TestClock is advanced — otherwise advance happens first
+                // and the sleep becomes a no-op resume the moment it starts.
+                await Task.yield()
+                await testClock.advance(by: WallpaperPresenter.loadingIndicatorDelay)
+                await waitUntil { presenter.showLoadingIndicator }
+                #expect(presenter.showLoadingIndicator)
+                #expect(presenter.isLoading)
+
+                // When the load finally resolves, the indicator should hide again.
+                interactor.emit(ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/slow.mp4")))
+                interactor.finish()
+                await waitUntil { !presenter.showLoadingIndicator }
+                #expect(!presenter.showLoadingIndicator)
+                #expect(!presenter.isLoading)
+            }
+        }
+
+        @MainActor
+        @Test("stop cancels the debounce task before the threshold")
+        func stopCancelsDebounceTask() async {
+            let interactor = LiveStubWallpaperInteractor(mode: .cycle)
+            let testClock = TestClock()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.continuousClock = testClock
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                #expect(presenter.isLoading)
+
+                presenter.stop()
+                #expect(!presenter.isLoading)
+                #expect(!presenter.showLoadingIndicator)
+
+                // Advancing past the threshold after stop must not flip the indicator.
+                await testClock.advance(by: WallpaperPresenter.loadingIndicatorDelay + .milliseconds(100))
+                await Task.yield()
+                #expect(!presenter.showLoadingIndicator)
+            }
+        }
+
+        @MainActor
+        @Test("empty stream resets the indicator without revealing it")
+        func emptyStreamDoesNotReveal() async {
+            let testClock = TestClock()
+
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor()
+                $0.continuousClock = testClock
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                await waitUntil { !presenter.isLoading }
+                #expect(!presenter.showLoadingIndicator)
+
+                await testClock.advance(by: WallpaperPresenter.loadingIndicatorDelay + .milliseconds(100))
+                await Task.yield()
+                #expect(!presenter.showLoadingIndicator)
+            }
+        }
+    }
+
     @Suite("sleep / wake observation")
     struct SleepWake {
         @MainActor
@@ -621,6 +754,7 @@ struct WallpaperPresenterTests {
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(
                     items: [item], sleepChangesSubject: subject)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
@@ -646,6 +780,7 @@ struct WallpaperPresenterTests {
             await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(
                     items: [item], sleepChangesSubject: subject)
+                $0.continuousClock = ImmediateClock()
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
