@@ -33,25 +33,17 @@ struct ArtworkEmissionState {
     func advanced(with current: NowPlaying) -> Self {
         let currentTrack = TrackIdentity(current)
         guard let track, track == currentTrack else {
-            return Self.emitting(track: currentTrack, artwork: current.artworkData)
+            return .init(track: currentTrack, lastArtwork: current.artworkData, emission: current.artworkData.map(ArtworkEmission.set) ?? .clear)
         }
 
         guard lastArtwork == nil, let currentArtwork = current.artworkData else {
-            return Self(track: currentTrack, lastArtwork: lastArtwork)
+            return .init(track: currentTrack, lastArtwork: lastArtwork)
         }
 
-        return Self(
+        return .init(
             track: currentTrack,
             lastArtwork: currentArtwork,
             emission: .set(currentArtwork)
-        )
-    }
-
-    private static func emitting(track: TrackIdentity, artwork: Data?) -> Self {
-        Self(
-            track: track,
-            lastArtwork: artwork,
-            emission: artwork.map(ArtworkEmission.set) ?? .clear
         )
     }
 }
