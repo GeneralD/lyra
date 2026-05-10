@@ -188,15 +188,28 @@ struct TrackInteractorArtworkTests {
         #expect(collector.snapshot == [artA, artB])
     }
 
-    @Test("sameTrack treats nil and empty-string artist as the same value")
-    func sameTrackNormalizesEmptyArtist() {
-        let withArtist = nowPlaying(title: "Song", artist: "Artist", artwork: nil)
-        let nilArtist = nowPlaying(title: "Song", artist: nil, artwork: nil)
-        let emptyArtist = nowPlaying(title: "Song", artist: "", artwork: nil)
-        let differentTitle = nowPlaying(title: "Other", artist: "Artist", artwork: nil)
+    @Test("artwork suppresses artist degradation when title stays the same")
+    func artworkSuppressesArtistDegradation() async {
+        let playback = StubPlaybackUseCase()
+        let interactor = makeInteractor(playback: playback)
+        let collector = ArtworkCollector()
+        let cancellable = interactor.artwork.sink { collector.append($0) }
+        defer { cancellable.cancel() }
 
-        #expect(TrackInteractorImpl.sameTrack(nilArtist, emptyArtist), "nil and empty should match (both treated as missing artist)")
-        #expect(TrackInteractorImpl.sameTrack(withArtist, nilArtist), "non-empty and nil should match when title is identical (artist degradation)")
-        #expect(!TrackInteractorImpl.sameTrack(withArtist, differentTitle), "different title must not match")
+        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: nil))
+        await collector.waitForCount(1)
+
+        playback.subject.send(nowPlaying(title: "Song", artist: nil, artwork: nil))
+        let stableAfterNilArtist = await collector.isStableAt(1)
+        #expect(stableAfterNilArtist, "artist degradation to nil should not emit a new artwork event")
+
+        playback.subject.send(nowPlaying(title: "Song", artist: "", artwork: nil))
+        let stableAfterEmptyArtist = await collector.isStableAt(1)
+        #expect(stableAfterEmptyArtist, "artist degradation to empty string should not emit a new artwork event")
+
+        playback.subject.send(nowPlaying(title: "Other", artist: "Artist", artwork: nil))
+        await collector.waitForCount(2)
+
+        #expect(collector.snapshot == [nil, nil])
     }
 }

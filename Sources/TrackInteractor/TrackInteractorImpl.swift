@@ -22,9 +22,13 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .compactMap { state -> NowPlaying? in
             guard let current = state.current else { return nil }
             guard let previous = state.previous else { return current }
-            let prevArtist = previous.artist ?? ""
-            let curArtist = current.artist ?? ""
-            guard current.title == previous.title, !prevArtist.isEmpty, curArtist.isEmpty else {
+            let previousTrack = TrackIdentity(previous)
+            let currentTrack = TrackIdentity(current)
+            guard
+                previousTrack.title == currentTrack.title,
+                previousTrack.artist != nil,
+                currentTrack.artist == nil
+            else {
                 return current
             }
             return nil
@@ -33,7 +37,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
         activeNowPlaying
-        .removeDuplicates(by: Self.sameTrack)
+        .removeDuplicates(by: { TrackIdentity($0) == TrackIdentity($1) })
         .map { [weak self] info -> AnyPublisher<TrackUpdate, Never> in
             guard let self else { return Empty().eraseToAnyPublisher() }
             return resolveTrack(from: info)
@@ -47,20 +51,9 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .scan(ArtworkEmissionState()) { state, info in
             state.advanced(with: info)
         }
-        .compactMap(\.emission)
+        .map(\.emission)
+        .flatMap(\.publisher)
         .eraseToAnyPublisher()
-
-    /// Returns `true` when two `NowPlaying` values represent the same track.
-    /// Treats `nil` and empty-string artist as the same value, so transitions
-    /// between them (e.g. system volume mute) are not seen as track changes.
-    static func sameTrack(_ lhs: NowPlaying, _ rhs: NowPlaying) -> Bool {
-        let lhsArtist = lhs.artist ?? ""
-        let rhsArtist = rhs.artist ?? ""
-        guard !lhsArtist.isEmpty, !rhsArtist.isEmpty else {
-            return lhs.title == rhs.title
-        }
-        return lhs.title == rhs.title && lhsArtist == rhsArtist
-    }
 
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
@@ -76,47 +69,6 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         self.lyricsService = lyrics
         self.metadataService = metadata
         self.configService = config
-    }
-}
-
-private struct ArtworkEmissionState {
-    let track: NowPlaying?
-    let artworkData: Data?
-    /// Outer `nil` suppresses output; inner `nil` emits a deliberate artwork clear.
-    let emission: Data??
-
-    init(track: NowPlaying? = nil, artworkData: Data? = nil, emission: Data?? = nil) {
-        self.track = track
-        self.artworkData = artworkData
-        self.emission = emission
-    }
-
-    func advanced(with current: NowPlaying) -> Self {
-        guard let track else {
-            return Self(
-                track: current,
-                artworkData: current.artworkData,
-                emission: .some(current.artworkData)
-            )
-        }
-
-        guard TrackInteractorImpl.sameTrack(track, current) else {
-            return Self(
-                track: current,
-                artworkData: current.artworkData,
-                emission: .some(current.artworkData)
-            )
-        }
-
-        guard artworkData == nil, let currentArtwork = current.artworkData else {
-            return Self(track: current, artworkData: artworkData)
-        }
-
-        return Self(
-            track: current,
-            artworkData: currentArtwork,
-            emission: .some(currentArtwork)
-        )
     }
 }
 
