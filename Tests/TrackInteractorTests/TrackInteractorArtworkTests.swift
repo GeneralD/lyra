@@ -145,6 +145,29 @@ struct TrackInteractorArtworkTests {
         #expect(collector.snapshot == [artA, artB])
     }
 
+    @Test("artwork recovers when a new track receives artwork after an initial nil")
+    func artworkRecoversAfterDelayedArtwork() async {
+        let playback = StubPlaybackUseCase()
+        let interactor = makeInteractor(playback: playback)
+        let collector = ArtworkCollector()
+        let cancellable = interactor.artwork.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        let artA = Data([0x01])
+        let artB = Data([0x02])
+
+        playback.subject.send(nowPlaying(title: "Song A", artist: "Artist", artwork: artA))
+        await collector.waitForCount(1)
+
+        playback.subject.send(nowPlaying(title: "Song B", artist: "Artist", artwork: nil))
+        await collector.waitForCount(2)
+
+        playback.subject.send(nowPlaying(title: "Song B", artist: "Artist", artwork: artB))
+        await collector.waitForCount(3)
+
+        #expect(collector.snapshot == [artA, nil, artB])
+    }
+
     @Test("artwork emits anew when artist changes")
     func artworkEmitsOnArtistChange() async {
         let playback = StubPlaybackUseCase()

@@ -44,8 +44,10 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
-        .removeDuplicates(by: Self.sameTrack)
-        .map(\.artworkData)
+        .scan(ArtworkEmissionState()) { state, info in
+            state.advanced(with: info)
+        }
+        .compactMap(\.emission)
         .eraseToAnyPublisher()
 
     /// Returns `true` when two `NowPlaying` values represent the same track.
@@ -74,6 +76,47 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         self.lyricsService = lyrics
         self.metadataService = metadata
         self.configService = config
+    }
+}
+
+private struct ArtworkEmissionState {
+    let track: NowPlaying?
+    let artworkData: Data?
+    /// Outer `nil` suppresses output; inner `nil` emits a deliberate artwork clear.
+    let emission: Data??
+
+    init(track: NowPlaying? = nil, artworkData: Data? = nil, emission: Data?? = nil) {
+        self.track = track
+        self.artworkData = artworkData
+        self.emission = emission
+    }
+
+    func advanced(with current: NowPlaying) -> Self {
+        guard let track else {
+            return Self(
+                track: current,
+                artworkData: current.artworkData,
+                emission: .some(current.artworkData)
+            )
+        }
+
+        guard TrackInteractorImpl.sameTrack(track, current) else {
+            return Self(
+                track: current,
+                artworkData: current.artworkData,
+                emission: .some(current.artworkData)
+            )
+        }
+
+        guard artworkData == nil, let currentArtwork = current.artworkData else {
+            return Self(track: current, artworkData: artworkData)
+        }
+
+        return Self(
+            track: current,
+            artworkData: currentArtwork,
+            emission: .some(currentArtwork)
+        )
     }
 }
 
