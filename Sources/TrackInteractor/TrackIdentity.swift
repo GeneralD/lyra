@@ -1,20 +1,18 @@
 import Domain
 
-struct TrackIdentity: Equatable {
+struct TrackIdentity {
     let title: String?
     let artist: String?
 
     init(_ nowPlaying: NowPlaying) {
         title = nowPlaying.title
-        artist =
-            if let artist = nowPlaying.artist, !artist.isEmpty {
-                artist
-            } else {
-                nil
-            }
+        let artist = nowPlaying.artist
+        self.artist = artist?.isEmpty == false ? artist : nil
     }
+}
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+extension TrackIdentity: Equatable {
+     static func == (lhs: Self, rhs: Self) -> Bool {
         guard let lhsArtist = lhs.artist, let rhsArtist = rhs.artist else {
             return lhs.title == rhs.title
         }
