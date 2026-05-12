@@ -452,6 +452,11 @@ struct OverlayContentViewLoadingTests {
         defer { wallpaperPresenter.stop() }
 
         #expect(wallpaperPresenter.isLoading == true)
+        // Wait for the debounced indicator to flip so the rendered branch
+        // exercises the `ProgressView()` builder chain, not just the empty
+        // `if presenter.showLoadingIndicator` no-op path.
+        await waitUntil { wallpaperPresenter.showLoadingIndicator }
+        #expect(wallpaperPresenter.showLoadingIndicator)
         render(
             OverlayContentView(
                 headerPresenter: headerPresenter,
