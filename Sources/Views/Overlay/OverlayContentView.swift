@@ -41,16 +41,18 @@ private struct WallpaperLoadingOverlay: View {
     @ObservedObject var presenter: WallpaperPresenter
 
     var body: some View {
-        ProgressView()
-            .progressViewStyle(.circular)
-            .controlSize(.large)
-            .tint(.white)
-            .accessibilityIdentifier("wallpaper-loading-indicator")
-            .opacity(presenter.showLoadingIndicator ? 1 : 0)
-            .allowsHitTesting(false)
-            // `.opacity(0)` keeps the view in the accessibility tree, so VoiceOver
-            // would still surface a "loading" indicator while it's visually hidden.
-            .accessibilityHidden(!presenter.showLoadingIndicator)
+        // Conditional inclusion (not `.opacity(0)`) so the spinner is removed
+        // from the view tree when hidden. A `ProgressView` kept in the tree
+        // drives a continuous CADisplayLink animation even while invisible,
+        // which idle-burns CPU/GPU on every machine running lyra (#252).
+        if presenter.showLoadingIndicator {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.large)
+                .tint(.white)
+                .accessibilityIdentifier("wallpaper-loading-indicator")
+                .allowsHitTesting(false)
+        }
     }
 }
 
