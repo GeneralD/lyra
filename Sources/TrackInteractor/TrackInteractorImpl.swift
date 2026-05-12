@@ -44,8 +44,8 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
-        .removeDuplicates(by: Self.sameTrack)
         .map(\.artworkData)
+        .removeDuplicates()
         .eraseToAnyPublisher()
 
     /// Returns `true` when two `NowPlaying` values represent the same track.
