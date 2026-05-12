@@ -62,17 +62,6 @@ private final class ArtworkCollector: @unchecked Sendable {
             try? await Task.sleep(for: .milliseconds(10))
         }
     }
-
-    /// Polls until `timeout` and returns `true` if the emission count stayed at `expected`.
-    /// Use for negative assertions ("no new emission arrived"). Fails fast on extra emission.
-    func isStableAt(_ expected: Int, timeout: Duration = .milliseconds(200)) async -> Bool {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-            if snapshot.count != expected { return false }
-        }
-        return snapshot.count == expected
-    }
 }
 
 private func makeInteractor(playback: StubPlaybackUseCase) -> TrackInteractorImpl {
@@ -99,30 +88,23 @@ private func nowPlaying(title: String?, artist: String?, artwork: Data?) -> NowP
 @Suite("TrackInteractor artwork stream", .serialized)
 struct TrackInteractorArtworkTests {
 
-    @Test("artwork stays stable when only artworkData changes (volume mute scenario)")
-    func artworkStableOnVolumeMute() async {
+    @Test("artwork emits when artworkData changes within the same track (regression: #249)")
+    func artworkEmitsOnDelayedArtwork() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
         let collector = ArtworkCollector()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
-        let trackArt = Data([0xFF, 0xD8, 0xFF])
-        let chromeIcon = Data([0x89, 0x50, 0x4E, 0x47])
+        let realArt = Data([0xFF, 0xD8, 0xFF])
 
-        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: trackArt))
+        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: nil))
         await collector.waitForCount(1)
-        #expect(collector.snapshot == [trackArt])
+        #expect(collector.snapshot == [nil])
 
-        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: chromeIcon))
-        let stableAfterChrome = await collector.isStableAt(1)
-        #expect(stableAfterChrome, "Chrome icon at volume 0 must not propagate to artwork stream")
-        #expect(collector.snapshot == [trackArt])
-
-        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: trackArt))
-        let stableAfterRestore = await collector.isStableAt(1)
-        #expect(stableAfterRestore, "Restoring artwork on the same track must not re-emit")
-        #expect(collector.snapshot == [trackArt])
+        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: realArt))
+        await collector.waitForCount(2)
+        #expect(collector.snapshot == [nil, realArt])
     }
 
     @Test("artwork emits anew when title changes")
