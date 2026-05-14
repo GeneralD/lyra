@@ -62,14 +62,16 @@ extension MediaRemoteDataSourceImpl {
     }
 
     private func buildExecutable() -> String? {
-        let binaryName = "media-remote-helper"
+        let sourceName = "media-remote-helper"
+        let arch = currentArchitecture
+        let binaryName = "\(sourceName)-\(arch)"
         let shaFileName = "\(binaryName).swift.sha"
         let cacheDir = lyraCacheDirectory()
         let binaryPath = "\(cacheDir)/\(binaryName)"
         let shaPath = "\(cacheDir)/\(shaFileName)"
 
         guard
-            let sourceURL = Bundle.module.url(forResource: binaryName, withExtension: "swift"),
+            let sourceURL = Bundle.module.url(forResource: sourceName, withExtension: "swift"),
             let sourceData = try? Data(contentsOf: sourceURL)
         else { return nil }
 
@@ -111,7 +113,19 @@ extension MediaRemoteDataSourceImpl {
         let env = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let env, !env.isEmpty { return env }
-        return "\(Folder.home.path).cache"
+        return URL(fileURLWithPath: Folder.home.path)
+            .appendingPathComponent(".cache", isDirectory: true)
+            .path
+    }
+
+    private var currentArchitecture: String {
+        #if arch(arm64)
+            return "arm64"
+        #elseif arch(x86_64)
+            return "x86_64"
+        #else
+            return "unknown"
+        #endif
     }
 }
 
@@ -153,15 +167,13 @@ private final class StreamStateBox: @unchecked Sendable {
 
 private final class ExecutablePathBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var hasResolved = false
     private var resolvedPath: String?
 
     func resolve(build: () -> String?) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        if hasResolved { return resolvedPath }
+        if let resolvedPath { return resolvedPath }
         resolvedPath = build()
-        hasResolved = true
         return resolvedPath
     }
 }
