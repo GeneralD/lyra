@@ -8,7 +8,9 @@ import Testing
 @Suite("MediaRemoteDataSourceImpl")
 struct MediaRemoteDataSourceImplTests {
     @Test("poll returns info for valid JSON line")
-    func pollReturnsInfo() async {
+    func pollReturnsInfo() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
         let gateway = StreamingGateway(streamPlans: [
             [
                 Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true)
@@ -18,7 +20,7 @@ struct MediaRemoteDataSourceImplTests {
         await withDependencies {
             $0.processGateway = gateway
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl()
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
             let result = await dataSource.poll()
 
             guard case .info(let nowPlaying) = result else {
@@ -31,7 +33,9 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("poll returns noInfo for has_info false payload")
-    func pollReturnsNoInfo() async {
+    func pollReturnsNoInfo() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
         let gateway = StreamingGateway(streamPlans: [
             [
                 Self.jsonLine(title: "Song", artist: "Artist", hasInfo: false)
@@ -41,7 +45,7 @@ struct MediaRemoteDataSourceImplTests {
         await withDependencies {
             $0.processGateway = gateway
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl()
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
             let result = await dataSource.poll()
             guard case .noInfo = result else {
                 Issue.record("Expected .noInfo, got \(result)")
@@ -51,7 +55,9 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("poll returns noInfo for invalid JSON")
-    func pollReturnsNoInfoForInvalidJSON() async {
+    func pollReturnsNoInfoForInvalidJSON() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
         let gateway = StreamingGateway(streamPlans: [
             ["{not-json}"]
         ])
@@ -59,7 +65,7 @@ struct MediaRemoteDataSourceImplTests {
         await withDependencies {
             $0.processGateway = gateway
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl()
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
             let result = await dataSource.poll()
             guard case .noInfo = result else {
                 Issue.record("Expected .noInfo, got \(result)")
@@ -69,7 +75,9 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("poll returns noInfo for empty line")
-    func pollReturnsNoInfoForEmptyLine() async {
+    func pollReturnsNoInfoForEmptyLine() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
         let gateway = StreamingGateway(streamPlans: [
             [""]
         ])
@@ -77,7 +85,7 @@ struct MediaRemoteDataSourceImplTests {
         await withDependencies {
             $0.processGateway = gateway
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl()
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
             let result = await dataSource.poll()
             guard case .noInfo = result else {
                 Issue.record("Expected .noInfo, got \(result)")
@@ -87,7 +95,9 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("poll restarts stream after eof")
-    func pollRestartsAfterEof() async {
+    func pollRestartsAfterEof() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
         let gateway = StreamingGateway(streamPlans: [
             [],
             [Self.jsonLine(title: "Restarted", artist: "Artist", hasInfo: true)],
@@ -96,7 +106,7 @@ struct MediaRemoteDataSourceImplTests {
         await withDependencies {
             $0.processGateway = gateway
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl()
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
             let first = await dataSource.poll()
             guard case .eof = first else {
                 Issue.record("Expected initial .eof, got \(first)")
@@ -114,7 +124,9 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("concurrent polls serialize iterator access")
-    func concurrentPollsSerializeIteratorAccess() async {
+    func concurrentPollsSerializeIteratorAccess() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
         let gateway = StreamingGateway(
             streamPlans: [
                 [
@@ -128,7 +140,7 @@ struct MediaRemoteDataSourceImplTests {
         await withDependencies {
             $0.processGateway = gateway
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl()
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
             let results = await withTaskGroup(of: MediaRemotePollResult.self) { group in
                 group.addTask { await dataSource.poll() }
                 group.addTask { await dataSource.poll() }
@@ -148,6 +160,43 @@ struct MediaRemoteDataSourceImplTests {
             #expect(gateway.runStreamingCallCount == 1)
         }
     }
+
+    @Test("poll compiles helper once and streams the resulting binary")
+    func pollCompilesHelperBinary() async throws {
+        let cacheHome = try Self.makeTemporaryCacheHome()
+        defer { Self.cleanUp(cacheHome) }
+        let gateway = StreamingGateway(streamPlans: [
+            [Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true)],
+            [Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true)],
+        ])
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(cacheHome: cacheHome)
+            _ = await dataSource.poll()
+            _ = await dataSource.poll()
+
+            #expect(gateway.runCommands.count == 1)
+            let buildCommand = gateway.runCommands.first
+            #expect(buildCommand?.executable == "/usr/bin/env")
+            #expect(buildCommand?.arguments.first == "swiftc")
+            #expect(buildCommand?.arguments.contains("-O") == true)
+
+            let executablePaths = Set(gateway.streamingCommands.map(\.executable))
+            #expect(executablePaths.count == 1)
+            guard let binaryPath = executablePaths.first else {
+                Issue.record("Expected streamingCommands to capture an executable path")
+                return
+            }
+            #expect(binaryPath.hasSuffix("/lyra/media-remote-helper"))
+            #expect(binaryPath.hasPrefix(cacheHome))
+            #expect(gateway.streamingCommands.allSatisfy { $0.arguments.isEmpty })
+
+            let shaPath = "\(cacheHome)/lyra/media-remote-helper.swift.sha"
+            #expect(FileManager.default.fileExists(atPath: shaPath))
+        }
+    }
 }
 
 extension MediaRemoteDataSourceImplTests {
@@ -161,9 +210,25 @@ extension MediaRemoteDataSourceImplTests {
             "rate": 1.0,
             "timestamp": 10.0,
         ]
-        let data = try! JSONSerialization.data(withJSONObject: payload)
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
+
+    fileprivate static func makeTemporaryCacheHome() throws -> String {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "lyra-media-remote-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url.path
+    }
+
+    fileprivate static func cleanUp(_ path: String) {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+}
+
+private struct CapturedCommand: Sendable {
+    let executable: String
+    let arguments: [String]
 }
 
 private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
@@ -171,10 +236,20 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     private var streamPlans: [[String]]
     private let firstYieldDelayNanoseconds: UInt64
     private(set) var runStreamingCallCount = 0
+    private var capturedRunCommands: [CapturedCommand] = []
+    private var capturedStreamingCommands: [CapturedCommand] = []
 
     init(streamPlans: [[String]], firstYieldDelayNanoseconds: UInt64 = 0) {
         self.streamPlans = streamPlans
         self.firstYieldDelayNanoseconds = firstYieldDelayNanoseconds
+    }
+
+    var runCommands: [CapturedCommand] {
+        lock.withLock { capturedRunCommands }
+    }
+
+    var streamingCommands: [CapturedCommand] {
+        lock.withLock { capturedStreamingCommands }
     }
 
     var resourceSnapshot: ResourceSnapshot { .init(cpuUser: 0, cpuSystem: 0, peakRSS: 0, currentRSS: 0) }
@@ -187,13 +262,20 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     func releaseLock() {}
     func runLaunchctl(_ arguments: [String]) -> Int32 { 0 }
     func findExecutable(_ name: String) -> String? { nil }
-    func run(executable: String, arguments: [String]) -> Int32 { 0 }
+    func run(executable: String, arguments: [String]) -> Int32 {
+        lock.withLock {
+            capturedRunCommands.append(CapturedCommand(executable: executable, arguments: arguments))
+        }
+        return 0
+    }
     func runInteractiveShell(_ command: String) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
 
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         let lines: [String] = lock.withLock {
             runStreamingCallCount += 1
+            capturedStreamingCommands.append(
+                CapturedCommand(executable: executable, arguments: arguments))
             guard !streamPlans.isEmpty else { return [] }
             return streamPlans.removeFirst()
         }
