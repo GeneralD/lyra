@@ -51,6 +51,19 @@ public final class RippleState {
         cleanup()
     }
 
+    /// True while at least one ripple is still within its visible animation
+    /// window. Guarded so the clock is never read when ripples are disabled or
+    /// none are alive, keeping the DisplayLink-driven liveness check free of a
+    /// dependency access at rest (#258).
+    public var hasLiveRipples: Bool {
+        guard rippleConfig.enabled, !ripples.isEmpty else { return false }
+        let now = date.now
+        return ripples.contains { ripple in
+            let duration = ripple.idle ? rippleConfig.duration * 3 : rippleConfig.duration
+            return now.timeIntervalSince(ripple.startTime) < duration
+        }
+    }
+
     private func cleanup() {
         let now = date.now
         ripples.removeAll { now.timeIntervalSince($0.startTime) > rippleConfig.duration * 3 }

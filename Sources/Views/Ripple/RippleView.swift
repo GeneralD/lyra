@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 public struct RippleView: View {
-    let presenter: RipplePresenter
+    @ObservedObject var presenter: RipplePresenter
 
     public init(presenter: RipplePresenter) {
         self.presenter = presenter
@@ -13,7 +13,11 @@ public struct RippleView: View {
 
     public var body: some View {
         if presenter.isEnabled, presenter.rippleState != nil {
-            TimelineView(.animation) { timeline in
+            // Pause the per-frame timeline while no ripple is alive so an
+            // enabled-but-idle ripple layer stops redrawing the Canvas every
+            // frame (#258). A paused TimelineView still renders the current
+            // frame once, so seeded-ripple Canvas tests keep exercising stroke().
+            TimelineView(.animation(paused: !presenter.isAnimating)) { timeline in
                 Canvas { context, size in
                     let commands = presenter.drawingContexts(
                         canvasSize: size, now: timeline.date)
