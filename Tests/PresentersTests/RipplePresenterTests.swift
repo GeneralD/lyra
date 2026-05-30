@@ -357,8 +357,9 @@ struct RipplePresenterTests {
     }
 }
 
-/// Mutable monotonic clock for advancing `\.date` within a single test.
-/// Confined to the test's `@MainActor` operation, so unchecked Sendable is safe.
+/// Mutable date source for advancing `\.date` within one `@MainActor` test.
+/// The unchecked Sendable conformance is safe because tests mutate it only on
+/// that actor.
 private final class MutableClock: @unchecked Sendable {
     var now: Date
     init(now: Date) { self.now = now }

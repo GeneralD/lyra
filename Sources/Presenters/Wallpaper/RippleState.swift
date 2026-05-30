@@ -58,14 +58,15 @@ public final class RippleState {
     public var hasLiveRipples: Bool {
         guard rippleConfig.enabled, !ripples.isEmpty else { return false }
         let now = date.now
-        return ripples.contains { ripple in
-            let duration = ripple.idle ? rippleConfig.duration * 3 : rippleConfig.duration
-            return now.timeIntervalSince(ripple.startTime) < duration
-        }
+        return ripples.contains { now.timeIntervalSince($0.startTime) < visibleWindow(for: $0) }
+    }
+
+    private func visibleWindow(for ripple: Ripple) -> TimeInterval {
+        ripple.idle ? rippleConfig.duration * 3 : rippleConfig.duration
     }
 
     private func cleanup() {
         let now = date.now
-        ripples.removeAll { now.timeIntervalSince($0.startTime) > rippleConfig.duration * 3 }
+        ripples.removeAll { now.timeIntervalSince($0.startTime) >= visibleWindow(for: $0) }
     }
 }
