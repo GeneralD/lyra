@@ -34,7 +34,7 @@ public final class RipplePresenter: ObservableObject {
         }
         mouseInScreen = true
         rippleState?.update(screenPoint: point)
-        setAnimating(rippleState?.hasLiveRipples ?? false)
+        setAnimating(rippleState?.pruneAndCheckLiveness() ?? false)
     }
 
     public func updateScreenRect(_ rect: CGRect) {
@@ -98,7 +98,7 @@ public final class RipplePresenter: ObservableObject {
     /// Called from DisplayLink at frame rate.
     public func idle() {
         spawnIdleRippleWhileHovering()
-        setAnimating(rippleState?.hasLiveRipples ?? false)
+        setAnimating(rippleState?.pruneAndCheckLiveness() ?? false)
     }
 
     private func spawnIdleRippleWhileHovering() {

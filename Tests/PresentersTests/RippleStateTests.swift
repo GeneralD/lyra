@@ -136,4 +136,26 @@ struct RippleStateTests {
             #expect(state.ripples.first?.position == CGPoint(x: 200, y: 200))
         }
     }
+
+    @MainActor
+    @Test("pruneAndCheckLiveness drains the array once every ripple expires, without a new spawn")
+    func pruneAndCheckLivenessDrainsWithoutSpawn() {
+        let clock = MutableClock()
+        withDependencies {
+            $0.date = .init { clock.now }
+        } operation: {
+            let state = RippleState(config: RippleStyle(enabled: true, duration: 0.01))
+            state.update(screenPoint: CGPoint(x: 0, y: 0))
+            state.update(screenPoint: CGPoint(x: 100, y: 100))
+            #expect(state.pruneAndCheckLiveness())
+
+            // Age every ripple out of its window, then prune again *without*
+            // appending a new ripple — this is the pointer-left-screen path
+            // where `update`/`idle` never fire. The array must drain so a
+            // subsequent call short-circuits on the empty guard (#258).
+            clock.advance(by: 0.05)
+            #expect(!state.pruneAndCheckLiveness())
+            #expect(state.ripples.isEmpty)
+        }
+    }
 }

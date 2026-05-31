@@ -349,9 +349,13 @@ struct RipplePresenterTests {
 
                 // Advance well past the ripple's visible window; the next idle
                 // tick observes no live ripples and closes the animation gate.
+                // The pointer never re-entered the screen, so no new ripple is
+                // spawned — the prune must still drain the array so the *next*
+                // tick short-circuits without reading the clock (#258).
                 clock.now = fixedDate.addingTimeInterval(10)
                 presenter.idle()
                 #expect(!presenter.isAnimating)
+                #expect(presenter.rippleState?.ripples.isEmpty == true)
             }
         }
     }
