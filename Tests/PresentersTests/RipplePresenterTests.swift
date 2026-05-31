@@ -299,4 +299,72 @@ struct RipplePresenterTests {
             }
         }
     }
+
+    @Suite("isAnimating")
+    struct IsAnimating {
+        @MainActor
+        @Test("stays false while no ripple has been spawned")
+        func falseWhenNoRipples() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.idle()
+                #expect(!presenter.isAnimating)
+            }
+        }
+
+        @MainActor
+        @Test("becomes true while a freshly spawned ripple is alive")
+        func trueWhileRippleAlive() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                presenter.idle()
+                #expect(presenter.isAnimating)
+            }
+        }
+
+        @MainActor
+        @Test("returns to false once every ripple has expired")
+        func falseAfterExpiry() {
+            let clock = MutableClock(now: fixedDate)
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 0.1))
+                $0.date = .init { clock.now }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                presenter.idle()
+                #expect(presenter.isAnimating)
+
+                // Advance well past the ripple's visible window; the next idle
+                // tick observes no live ripples and closes the animation gate.
+                // The pointer never re-entered the screen, so no new ripple is
+                // spawned — the prune must still drain the array so the *next*
+                // tick short-circuits without reading the clock (#258).
+                clock.now = fixedDate.addingTimeInterval(10)
+                presenter.idle()
+                #expect(!presenter.isAnimating)
+                #expect(presenter.rippleState?.ripples.isEmpty == true)
+            }
+        }
+    }
+}
+
+/// Mutable date source for advancing `\.date` within one `@MainActor` test.
+/// The unchecked Sendable conformance is safe because tests mutate it only on
+/// that actor.
+private final class MutableClock: @unchecked Sendable {
+    var now: Date
+    init(now: Date) { self.now = now }
 }

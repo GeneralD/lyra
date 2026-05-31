@@ -13,6 +13,11 @@ public final class RipplePresenter: ObservableObject {
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
+    /// Drives whether `RippleView` keeps its per-frame `TimelineView` running.
+    /// Stays `false` while no ripple is alive so an enabled-but-idle ripple
+    /// layer does not redraw the Canvas every frame (#258).
+    @Published public private(set) var isAnimating = false
+
     public init(screenRect: CGRect = .zero) {
         self.screenRect = screenRect
     }
@@ -29,6 +34,7 @@ public final class RipplePresenter: ObservableObject {
         }
         mouseInScreen = true
         rippleState?.update(screenPoint: point)
+        setAnimating(rippleState?.pruneAndCheckLiveness() ?? false)
     }
 
     public func updateScreenRect(_ rect: CGRect) {
@@ -91,7 +97,17 @@ public final class RipplePresenter: ObservableObject {
 
     /// Called from DisplayLink at frame rate.
     public func idle() {
+        spawnIdleRippleWhileHovering()
+        setAnimating(rippleState?.pruneAndCheckLiveness() ?? false)
+    }
+
+    private func spawnIdleRippleWhileHovering() {
         guard mouseInScreen else { return }
         rippleState?.idle()
+    }
+
+    private func setAnimating(_ value: Bool) {
+        guard isAnimating != value else { return }
+        isAnimating = value
     }
 }

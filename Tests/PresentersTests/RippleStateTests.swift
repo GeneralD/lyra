@@ -112,8 +112,8 @@ struct RippleStateTests {
     }
 
     @MainActor
-    @Test("cleanup removes expired ripples")
-    func cleanupRemovesExpired() {
+    @Test("cleanup removes pointer ripples at their visible window")
+    func cleanupRemovesExpiredPointerRipples() {
         let clock = MutableClock()
         withDependencies {
             $0.date = .init { clock.now }
@@ -121,17 +121,41 @@ struct RippleStateTests {
             let state = RippleState(config: RippleStyle(enabled: true, duration: 0.01))
             state.update(screenPoint: CGPoint(x: 0, y: 0))
             state.update(screenPoint: CGPoint(x: 100, y: 100))
-            #expect(!state.ripples.isEmpty)
+            #expect(state.ripples.count == 1)
 
-            // Advance past duration*3 (= 0.03s)
-            clock.advance(by: 0.1)
+            // Older than duration, but still younger than duration * 3.
+            clock.advance(by: 0.02)
 
             // Trigger cleanup via another update
             state.update(screenPoint: CGPoint(x: 200, y: 200))
-            state.update(screenPoint: CGPoint(x: 300, y: 300))
 
-            // Earlier ripples should have been removed; only new ones remain
-            #expect(state.ripples.count <= 2, "expired ripples should have been removed during cleanup")
+            #expect(
+                state.ripples.count == 1,
+                "pointer ripples should not stay until the idle-ripple window"
+            )
+            #expect(state.ripples.first?.position == CGPoint(x: 200, y: 200))
+        }
+    }
+
+    @MainActor
+    @Test("pruneAndCheckLiveness drains the array once every ripple expires, without a new spawn")
+    func pruneAndCheckLivenessDrainsWithoutSpawn() {
+        let clock = MutableClock()
+        withDependencies {
+            $0.date = .init { clock.now }
+        } operation: {
+            let state = RippleState(config: RippleStyle(enabled: true, duration: 0.01))
+            state.update(screenPoint: CGPoint(x: 0, y: 0))
+            state.update(screenPoint: CGPoint(x: 100, y: 100))
+            #expect(state.pruneAndCheckLiveness())
+
+            // Age every ripple out of its window, then prune again *without*
+            // appending a new ripple — this is the pointer-left-screen path
+            // where `update`/`idle` never fire. The array must drain so a
+            // subsequent call short-circuits on the empty guard (#258).
+            clock.advance(by: 0.05)
+            #expect(!state.pruneAndCheckLiveness())
+            #expect(state.ripples.isEmpty)
         }
     }
 }
