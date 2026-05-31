@@ -34,6 +34,13 @@ with the lock race or the service lifecycle by hand.
 
 ## Procedure
 
+The debug daemon is foreground and blocks its terminal until Ctrl-C. The
+overlay check must therefore run from a **second terminal** while the
+daemon is still alive — running both in the same shell block would
+make the check execute only after the daemon has already exited.
+
+### Terminal A — pre-setup + keep the debug daemon alive
+
 ```sh
 # 1. Capture prior state — is the brew service running?
 brew services list | grep '^lyra'        # note "started" vs "stopped"/"none"
@@ -42,18 +49,26 @@ brew services list | grep '^lyra'        # note "started" vs "stopped"/"none"
 brew services stop lyra
 
 # 3. Build and run the debug build in the FOREGROUND.
+#    This blocks the terminal until Ctrl-C — intentional. `daemon` keeps
+#    logs visible; `start` (detached, stdout nulled) is wrong for dev
+#    verification.
 swift build && .build/debug/lyra daemon
-#   - `daemon` runs the accessory in the foreground: logs are visible and
-#     Ctrl-C stops it. `start` spawns a detached daemon and nulls stdout — not
-#     for dev verification.
+```
 
+### Terminal B — runs WHILE Terminal A's daemon is alive
+
+```sh
 # 4. Let the user verify visually. Optionally assert the overlay is live
 #    (now unambiguous — only the debug instance is running):
 swift .claude/scripts/check-overlay.swift
+```
 
-# 5. Ctrl-C to stop the debug daemon.
+### After verification — stop and restore
 
-# 6. ALWAYS restore prior state.
+```sh
+# 5. In Terminal A: Ctrl-C to stop the debug daemon.
+
+# 6. ALWAYS restore prior state (Terminal A or B, after Ctrl-C):
 brew services start lyra                  # only if step 1 showed "started"
 ```
 
