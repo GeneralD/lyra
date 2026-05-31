@@ -16,6 +16,8 @@ corresponding kinds of changes.
   `.claude/rules/module-checklist.md`
 - Swift implementation style and immutability rules:
   `.claude/rules/swift-idioms.md`
+- Running the debug build for visual verification while the brew service is
+  installed (stop -> run -> restore): `.claude/rules/dev-verification.md`
 - Repo-local version bump workflow:
   `.codex/skills/lyra-bump-version/SKILL.md`
 

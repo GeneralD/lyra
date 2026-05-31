@@ -23,6 +23,10 @@ lyra benchmark -d 30 --json          # 30s per scenario, JSON output
 swift .claude/scripts/check-overlay.swift  # verify overlay is rendering
 ```
 
+To run the debug build for visual verification while the Homebrew service is
+installed, follow `.claude/rules/dev-verification.md` (stop the brew service ->
+run `.build/debug/lyra daemon` in the foreground -> restore the service).
+
 ## Architecture
 
 macOS desktop overlay app showing synced lyrics and video wallpaper. VIPER + Clean Architecture with Swift Package targets enforcing layer boundaries at compile time.
