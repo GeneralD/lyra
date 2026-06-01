@@ -29,9 +29,12 @@ let register = unsafeBitCast(regSym, to: RegisterFn.self)
         r["duration"] = d["kMRMediaRemoteNowPlayingInfoDuration"]
         r["elapsed"] = d["kMRMediaRemoteNowPlayingInfoElapsedTime"]
         r["rate"] = d["kMRMediaRemoteNowPlayingInfoPlaybackRate"]
-        if let ts = d["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date {
-            r["timestamp"] = ts.timeIntervalSinceReferenceDate
-        }
+        // MediaRemote sometimes omits the timestamp field; synthesize it from
+        // the current fetch moment so the client can always interpolate elapsed
+        // between polls (otherwise lyric highlighting would only advance once
+        // per polling interval for timestamp-less sources).
+        let ts = (d["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date) ?? Date()
+        r["timestamp"] = ts.timeIntervalSinceReferenceDate
         if let art = d["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data {
             r["artwork_base64"] = art.base64EncodedString()
         }
@@ -60,7 +63,7 @@ for name in [
 // Periodic fallback for snapshot refresh (rawElapsed/timestamp/playbackRate).
 // The client (LyricsPresenter) interpolates elapsed on every DisplayLink tick
 // from this snapshot, so 3s polling is sufficient for lyric sync. pause/seek
-// is delivered immediately via `kMRMediaRemoteNowPlayingInfoDidChange`.
+// is delivered immediately via `kMRMediaRemoteNowPlayingInfoDidChangeNotification`.
 Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in fetchAndPrint() }
 
 // Initial fetch

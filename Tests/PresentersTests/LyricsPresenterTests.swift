@@ -272,9 +272,13 @@ struct LyricsPresenterTests {
                         rawElapsed: 0,
                         timestamp: fixedNow.addingTimeInterval(-7),
                         playbackRate: 1.0))
-                try? await Task.sleep(for: .milliseconds(50))
 
-                presenter.updateActiveLineTick()
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
             }
         }
@@ -306,9 +310,13 @@ struct LyricsPresenterTests {
 
                 // timestamp nil → rawElapsed used verbatim (no interpolation)
                 positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
-                try? await Task.sleep(for: .milliseconds(50))
 
-                presenter.updateActiveLineTick()
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
             }
         }
