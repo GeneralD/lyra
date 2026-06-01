@@ -146,7 +146,7 @@ struct TrackInteractorPlaybackPositionTests {
         await collector.waitForCount(2)
 
         let snapshots = collector.snapshot
-        #expect(snapshots.count == 2)
+        try #require(snapshots.count == 2)
         #expect(snapshots[0].rawElapsed == 10)
         #expect(snapshots[0].timestamp == t1)
         #expect(snapshots[1].rawElapsed == 0)
@@ -184,7 +184,7 @@ struct TrackInteractorPlaybackPositionTests {
         await collector.waitForCount(2)
 
         let snapshots = collector.snapshot
-        #expect(snapshots.count == 2, "second (volume-mute) emission should be filtered out by activeNowPlaying")
+        try #require(snapshots.count == 2, "second (volume-mute) emission should be filtered out by activeNowPlaying")
         #expect(snapshots[0].rawElapsed == 1)
         #expect(snapshots[1].rawElapsed == 3)
     }

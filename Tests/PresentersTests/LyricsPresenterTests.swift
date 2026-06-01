@@ -192,13 +192,20 @@ struct LyricsPresenterTests {
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
                 await waitForLyricsSuccess(presenter)
 
-                // Send a paused playback position (rate = 0)
+                // Send a paused playback position (rate = 0).
                 positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 0))
-                // Allow Combine to deliver the position update
-                try? await Task.sleep(for: .milliseconds(50))
 
-                presenter.updateActiveLineTick()
-                // activeLineIndex should remain nil because playback is paused
+                // activeLineIndex must remain nil — both before sink delivery
+                // (latestRawElapsed still nil → interpolatedElapsed nil → no index
+                // change) and after delivery (latestPlaybackRate == 0 → early
+                // return). Poll the tick to confirm it never flips during a
+                // short observation window.
+                let deadline = ContinuousClock.now + .seconds(1)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex != nil { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == nil)
             }
         }
@@ -230,10 +237,13 @@ struct LyricsPresenterTests {
 
                 // Send position at 6s — should highlight Line B (time=5)
                 positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 1.0))
-                // Allow Combine to deliver the position update
-                try? await Task.sleep(for: .milliseconds(50))
 
-                presenter.updateActiveLineTick()
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
             }
         }

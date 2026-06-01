@@ -158,16 +158,22 @@ struct LyricsPresenterDuplicateTests {
 
                 // Set position while playing
                 positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 1.0))
-                try? await Task.sleep(for: .milliseconds(200))
-                presenter.updateActiveLineTick()
+                var deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
 
-                // Pause (rate = 0), send new position
+                // Pause (rate = 0), send new position — paused guard should keep index at 1
                 positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 0))
-                try? await Task.sleep(for: .milliseconds(200))
-                presenter.updateActiveLineTick()
-
-                // activeLineIndex should not update when paused
+                deadline = ContinuousClock.now + .seconds(1)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex != 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
             }
         }
