@@ -152,4 +152,40 @@ struct TrackInteractorPlaybackPositionTests {
         #expect(snapshots[1].rawElapsed == 0)
         #expect(snapshots[1].timestamp == t2)
     }
+
+    @Test("playbackPosition suppresses 'volume mute' transition (same title, artist disappears)")
+    func volumeMutePatternSuppressed() async throws {
+        let playback = StubPlaybackUseCase()
+        let interactor = makeInteractor(playback: playback)
+        let collector = PositionCollector()
+        let cancellable = interactor.playbackPosition.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        // First: title with non-empty artist -> emits
+        playback.subject.send(
+            NowPlaying(
+                title: "Song", artist: "Artist", artworkData: nil,
+                duration: nil, rawElapsed: 1, playbackRate: 1, timestamp: nil))
+        await collector.waitForCount(1)
+
+        // Second: same title, artist degrades to empty (system mute / lookup hiccup).
+        // activeNowPlaying.compactMap returns nil for this pattern (line 30) — suppressed.
+        playback.subject.send(
+            NowPlaying(
+                title: "Song", artist: "", artworkData: nil,
+                duration: nil, rawElapsed: 2, playbackRate: 1, timestamp: nil))
+
+        // Third: artist returns -> emits again. Awaiting count==2 here proves
+        // the second send did NOT emit (otherwise count would already be >=2).
+        playback.subject.send(
+            NowPlaying(
+                title: "Song", artist: "Artist", artworkData: nil,
+                duration: nil, rawElapsed: 3, playbackRate: 1, timestamp: nil))
+        await collector.waitForCount(2)
+
+        let snapshots = collector.snapshot
+        #expect(snapshots.count == 2, "second (volume-mute) emission should be filtered out by activeNowPlaying")
+        #expect(snapshots[0].rawElapsed == 1)
+        #expect(snapshots[1].rawElapsed == 3)
+    }
 }
