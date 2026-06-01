@@ -66,12 +66,16 @@ extension MediaRemoteDataSourceImpl {
             }
             // MediaRemote private framework only returns now-playing info when the
             // *host* process is Apple-signed with the matching private entitlement.
-            // Running the helper via `/usr/bin/env swift <src>` keeps Apple's
-            // signed `swift` binary as the host — pre-compiling with `swiftc` and
-            // executing the ad-hoc-signed output instead silently breaks
-            // MediaRemote on macOS 26+. See issue #261.
+            // `/usr/bin/swift` is the Apple-signed xcode_select tool-shim that
+            // dispatches into the Xcode / CLT swift interpreter (both Apple-signed).
+            // Going through `/usr/bin/env swift` instead would respect $PATH and
+            // could pick up a Homebrew / swift.org / asdf toolchain whose binary
+            // lacks the Apple-private entitlement — reintroducing the regression
+            // this change is meant to fix. Pre-compiling with `swiftc` and
+            // executing the ad-hoc-signed output is broken on macOS 26+ for the
+            // same reason. See issue #261.
             let stream = gateway.runStreaming(
-                executable: "/usr/bin/env", arguments: ["swift", sourceURL.path])
+                executable: "/usr/bin/swift", arguments: [sourceURL.path])
             state.iterator = stream.makeAsyncIterator()
         }
         state.isPolling = true

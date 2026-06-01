@@ -163,10 +163,12 @@ struct MediaRemoteDataSourceImplTests {
 
             #expect(gateway.streamingCommands.count == 1)
             let command = gateway.streamingCommands.first
-            #expect(command?.executable == "/usr/bin/env")
-            #expect(command?.arguments.first == "swift")
-            #expect(command?.arguments.count == 2)
-            let scriptPath = command?.arguments.last ?? ""
+            // Must be the absolute path to the Apple-signed swift interpreter —
+            // using `/usr/bin/env swift` would respect $PATH and could resolve
+            // to a non-Apple toolchain that loses the MediaRemote entitlement.
+            #expect(command?.executable == "/usr/bin/swift")
+            #expect(command?.arguments.count == 1)
+            let scriptPath = command?.arguments.first ?? ""
             #expect(scriptPath.hasSuffix("media-remote-helper.swift"))
             // No compile step — the helper must NEVER be pre-built (see #261).
             #expect(gateway.runCommands.isEmpty)
