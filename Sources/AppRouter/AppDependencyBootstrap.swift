@@ -78,7 +78,7 @@ import Foundation
             let decodeEffect = DecodeEffect(duration: 0)
             trackChange = Just(fixture.trackUpdate).eraseToAnyPublisher()
             artwork = Just(nil).eraseToAnyPublisher()
-            playbackPosition = Just(PlaybackPosition(elapsed: nil, playbackRate: 0)).eraseToAnyPublisher()
+            playbackPosition = Just(PlaybackPosition(rawElapsed: nil, timestamp: nil, playbackRate: 0)).eraseToAnyPublisher()
             decodeEffectConfig = decodeEffect
             textLayout = TextLayout(decodeEffect: decodeEffect)
             artworkStyle = ArtworkStyle(opacity: 0)

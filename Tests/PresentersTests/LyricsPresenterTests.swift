@@ -192,13 +192,20 @@ struct LyricsPresenterTests {
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
                 await waitForLyricsSuccess(presenter)
 
-                // Send a paused playback position (rate = 0)
-                positionSubject.send(PlaybackPosition(elapsed: 6, playbackRate: 0))
-                // Allow Combine to deliver the position update
-                try? await Task.sleep(for: .milliseconds(50))
+                // Send a paused playback position (rate = 0).
+                positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 0))
 
-                presenter.updateActiveLineTick()
-                // activeLineIndex should remain nil because playback is paused
+                // activeLineIndex must remain nil — both before sink delivery
+                // (latestRawElapsed still nil → interpolatedElapsed nil → no index
+                // change) and after delivery (latestPlaybackRate == 0 → early
+                // return). Poll the tick to confirm it never flips during a
+                // short observation window.
+                let deadline = ContinuousClock.now + .seconds(1)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex != nil { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == nil)
             }
         }
@@ -229,11 +236,97 @@ struct LyricsPresenterTests {
                 await waitForLyricsSuccess(presenter)
 
                 // Send position at 6s — should highlight Line B (time=5)
-                positionSubject.send(PlaybackPosition(elapsed: 6, playbackRate: 1.0))
-                // Allow Combine to deliver the position update
-                try? await Task.sleep(for: .milliseconds(50))
+                positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 1.0))
 
-                presenter.updateActiveLineTick()
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(presenter.activeLineIndex == 1)
+            }
+        }
+
+        @MainActor
+        @Test("interpolates elapsed from snapshot (rawElapsed + timestamp + playbackRate)")
+        func interpolatesFromSnapshot() async throws {
+            let fixedNow = Date(timeIntervalSinceReferenceDate: 1_000_000)
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "Line A"),
+                .init(time: 5, text: "Line B"),
+                .init(time: 10, text: "Line C"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+                $0.date = .constant(fixedNow)
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+                await waitForLyricsSuccess(presenter)
+
+                // Snapshot from 7s ago: rawElapsed=0, rate=1.0
+                // Interpolated at fixedNow: 0 + 1.0 * 7.0 = 7.0 → Line B (time=5)
+                positionSubject.send(
+                    PlaybackPosition(
+                        rawElapsed: 0,
+                        timestamp: fixedNow.addingTimeInterval(-7),
+                        playbackRate: 1.0))
+
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(presenter.activeLineIndex == 1)
+            }
+        }
+
+        @MainActor
+        @Test("falls back to rawElapsed when timestamp is nil")
+        func fallsBackWhenTimestampMissing() async throws {
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "A"),
+                .init(time: 5, text: "B"),
+                .init(time: 10, text: "C"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+                await waitForLyricsSuccess(presenter)
+
+                // timestamp nil → rawElapsed used verbatim (no interpolation)
+                positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
+
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 1 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
                 #expect(presenter.activeLineIndex == 1)
             }
         }

@@ -273,4 +273,40 @@ struct TrackInteractorRaceTests {
         #expect(!isDuplicate(normal, sameTitleDiffArtist), "Different non-empty artist should not match")
         #expect(isDuplicate(muted, muted), "Both empty artist, same title should match")
     }
+
+    // MARK: - resolveTrack guards
+
+    @Test("trackChange emits loading state when NowPlaying has nil title/artist (no resolution attempted)")
+    func nilTitleArtistEmitsLoadingOnly() async throws {
+        let playback = StubPlaybackUseCase()
+        let clock = TestClock<Duration>()
+        let interactor = makeInteractor(playback: playback, clock: clock)
+
+        let collector = UpdateCollector()
+        let cancellable = interactor.trackChange.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        // Nil title/artist hits the early `guard let title, let artist`
+        // branch in resolveTrack and short-circuits to Just(loading) without
+        // calling metadata/lyrics services.
+        playback.subject.send(
+            NowPlaying(
+                title: nil, artist: nil, artworkData: nil,
+                duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
+
+        let loading = await collector.waitFor { update in
+            update.title == nil && update.lyricsState == .loading
+        }
+        #expect(loading.lyricsState == .loading)
+        #expect(loading.title == nil)
+        #expect(loading.artist == nil)
+
+        // No resolved/notFound should ever follow — the guard returns Just(loading)
+        // without scheduling any async work.
+        await clock.advance(by: .milliseconds(500))
+        let resolved = collector.updates.filter {
+            $0.lyricsState == .resolved || $0.lyricsState == .notFound
+        }
+        #expect(resolved.isEmpty, "no resolution should be attempted for nil title/artist")
+    }
 }

@@ -14,11 +14,13 @@ public final class LyricsPresenter: ObservableObject {
 
     private var lyricEffects: [DecodeEffectState] = []
     private var decodeConfig: DecodeEffect?
-    private var latestElapsed: TimeInterval?
+    private var latestRawElapsed: TimeInterval?
+    private var latestTimestamp: Date?
     private var latestPlaybackRate: Double = 1.0
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
+    @Dependency(\.date.now) private var now
 
     public init() {}
 
@@ -38,7 +40,8 @@ public final class LyricsPresenter: ObservableObject {
         interactor.playbackPosition
             .receive(on: DispatchQueue.main)
             .sink { [weak self] position in
-                self?.latestElapsed = position.elapsed
+                self?.latestRawElapsed = position.rawElapsed
+                self?.latestTimestamp = position.timestamp
                 self?.latestPlaybackRate = position.playbackRate
             }
             .store(in: &cancellables)
@@ -101,12 +104,21 @@ public final class LyricsPresenter: ObservableObject {
     }
 
     /// Called from DisplayLink to keep activeLineIndex in sync at frame rate.
+    /// Interpolates elapsed time on every tick from the latest snapshot
+    /// (rawElapsed + timestamp + playbackRate), so the helper can poll at
+    /// a longer interval without introducing lyric-highlight lag.
     public func updateActiveLineTick() {
         guard case .success(.timed(let lines)) = lyricsState else { return }
         guard latestPlaybackRate != 0 else { return }
-        let index = latestElapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
+        let index = interpolatedElapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
         guard index != activeLineIndex else { return }
         activeLineIndex = index
+    }
+
+    private var interpolatedElapsed: TimeInterval? {
+        guard let base = latestRawElapsed else { return nil }
+        guard let ts = latestTimestamp else { return base }
+        return base + latestPlaybackRate * now.timeIntervalSince(ts)
     }
 }
 
