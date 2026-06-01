@@ -57,8 +57,11 @@ for name in [
     ) { _ in fetchAndPrint() }
 }
 
-// Periodic fallback for elapsed time updates (needed for lyric sync)
-Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in fetchAndPrint() }
+// Periodic fallback for snapshot refresh (rawElapsed/timestamp/playbackRate).
+// The client (LyricsPresenter) interpolates elapsed on every DisplayLink tick
+// from this snapshot, so 3s polling is sufficient for lyric sync. pause/seek
+// is delivered immediately via `kMRMediaRemoteNowPlayingInfoDidChange`.
+Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in fetchAndPrint() }
 
 // Initial fetch
 fetchAndPrint()

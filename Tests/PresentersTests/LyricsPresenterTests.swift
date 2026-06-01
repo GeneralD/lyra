@@ -193,7 +193,7 @@ struct LyricsPresenterTests {
                 await waitForLyricsSuccess(presenter)
 
                 // Send a paused playback position (rate = 0)
-                positionSubject.send(PlaybackPosition(elapsed: 6, playbackRate: 0))
+                positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 0))
                 // Allow Combine to deliver the position update
                 try? await Task.sleep(for: .milliseconds(50))
 
@@ -229,8 +229,83 @@ struct LyricsPresenterTests {
                 await waitForLyricsSuccess(presenter)
 
                 // Send position at 6s — should highlight Line B (time=5)
-                positionSubject.send(PlaybackPosition(elapsed: 6, playbackRate: 1.0))
+                positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 1.0))
                 // Allow Combine to deliver the position update
+                try? await Task.sleep(for: .milliseconds(50))
+
+                presenter.updateActiveLineTick()
+                #expect(presenter.activeLineIndex == 1)
+            }
+        }
+
+        @MainActor
+        @Test("interpolates elapsed from snapshot (rawElapsed + timestamp + playbackRate)")
+        func interpolatesFromSnapshot() async throws {
+            let fixedNow = Date(timeIntervalSinceReferenceDate: 1_000_000)
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "Line A"),
+                .init(time: 5, text: "Line B"),
+                .init(time: 10, text: "Line C"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+                $0.date = .constant(fixedNow)
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+                await waitForLyricsSuccess(presenter)
+
+                // Snapshot from 7s ago: rawElapsed=0, rate=1.0
+                // Interpolated at fixedNow: 0 + 1.0 * 7.0 = 7.0 → Line B (time=5)
+                positionSubject.send(
+                    PlaybackPosition(
+                        rawElapsed: 0,
+                        timestamp: fixedNow.addingTimeInterval(-7),
+                        playbackRate: 1.0))
+                try? await Task.sleep(for: .milliseconds(50))
+
+                presenter.updateActiveLineTick()
+                #expect(presenter.activeLineIndex == 1)
+            }
+        }
+
+        @MainActor
+        @Test("falls back to rawElapsed when timestamp is nil")
+        func fallsBackWhenTimestampMissing() async throws {
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "A"),
+                .init(time: 5, text: "B"),
+                .init(time: 10, text: "C"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+                await waitForLyricsSuccess(presenter)
+
+                // timestamp nil → rawElapsed used verbatim (no interpolation)
+                positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
                 try? await Task.sleep(for: .milliseconds(50))
 
                 presenter.updateActiveLineTick()

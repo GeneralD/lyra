@@ -107,7 +107,7 @@ struct LyricsPresenterDuplicateTests {
                 #expect(presenter.lyricsState == .success(content))
 
                 // Send playback position at 6 seconds (should highlight "Second")
-                positionSubject.send(PlaybackPosition(elapsed: 6.0, playbackRate: 1.0))
+                positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 1.0))
                 var deadline = ContinuousClock.now + .seconds(3)
                 while ContinuousClock.now < deadline {
                     presenter.updateActiveLineTick()
@@ -120,7 +120,7 @@ struct LyricsPresenterDuplicateTests {
                 #expect(presenter.lyricsState == .success(content))
 
                 // Advance to 11 seconds (should highlight "Third")
-                positionSubject.send(PlaybackPosition(elapsed: 11.0, playbackRate: 1.0))
+                positionSubject.send(PlaybackPosition(rawElapsed: 11.0, playbackRate: 1.0))
                 deadline = ContinuousClock.now + .seconds(3)
                 while ContinuousClock.now < deadline {
                     presenter.updateActiveLineTick()
@@ -157,13 +157,13 @@ struct LyricsPresenterDuplicateTests {
                 await waitForLyricsSuccess(presenter)
 
                 // Set position while playing
-                positionSubject.send(PlaybackPosition(elapsed: 6.0, playbackRate: 1.0))
+                positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 1.0))
                 try? await Task.sleep(for: .milliseconds(200))
                 presenter.updateActiveLineTick()
                 #expect(presenter.activeLineIndex == 1)
 
                 // Pause (rate = 0), send new position
-                positionSubject.send(PlaybackPosition(elapsed: 6.0, playbackRate: 0))
+                positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 0))
                 try? await Task.sleep(for: .milliseconds(200))
                 presenter.updateActiveLineTick()
 
