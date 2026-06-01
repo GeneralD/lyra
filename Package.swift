@@ -335,7 +335,6 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
-                .product(name: "Files", package: "Files"),
             ],
             resources: [.copy("Resources/media-remote-helper.swift")]
         ),
