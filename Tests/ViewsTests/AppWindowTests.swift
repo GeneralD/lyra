@@ -135,6 +135,72 @@ struct AppWindowTests {
         #expect(playerLayer?.affineTransform().d == 1.25)
     }
 
+    @Test("apply skips window setFrame when the surface frame already matches (loop safety)")
+    func applySkipsMatchingWindowFrame() {
+        let layout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 1024, height: 640),
+            hostingFrame: CGRect(x: 0, y: 25, width: 1024, height: 615),
+            screenOrigin: CGPoint(x: 0, y: 25)
+        )
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(frame: layout.windowFrame)
+        surface.contentView = hostingView
+
+        AppWindow.apply(layout: layout, to: surface, hostingView: hostingView)
+
+        #expect(surface.setFrameCalls.isEmpty)
+        #expect(hostingView.frame == layout.hostingFrame)
+    }
+
+    @Test("apply reasserts geometry after a system-side mutation, even when the resolved frame is unchanged (regression: #265)")
+    func applyHealsSystemMutatedGeometry() {
+        let layout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+            hostingFrame: CGRect(x: 0, y: 38, width: 1512, height: 944),
+            screenOrigin: CGPoint(x: 0, y: 38)
+        )
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(frame: layout.windowFrame)
+        surface.contentView = hostingView
+        AppWindow.attachPlayer(AVPlayer(), to: surface, hostingView: hostingView)
+        let containerView = surface.contentView
+        let playerLayer = containerView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
+
+        // Simulate the window server mangling the view/layer tree during a
+        // display reconfiguration while the window frame stayed the same.
+        containerView?.frame = CGRect(x: 330, y: 67, width: 1182, height: 915)
+        hostingView.frame = CGRect(x: 200, y: -100, width: 800, height: 500)
+        playerLayer?.bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
+        playerLayer?.position = CGPoint(x: 900, y: 800)
+
+        AppWindow.apply(layout: layout, to: surface, hostingView: hostingView)
+
+        #expect(containerView?.frame == CGRect(origin: .zero, size: layout.windowFrame.size))
+        #expect(hostingView.frame == layout.hostingFrame)
+        #expect(playerLayer?.bounds == CGRect(origin: .zero, size: layout.windowFrame.size))
+        #expect(playerLayer?.position == CGPoint(x: layout.windowFrame.width / 2, y: layout.windowFrame.height / 2))
+    }
+
+    @Test("apply keeps the wallpaper scale transform while reasserting player layer geometry")
+    func applyPreservesWallpaperScale() {
+        let layout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 800, height: 500),
+            hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 500),
+            screenOrigin: .zero
+        )
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(frame: layout.windowFrame)
+        surface.contentView = hostingView
+        AppWindow.attachPlayer(AVPlayer(), to: surface, hostingView: hostingView, scale: 1.25)
+        let playerLayer = surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
+
+        AppWindow.apply(layout: layout, to: surface, hostingView: hostingView)
+
+        #expect(playerLayer?.affineTransform().a == 1.25)
+        #expect(playerLayer?.affineTransform().d == 1.25)
+        #expect(playerLayer?.bounds == CGRect(origin: .zero, size: layout.windowFrame.size))
+    }
+
     @Test("applyWallpaperScale updates existing player layer and clamps shrink values")
     func applyWallpaperScaleUpdatesLayer() {
         let hostingView = NSView()

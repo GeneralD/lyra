@@ -48,12 +48,15 @@ public final class AppPresenter: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Register a side-effect to run when the window frame actually changes.
-    /// The wireframe uses this to drive `OverlayWindow.applyLayout` without
-    /// owning the subscription.
+    /// Register a side-effect to run on every resolved layout, so the window
+    /// geometry is re-asserted even when the resolved frame is unchanged.
+    /// Deduplicating here broke recovery from display hot-plugging (#265):
+    /// the window server moves the actual window during reconfiguration, and a
+    /// model-value comparison cannot see that drift. The wireframe uses this
+    /// to drive `OverlayWindow.applyLayout` (idempotent) without owning the
+    /// subscription.
     public func onWindowFrameChange(_ handler: @escaping @MainActor (ScreenLayout) -> Void) {
         $layout
-            .removeDuplicates { $0.windowFrame == $1.windowFrame }
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { layout in handler(layout) }

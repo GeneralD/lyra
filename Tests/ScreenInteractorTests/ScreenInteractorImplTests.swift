@@ -285,5 +285,32 @@ struct ScreenInteractorImplTests {
             #expect(counter.count >= 1)
             cancellable.cancel()
         }
+
+        @Test(
+            "emits when the window is moved or resized by the system (regression: #265)",
+            arguments: [NSWindow.didMoveNotification, NSWindow.didResizeNotification]
+        )
+        func emitsOnWindowNotification(name: Notification.Name) async {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase()
+                $0.screenProvider = StubScreenProvider()
+            } operation: {
+                ScreenInteractorImpl()
+            }
+
+            final class Counter: @unchecked Sendable { var count = 0 }
+            let counter = Counter()
+            let cancellable = interactor.screenChanges.sink { counter.count += 1 }
+
+            NotificationCenter.default.post(name: name, object: nil)
+
+            let deadline = ContinuousClock.now + .seconds(1)
+            while counter.count < 1, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+
+            #expect(counter.count >= 1)
+            cancellable.cancel()
+        }
     }
 }

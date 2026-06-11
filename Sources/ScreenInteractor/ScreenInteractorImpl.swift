@@ -20,9 +20,19 @@ extension ScreenInteractorImpl: ScreenInteractor {
         configService.appStyle.screenDebounce
     }
 
+    /// Signals that the overlay geometry may need re-resolution. Besides screen
+    /// parameter changes, this includes the window being moved or resized —
+    /// during display hot-plugging the window server relocates windows behind
+    /// the app's back (#265), and the overlay (the process's only window) must
+    /// snap back to its resolved layout. The apply side is idempotent, so the
+    /// move/resize triggered by re-asserting the layout does not loop.
     public var screenChanges: AnyPublisher<Void, Never> {
-        NotificationCenter.default
-            .publisher(for: NSApplication.didChangeScreenParametersNotification)
+        let center = NotificationCenter.default
+        return center.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .merge(
+                with: center.publisher(for: NSWindow.didMoveNotification),
+                center.publisher(for: NSWindow.didResizeNotification)
+            )
             .map { _ in () }
             .eraseToAnyPublisher()
     }

@@ -103,12 +103,32 @@ extension AppWindow {
         surface.orderFront(nil)
     }
 
+    /// Re-asserts the full window/view/layer geometry from the resolved layout.
+    /// Idempotent by design: the window server mutates the actual window during
+    /// display reconfiguration (#265), so every call reconciles against actual
+    /// state instead of trusting that earlier applications are still in effect.
+    /// Skipping `setFrame` when the frame already matches keeps the
+    /// `NSWindow.didMove/didResize → screenChanges → apply` cycle from looping.
     static func apply(layout: ScreenLayout, to surface: OverlayWindowSurface, hostingView: NSView) {
-        surface.setFrame(layout.windowFrame, display: false)
+        applyWindowFrame(layout.windowFrame, to: surface)
         hostingView.frame = layout.hostingFrame
-        if let containerView = surface.contentView, containerView !== hostingView {
-            containerView.frame = CGRect(origin: .zero, size: layout.windowFrame.size)
-        }
+        guard let containerView = surface.contentView, containerView !== hostingView else { return }
+        containerView.frame = CGRect(origin: .zero, size: layout.windowFrame.size)
+        guard let playerLayer = playerLayer(in: surface) else { return }
+        reassertGeometry(of: playerLayer, in: containerView.bounds)
+    }
+
+    private static func applyWindowFrame(_ frame: NSRect, to surface: OverlayWindowSurface) {
+        guard surface.frame != frame else { return }
+        surface.setFrame(frame, display: false)
+    }
+
+    /// Sets `bounds` + `position` rather than `frame`: the layer carries the
+    /// wallpaper-scale affine transform, and `frame` is undefined under a
+    /// non-identity transform.
+    private static func reassertGeometry(of playerLayer: AVPlayerLayer, in bounds: CGRect) {
+        playerLayer.bounds = bounds
+        playerLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
     }
 
     static func attachPlayer(
