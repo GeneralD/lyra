@@ -147,6 +147,46 @@ struct TrackInteractorArtworkTests {
         #expect(collector.snapshot == [artA, artB])
     }
 
+    @Test("artwork keeps the last known artwork when a same-track event carries none (regression: #265)")
+    func artworkSticksThroughSameTrackNilEvent() async {
+        let playback = StubPlaybackUseCase()
+        let interactor = makeInteractor(playback: playback)
+        let collector = ArtworkCollector()
+        let cancellable = interactor.artwork.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        let realArt = Data([0xFF, 0xD8, 0xFF])
+
+        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: realArt))
+        await collector.waitForCount(1)
+        #expect(collector.snapshot == [realArt])
+
+        // System re-broadcasts (e.g. during display reconfiguration) often omit
+        // the artwork bytes — the shown artwork must not be cleared.
+        playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: nil))
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(collector.snapshot == [realArt])
+    }
+
+    @Test("artwork clears when the track changes and the new track has none")
+    func artworkClearsOnTrackChangeWithoutArtwork() async {
+        let playback = StubPlaybackUseCase()
+        let interactor = makeInteractor(playback: playback)
+        let collector = ArtworkCollector()
+        let cancellable = interactor.artwork.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        let realArt = Data([0xFF, 0xD8, 0xFF])
+
+        playback.subject.send(nowPlaying(title: "Song A", artist: "Artist", artwork: realArt))
+        await collector.waitForCount(1)
+
+        playback.subject.send(nowPlaying(title: "Song B", artist: "Artist", artwork: nil))
+        await collector.waitForCount(2)
+
+        #expect(collector.snapshot == [realArt, nil])
+    }
+
     @Test("sameTrack treats nil and empty-string artist as the same value")
     func sameTrackNormalizesEmptyArtist() {
         let withArtist = nowPlaying(title: "Song", artist: "Artist", artwork: nil)

@@ -42,9 +42,18 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .share()
         .eraseToAnyPublisher()
 
+    /// Keeps the last known artwork while the track is unchanged: system
+    /// re-broadcasts (e.g. during display reconfiguration) often omit the
+    /// artwork bytes, and a raw `map(\.artworkData)` would blank the artwork
+    /// until the next event that happens to carry them (#265). A track change
+    /// without artwork still clears it.
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
-        .map(\.artworkData)
+        .scan((track: NowPlaying?.none, data: Data?.none)) { state, incoming in
+            let isSameTrack = state.track.map { Self.sameTrack($0, incoming) } ?? false
+            return (track: incoming, data: incoming.artworkData ?? (isSameTrack ? state.data : nil))
+        }
+        .map(\.data)
         .removeDuplicates()
         .eraseToAnyPublisher()
 
