@@ -135,9 +135,9 @@ extension AppWindow {
     /// `NSWindow.didMove/didResize → screenChanges → apply` cycle from looping.
     static func apply(layout: ScreenLayout, to surface: OverlayWindowSurface, hostingView: NSView) {
         applyWindowFrame(layout.windowFrame, to: surface)
-        hostingView.frame = layout.hostingFrame
+        applyFrame(layout.hostingFrame, to: hostingView)
         guard let containerView = surface.contentView, containerView !== hostingView else { return }
-        containerView.frame = CGRect(origin: .zero, size: layout.windowFrame.size)
+        applyFrame(contentFrame(for: layout.windowFrame), to: containerView)
         guard let playerLayer = playerLayer(in: surface) else { return }
         reassertGeometry(of: playerLayer, in: containerView.bounds)
     }
@@ -145,6 +145,11 @@ extension AppWindow {
     private static func applyWindowFrame(_ frame: NSRect, to surface: OverlayWindowSurface) {
         guard surface.frame != frame else { return }
         surface.setFrame(frame, display: false)
+    }
+
+    private static func applyFrame(_ frame: CGRect, to view: NSView) {
+        guard view.frame != frame else { return }
+        view.frame = frame
     }
 
     /// Sets `bounds` + `position` rather than `frame`: the layer carries the
