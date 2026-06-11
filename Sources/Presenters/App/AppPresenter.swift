@@ -4,8 +4,13 @@ import Dependencies
 import Domain
 import Foundation
 
+/// The top-level presenter managing the overlay application state and layout lifecycle.
+///
+/// It coordinates between the `ScreenInteractor` (which resolves geometry) and the
+/// various feature presenters (Header, Lyrics, Wallpaper, Ripple).
 @MainActor
 public final class AppPresenter: ObservableObject {
+    /// The current resolved screen layout.
     @Published public private(set) var layout: ScreenLayout = .init()
 
     @Dependency(\.screenInteractor) private var screenInteractor
@@ -17,6 +22,7 @@ public final class AppPresenter: ObservableObject {
 
     public init() {}
 
+    /// Starts observing screen changes and periodic polling for layout reconciliation.
     public func start() {
         let interactor = screenInteractor
         layout = interactor.resolveLayout()
@@ -29,6 +35,7 @@ public final class AppPresenter: ObservableObject {
         startVacantPollingIfNeeded()
     }
 
+    /// Stops all background tasks and subscriptions.
     public func stop() {
         vacantTask?.cancel()
         vacantTask = nil

@@ -4,6 +4,10 @@ import Domain
 import Foundation
 import os
 
+/// Implementation of the `TrackInteractor` that manages the reactive track and artwork pipeline.
+///
+/// It observes now-playing information, resolves metadata and lyrics, and handles
+/// artwork state preservation across track updates.
 public final class TrackInteractorImpl: @unchecked Sendable {
     private let playbackService: any PlaybackUseCase
     private let lyricsService: any LyricsUseCase
@@ -31,6 +35,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         }
         .share()
 
+    /// A publisher that emits `TrackUpdate` events whenever the active track changes.
     public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
         activeNowPlaying
         .removeDuplicates(by: Self.sameTrack)
@@ -69,6 +74,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         return lhs.title == rhs.title && lhsArtist == rhsArtist
     }
 
+    /// A publisher that emits the current playback position.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
         .map { np in

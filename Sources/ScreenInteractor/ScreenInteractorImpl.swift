@@ -4,6 +4,10 @@ import CoreGraphics
 import Dependencies
 import Domain
 
+/// Implementation of the `ScreenInteractor` that resolves display geometry.
+///
+/// It supports various screen selection strategies (main, primary, index, smallest, largest, vacant)
+/// and emits signals when screen parameters change or the window is moved/resized.
 public struct ScreenInteractorImpl {
     @Dependency(\.configUseCase) private var configService
     @Dependency(\.screenProvider) private var screenProvider
@@ -12,10 +16,12 @@ public struct ScreenInteractorImpl {
 }
 
 extension ScreenInteractorImpl: ScreenInteractor {
+    /// The current screen selection strategy from configuration.
     public var screenSelector: ScreenSelector {
         configService.appStyle.screen
     }
 
+    /// The debounce interval for screen reconciliation polling.
     public var screenDebounce: Double {
         configService.appStyle.screenDebounce
     }
@@ -37,6 +43,9 @@ extension ScreenInteractorImpl: ScreenInteractor {
             .eraseToAnyPublisher()
     }
 
+    /// Resolves the current screen layout based on the active selection strategy.
+    ///
+    /// - Returns: A `ScreenLayout` containing the window frame and hosting view geometry.
     public func resolveLayout() -> ScreenLayout {
         guard let screen = resolveScreen() else { return .init() }
 
