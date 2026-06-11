@@ -173,6 +173,27 @@ struct TrackInteractorArtworkTests {
         #expect(collector.snapshot == [realArt, nextArt])
     }
 
+    @Test("artwork does not stick across unknown (nil-title) tracks")
+    func artworkDoesNotStickAcrossNilTitleTracks() async {
+        let playback = StubPlaybackUseCase()
+        let interactor = makeInteractor(playback: playback)
+        let collector = ArtworkCollector()
+        let cancellable = interactor.artwork.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        let realArt = Data([0xFF, 0xD8, 0xFF])
+
+        playback.subject.send(nowPlaying(title: nil, artist: nil, artwork: realArt))
+        await collector.waitForCount(1)
+        #expect(collector.snapshot == [realArt])
+
+        // Unknown tracks cannot be proven identical — a nil-title event without
+        // artwork must clear instead of inheriting the previous artwork.
+        playback.subject.send(nowPlaying(title: nil, artist: nil, artwork: nil))
+        await collector.waitForCount(2)
+        #expect(collector.snapshot == [realArt, nil])
+    }
+
     @Test("artwork clears when the track changes and the new track has none")
     func artworkClearsOnTrackChangeWithoutArtwork() async {
         let playback = StubPlaybackUseCase()

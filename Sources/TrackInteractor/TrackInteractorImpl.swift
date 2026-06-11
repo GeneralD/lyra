@@ -55,7 +55,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
         .scan((track: NowPlaying?.none, data: Data?.none)) { state, incoming in
-            let isSameTrack = state.track.map { Self.sameTrack($0, incoming) } ?? false
+            let isSameTrack = state.track.map { $0.title != nil && Self.sameTrack($0, incoming) } ?? false
             return (track: incoming, data: incoming.artworkData ?? (isSameTrack ? state.data : nil))
         }
         .map(\.data)
