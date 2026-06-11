@@ -156,6 +156,7 @@ struct TrackInteractorArtworkTests {
         defer { cancellable.cancel() }
 
         let realArt = Data([0xFF, 0xD8, 0xFF])
+        let nextArt = Data([0x01])
 
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: realArt))
         await collector.waitForCount(1)
@@ -164,8 +165,12 @@ struct TrackInteractorArtworkTests {
         // System re-broadcasts (e.g. during display reconfiguration) often omit
         // the artwork bytes — the shown artwork must not be cleared.
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: nil))
-        try? await Task.sleep(for: .milliseconds(100))
-        #expect(collector.snapshot == [realArt])
+
+        // Deterministic fence: events are processed in order, so once the next
+        // track's artwork arrives, the nil event has provably emitted nothing.
+        playback.subject.send(nowPlaying(title: "Next Song", artist: "Artist", artwork: nextArt))
+        await collector.waitForCount(2)
+        #expect(collector.snapshot == [realArt, nextArt])
     }
 
     @Test("artwork clears when the track changes and the new track has none")
