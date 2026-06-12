@@ -82,6 +82,16 @@ scp_put() {
         "$local_path" "${LYRA_VM_SSH_USER}@${ip}:${remote}"
 }
 
+# scp_put_r <ip> <local-dir> <remote-parent-dir>  — recursive directory copy
+scp_put_r() {
+    local ip="$1" local_dir="$2" remote_parent="$3"
+    scp -r -i "$LYRA_VM_SSH_KEY" \
+        -P "$LYRA_VM_SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o BatchMode=yes \
+        "$local_dir" "${LYRA_VM_SSH_USER}@${ip}:${remote_parent}"
+}
+
 wait_for_ssh() {
     local vm="$1"
     local deadline=$((SECONDS + LYRA_VM_BOOT_TIMEOUT))
@@ -148,11 +158,19 @@ cmd_run_lyra() {
     [[ -f "$binary" ]] || die "Build succeeded but binary not found at $binary"
 
     log "Pushing binary to guest..."
-    ssh_run "$ip" "mkdir -p /tmp/lyra-drop"
+    ssh_run "$ip" "sudo rm -rf /tmp/lyra-drop && mkdir -p /tmp/lyra-drop"
     scp_put "$ip" "$binary" "/tmp/lyra-drop/lyra"
+
+    log "Pushing resource bundles to guest..."
+    local bundle_dir
+    for bundle_dir in "$REPO_ROOT"/.build/release/*.bundle; do
+        [[ -d "$bundle_dir" ]] || continue
+        scp_put_r "$ip" "$bundle_dir" "/tmp/lyra-drop/"
+    done
 
     log "Installing on guest..."
     ssh_run "$ip" "sudo install -m 755 /tmp/lyra-drop/lyra /usr/local/bin/lyra"
+    ssh_run "$ip" "for b in /tmp/lyra-drop/*.bundle; do [ -d \"\$b\" ] && sudo cp -r \"\$b\" /usr/local/bin/; done"
 
     log "Saving current lyra service state on guest..."
     local prior_state
@@ -163,8 +181,15 @@ cmd_run_lyra() {
     log "Stopping any running lyra instance (KeepAlive bootout)..."
     ssh_run "$ip" "brew services stop lyra 2>/dev/null || true"
 
-    log "Starting lyra daemon on guest (detached)..."
-    ssh_run "$ip" "nohup lyra daemon > ~/.lyra-vm-daemon.log 2>&1 & printf '%s\n' \$! > ~/.lyra-vm-daemon.pid"
+    log "Starting lyra daemon on guest (GUI session via launchctl asuser)..."
+    # Write a launcher script on the guest so quoting stays simple.
+    # sudo launchctl asuser injects the command into the logged-in user's GUI
+    # bootstrap namespace — required for AppKit windows to appear on the guest
+    # display.  nohup alone spawns in the SSH bootstrap context where WindowServer
+    # is inaccessible.  sudo is required; launchctl asuser cannot switch audit
+    # sessions from an SSH session without elevated privileges.
+    ssh_run "$ip" "printf '#!/bin/sh\nnohup /usr/local/bin/lyra daemon > \"\$HOME\"/.lyra-vm-daemon.log 2>&1 &\nprintf %%s\\\\n \"\$!\" > \"\$HOME\"/.lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
+    ssh_run "$ip" "sudo launchctl asuser \$(id -u) /tmp/lyra-vm-launch.sh"
     sleep 3
 
     local pid
