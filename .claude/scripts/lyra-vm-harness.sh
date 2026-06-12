@@ -26,7 +26,7 @@ set -euo pipefail
 # Configuration — override via environment variables
 # ---------------------------------------------------------------------------
 : "${LYRA_VM_SSH_USER:=admin}"
-: "${LYRA_VM_SSH_KEY:=$HOME/.ssh/lyra_vm_rsa}"
+: "${LYRA_VM_SSH_KEY:=$HOME/.ssh/vm_rsa}"
 : "${LYRA_VM_SSH_PORT:=22}"
 : "${LYRA_VM_BOOT_TIMEOUT:=120}"   # seconds to wait for SSH after utmctl start
 

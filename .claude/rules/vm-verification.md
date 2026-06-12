@@ -66,7 +66,7 @@ confirmation per PR that modifies `ScreenInteractor` or `AppWindow`.
 2. A registered UTM macOS Apple-backend VM (macOS 15+)
 3. Guest has: Xcode CLT, Homebrew, lyra installed via brew (formula must be
    known so `brew services` can manage it), and passwordless sudo
-4. SSH key at `~/.ssh/lyra_vm_rsa` (default); configure via
+4. SSH key at `~/.ssh/vm_rsa` (default); configure via
    `LYRA_VM_SSH_KEY` env var if different
 
 One-time guest setup:
@@ -101,7 +101,7 @@ $SCRIPT shutdown $VM          # graceful guest shutdown
 | Variable | Default | Purpose |
 |---|---|---|
 | `LYRA_VM_SSH_USER` | `admin` | Guest login name |
-| `LYRA_VM_SSH_KEY` | `~/.ssh/lyra_vm_rsa` | SSH private key path |
+| `LYRA_VM_SSH_KEY` | `~/.ssh/vm_rsa` | SSH private key path |
 | `LYRA_VM_SSH_PORT` | `22` | Guest SSH port |
 | `LYRA_VM_BOOT_TIMEOUT` | `120` | Seconds to wait for SSH after start |
 | `LYRA_VM_ARTIFACTS_DIR` | `/tmp/lyra-vm-artifacts-<ts>` | Artifact output dir |
