@@ -182,7 +182,8 @@ cmd_run_lyra() {
     ssh_run "$ip" "brew services stop lyra 2>/dev/null || true"
     # Kill any leftover daemon (e.g. from a previous run-lyra that wasn't restored).
     # pgrep -x matches the binary name exactly to avoid killing unrelated processes.
-    ssh_run "$ip" "pid=\$(pgrep -x lyra | head -1); [ -n \"\$pid\" ] && kill \"\$pid\" 2>/dev/null; sleep 1" 2>/dev/null || true
+    # sudo required: daemon is launched via 'sudo launchctl asuser', so the process is root-owned
+    ssh_run "$ip" "pid=\$(pgrep -x lyra | head -1); [ -n \"\$pid\" ] && sudo kill \"\$pid\" 2>/dev/null; sleep 1" 2>/dev/null || true
 
     log "Starting lyra daemon on guest (GUI session via launchctl asuser)..."
     # Write a launcher script on the guest so quoting stays simple.
@@ -193,12 +194,18 @@ cmd_run_lyra() {
     # sessions from an SSH session without elevated privileges.
     # Use 'echo' for PID capture — avoids the printf \n quoting trap where an
     # unquoted \n in sh is consumed by the shell and becomes literal 'n'.
-    ssh_run "$ip" "printf '#!/bin/sh\nnohup /usr/local/bin/lyra daemon > \"\$HOME\"/.lyra-vm-daemon.log 2>&1 &\necho \"\$!\" > \"\$HOME\"/.lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
+    # sudo launchctl asuser injects into the GUI bootstrap namespace (runs as root).
+    # Set UV_CACHE_DIR to a root-private path so uvx doesn't pollute the login
+    # user's ~/.cache/uv with root-owned files, which would break manual uvx runs.
+    # Use fixed /tmp paths for log and PID — sudo resets HOME to /var/root so
+    # "$HOME" in the launcher would point there, making the files invisible to the
+    # SSH login user (babu).  /tmp is always writable and readable by all users.
+    ssh_run "$ip" "printf '#!/bin/sh\nexport UV_CACHE_DIR=/tmp/lyra-vm-uv-cache\nnohup /usr/local/bin/lyra daemon > /tmp/lyra-vm-daemon.log 2>&1 &\necho \"\$!\" > /tmp/lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
     ssh_run "$ip" "sudo launchctl asuser \$(id -u) /tmp/lyra-vm-launch.sh"
     sleep 3
 
     local pid
-    pid="$(ssh_run "$ip" "cat ~/.lyra-vm-daemon.pid 2>/dev/null || printf '?'")"
+    pid="$(ssh_run "$ip" "cat /tmp/lyra-vm-daemon.pid 2>/dev/null || printf '?'")"
     log "lyra daemon running on guest (PID=$pid)"
 }
 
@@ -210,12 +217,42 @@ cmd_capture() {
     mkdir -p "$out_dir"
     log "Collecting artifacts from $vm -> $out_dir"
 
-    # Screenshot — requires a logged-in GUI session on the guest
+    # Screenshot — try guest-side first (shows lyra overlay correctly); fall back
+    # to host-side UTM window capture if screencapture fails in the SSH context.
+    local screenshot_ok=false
     if ssh_run "$ip" "screencapture -x /tmp/lyra-vm-screenshot.png" 2>/dev/null; then
-        scp_get "$ip" "/tmp/lyra-vm-screenshot.png" "$out_dir/screenshot.png" && \
-            log "  screenshot -> $out_dir/screenshot.png"
-    else
-        log "  WARNING: screencapture failed (no GUI display session on guest?)"
+        if scp_get "$ip" "/tmp/lyra-vm-screenshot.png" "$out_dir/screenshot.png" 2>/dev/null; then
+            log "  screenshot (guest) -> $out_dir/screenshot.png"
+            screenshot_ok=true
+        fi
+    fi
+    if ! $screenshot_ok; then
+        log "  guest screencapture failed — trying host-side UTM window capture..."
+        local utm_wid
+        utm_wid="$(swift - 2>/dev/null <<'SWIFT'
+import CoreGraphics
+let wins = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String:Any]]
+// Prefer large windows (actual VM display) over panels/menus
+let candidates = wins.compactMap { w -> (Int, Int)? in
+    guard let owner = w["kCGWindowOwnerName"] as? String, owner == "UTM",
+          let num = w["kCGWindowNumber"] as? Int,
+          let bounds = w["kCGWindowBounds"] as? [String:Any],
+          let w2 = bounds["Width"] as? CGFloat, let h2 = bounds["Height"] as? CGFloat
+    else { return nil }
+    return (num, Int(w2 * h2))
+}.sorted { $0.1 > $1.1 }
+if let best = candidates.first { print(best.0) }
+SWIFT
+)"
+        if [[ -n "$utm_wid" ]]; then
+            if screencapture -l "$utm_wid" "$out_dir/screenshot.png" 2>/dev/null; then
+                log "  screenshot (host UTM wid=$utm_wid) -> $out_dir/screenshot.png"
+            else
+                log "  WARNING: host screencapture also failed"
+            fi
+        else
+            log "  WARNING: no UTM window found on host — screenshot skipped"
+        fi
     fi
 
     # Unified log — lyra subsystem, last 10 minutes
@@ -238,9 +275,8 @@ cmd_capture() {
         log "  WARNING: process sample failed"
     fi
 
-    # Daemon log written by run-lyra
-    # shellcheck disable=SC2088  # ~ is in a remote scp path and intentionally expands on the guest
-    if scp_get "$ip" "~/.lyra-vm-daemon.log" "$out_dir/daemon.log" 2>/dev/null; then
+    # Daemon log written by run-lyra (always at /tmp — sudo resets HOME to /var/root)
+    if scp_get "$ip" "/tmp/lyra-vm-daemon.log" "$out_dir/daemon.log" 2>/dev/null; then
         log "  daemon log -> $out_dir/daemon.log"
     else
         log "  (no daemon.log — daemon may not have been started via run-lyra)"
@@ -255,8 +291,9 @@ cmd_restore() {
     local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
 
     # Stop the daemon we started, if any
-    ssh_run "$ip" "pid=\"\$(cat ~/.lyra-vm-daemon.pid 2>/dev/null)\"; \
-        [ -n \"\$pid\" ] && kill \"\$pid\" 2>/dev/null; rm -f ~/.lyra-vm-daemon.pid" \
+    # sudo required: daemon is root-owned (launched via 'sudo launchctl asuser')
+    ssh_run "$ip" "pid=\"\$(cat /tmp/lyra-vm-daemon.pid 2>/dev/null)\"; \
+        [ -n \"\$pid\" ] && sudo kill \"\$pid\" 2>/dev/null; rm -f /tmp/lyra-vm-daemon.pid" \
         2>/dev/null || true
 
     # Restore brew service to its prior state
