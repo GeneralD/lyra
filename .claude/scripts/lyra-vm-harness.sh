@@ -11,14 +11,15 @@
 # Prerequisites: see .claude/rules/vm-verification.md
 #
 # Usage:
-#   lyra-vm-harness.sh boot     <vm>            # Start VM, wait for SSH
-#   lyra-vm-harness.sh shutdown <vm>            # Clean guest shutdown
-#   lyra-vm-harness.sh reboot   <vm>            # Guest reboot, wait for SSH
-#   lyra-vm-harness.sh run-lyra <vm>            # Build (host), push binary, install, start
-#   lyra-vm-harness.sh capture  <vm> [out-dir]  # Screenshot + logs + process sample
-#   lyra-vm-harness.sh restore  <vm>            # Restore lyra service to prior state
-#   lyra-vm-harness.sh exec     <vm> -- <cmd>   # Run arbitrary command via SSH
-#   lyra-vm-harness.sh ip       <vm>            # Print guest IP
+#   lyra-vm-harness.sh boot       <vm>            # Start VM, wait for SSH
+#   lyra-vm-harness.sh shutdown  <vm>            # Clean guest shutdown
+#   lyra-vm-harness.sh reboot    <vm>            # Guest reboot, wait for SSH
+#   lyra-vm-harness.sh run-lyra  <vm>            # Build (host), push binary, install, start
+#   lyra-vm-harness.sh capture   <vm> [out-dir]  # Screenshot + logs + process sample
+#   lyra-vm-harness.sh restore   <vm>            # Restore lyra service to prior state
+#   lyra-vm-harness.sh play-music <vm> [url]     # Open URL in Safari + auto-play (MediaRemote test)
+#   lyra-vm-harness.sh exec      <vm> -- <cmd>   # Run arbitrary command via SSH
+#   lyra-vm-harness.sh ip        <vm>            # Print guest IP
 
 set -euo pipefail
 
@@ -241,6 +242,24 @@ cmd_restore() {
     log "Restore complete."
 }
 
+cmd_play_music() {
+    local vm="${1:-}"; require_vm "$vm"
+    local url="${2:-https://www.youtube.com/watch?v=jNQXAC9IVRw}"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+
+    log "Opening $url in Safari on guest..."
+    ssh_run "$ip" "open -a Safari '$url'"
+    sleep 10
+
+    log "Injecting play via AppleScript..."
+    # Enable JavaScript from Apple Events if not already set
+    ssh_run "$ip" "defaults write com.apple.Safari AllowJavaScriptFromAppleEvents 1" 2>/dev/null || true
+    ssh_run "$ip" "osascript -e 'tell application \"Safari\" to tell window 1 to tell current tab to do JavaScript \"document.querySelectorAll(\\\"video,audio\\\").forEach(function(m){try{m.play()}catch(e){}})\"'"
+
+    sleep 5
+    log "Playback started — MediaRemote should now see it. Run: $0 exec $vm -- lyra track"
+}
+
 cmd_exec() {
     local vm="${1:-}"; require_vm "$vm"; shift
     [[ "${1:-}" == "--" ]] && shift
@@ -267,8 +286,9 @@ case "$SUBCOMMAND" in
     reboot)   cmd_reboot   "$@" ;;
     run-lyra) cmd_run_lyra "$@" ;;
     capture)  cmd_capture  "$@" ;;
-    restore)  cmd_restore  "$@" ;;
-    exec)     cmd_exec     "$@" ;;
+    restore)     cmd_restore    "$@" ;;
+    play-music)  cmd_play_music "$@" ;;
+    exec)        cmd_exec       "$@" ;;
     ip)       cmd_ip       "$@" ;;
     "")       die "Subcommand required. See .claude/rules/vm-verification.md for usage." ;;
     *)        die "Unknown subcommand: $SUBCOMMAND" ;;
