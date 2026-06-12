@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# lyra-vm-harness.sh — UTM macOS guest verification harness for lyra
+#
+# Primary path: SSH.  utmctl is used only for VM lifecycle (start/stop/reboot)
+# and IP discovery.  All build, install, run, and artifact operations go over SSH.
+#
+# Prerequisites: see .claude/rules/vm-verification.md
+#
+# Usage:
+#   lyra-vm-harness.sh boot     <vm>            # Start VM, wait for SSH
+#   lyra-vm-harness.sh shutdown <vm>            # Clean guest shutdown
+#   lyra-vm-harness.sh reboot   <vm>            # Guest reboot, wait for SSH
+#   lyra-vm-harness.sh run-lyra <vm>            # Build (host), push binary, install, start
+#   lyra-vm-harness.sh capture  <vm> [out-dir]  # Screenshot + logs + process sample
+#   lyra-vm-harness.sh restore  <vm>            # Restore lyra service to prior state
+#   lyra-vm-harness.sh exec     <vm> -- <cmd>   # Run arbitrary command via SSH
+#   lyra-vm-harness.sh ip       <vm>            # Print guest IP
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration — override via environment variables
+# ---------------------------------------------------------------------------
+: "${LYRA_VM_SSH_USER:=admin}"
+: "${LYRA_VM_SSH_KEY:=$HOME/.ssh/lyra_vm_rsa}"
+: "${LYRA_VM_SSH_PORT:=22}"
+: "${LYRA_VM_BOOT_TIMEOUT:=120}"   # seconds to wait for SSH after utmctl start
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+: "${LYRA_VM_ARTIFACTS_DIR:=/tmp/lyra-vm-artifacts-${TIMESTAMP}}"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+log()  { printf '[lyra-vm] %s\n' "$*" >&2; }
+die()  { log "ERROR: $*"; exit 1; }
+
+vm_ip() {
+    utmctl ip-address "$1" 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1
+}
+
+# ssh_run <ip> <cmd>  — run a command on the guest over SSH
+ssh_run() {
+    local ip="$1"; shift
+    ssh -i "$LYRA_VM_SSH_KEY" \
+        -p "$LYRA_VM_SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o BatchMode=yes \
+        -o ConnectTimeout=10 \
+        "${LYRA_VM_SSH_USER}@${ip}" "$@"
+}
+
+# scp_get <ip> <remote-path> <local-path>
+scp_get() {
+    local ip="$1" remote="$2" local_path="$3"
+    scp -i "$LYRA_VM_SSH_KEY" \
+        -P "$LYRA_VM_SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o BatchMode=yes \
+        "${LYRA_VM_SSH_USER}@${ip}:${remote}" "$local_path"
+}
+
+# scp_put <ip> <local-path> <remote-path>
+scp_put() {
+    local ip="$1" local_path="$2" remote="$3"
+    scp -i "$LYRA_VM_SSH_KEY" \
+        -P "$LYRA_VM_SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o BatchMode=yes \
+        "$local_path" "${LYRA_VM_SSH_USER}@${ip}:${remote}"
+}
+
+wait_for_ssh() {
+    local vm="$1"
+    local deadline=$((SECONDS + LYRA_VM_BOOT_TIMEOUT))
+    local ip=""
+    log "Waiting for $vm to be reachable via SSH (timeout: ${LYRA_VM_BOOT_TIMEOUT}s)..."
+    while [[ $SECONDS -lt $deadline ]]; do
+        ip="$(vm_ip "$vm")"
+        if [[ -n "$ip" ]] && ssh_run "$ip" exit 0 2>/dev/null; then
+            log "SSH ready at $ip"
+            echo "$ip"
+            return 0
+        fi
+        sleep 5
+    done
+    die "Timed out waiting for SSH on $vm"
+}
+
+require_vm() {
+    [[ -n "${1:-}" ]] || die "VM name required"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommands
+# ---------------------------------------------------------------------------
+
+cmd_boot() {
+    local vm="${1:-}"; require_vm "$vm"
+    log "Starting $vm..."
+    utmctl start "$vm"
+    wait_for_ssh "$vm"
+}
+
+cmd_shutdown() {
+    local vm="${1:-}"; require_vm "$vm"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm — is it running?"
+    log "Shutting down $vm gracefully..."
+    # Ask the guest to shut down; fall back to utmctl stop if SSH fails
+    ssh_run "$ip" "sudo shutdown -h now" 2>/dev/null || true
+    sleep 5
+    if [[ "$(utmctl status "$vm" 2>/dev/null)" != "stopped" ]]; then
+        log "Guest did not stop cleanly — forcing stop via utmctl"
+        utmctl stop "$vm" --kill 2>/dev/null || true
+    fi
+    log "$vm stopped."
+}
+
+cmd_reboot() {
+    local vm="${1:-}"; require_vm "$vm"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+    log "Rebooting $vm..."
+    ssh_run "$ip" "sudo reboot" 2>/dev/null || true
+    sleep 10  # allow the guest time to begin rebooting before polling
+    wait_for_ssh "$vm"
+}
+
+cmd_run_lyra() {
+    local vm="${1:-}"; require_vm "$vm"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+
+    log "Building lyra release binary on host..."
+    (cd "$REPO_ROOT" && swift build -c release)
+
+    local binary="$REPO_ROOT/.build/release/lyra"
+    [[ -f "$binary" ]] || die "Build succeeded but binary not found at $binary"
+
+    log "Pushing binary to guest..."
+    ssh_run "$ip" "mkdir -p /tmp/lyra-drop"
+    scp_put "$ip" "$binary" "/tmp/lyra-drop/lyra"
+
+    log "Installing on guest..."
+    ssh_run "$ip" "sudo install -m 755 /tmp/lyra-drop/lyra /usr/local/bin/lyra"
+
+    log "Saving current lyra service state on guest..."
+    local prior_state
+    prior_state="$(ssh_run "$ip" "brew services list 2>/dev/null | grep '^lyra' | awk '{print \$2}'" 2>/dev/null || echo "none")"
+    # Persist state so restore subcommand can read it back
+    ssh_run "$ip" "printf '%s\n' '$prior_state' > ~/.lyra-vm-prior-service-state"
+
+    log "Stopping any running lyra instance (KeepAlive bootout)..."
+    ssh_run "$ip" "brew services stop lyra 2>/dev/null || true"
+
+    log "Starting lyra daemon on guest (detached)..."
+    ssh_run "$ip" "nohup lyra daemon > ~/.lyra-vm-daemon.log 2>&1 & printf '%s\n' \$! > ~/.lyra-vm-daemon.pid"
+    sleep 3
+
+    local pid
+    pid="$(ssh_run "$ip" "cat ~/.lyra-vm-daemon.pid 2>/dev/null || printf '?'")"
+    log "lyra daemon running on guest (PID=$pid)"
+}
+
+cmd_capture() {
+    local vm="${1:-}"; require_vm "$vm"
+    local out_dir="${2:-$LYRA_VM_ARTIFACTS_DIR}"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+
+    mkdir -p "$out_dir"
+    log "Collecting artifacts from $vm -> $out_dir"
+
+    # Screenshot — requires a logged-in GUI session on the guest
+    if ssh_run "$ip" "screencapture -x /tmp/lyra-vm-screenshot.png" 2>/dev/null; then
+        scp_get "$ip" "/tmp/lyra-vm-screenshot.png" "$out_dir/screenshot.png" && \
+            log "  screenshot -> $out_dir/screenshot.png"
+    else
+        log "  WARNING: screencapture failed (no GUI display session on guest?)"
+    fi
+
+    # Unified log — lyra subsystem, last 10 minutes
+    ssh_run "$ip" \
+        "log show --last 10m --predicate 'subsystem CONTAINS \"lyra\" OR process == \"lyra\"' 2>/dev/null" \
+        > "$out_dir/unified.log" && \
+        log "  unified log -> $out_dir/unified.log" || \
+        log "  WARNING: log show failed"
+
+    # Process sample — 5 seconds
+    # note: `sample` requires sudo to sample other users' processes on macOS
+    ssh_run "$ip" "pid=\"\$(pgrep -x lyra | head -1)\"; \
+        if [ -n \"\$pid\" ]; then sudo sample \"\$pid\" 5 -f /tmp/lyra-vm-sample.txt 2>/dev/null; \
+        else printf 'lyra not running\n' > /tmp/lyra-vm-sample.txt; fi" 2>/dev/null && \
+        scp_get "$ip" "/tmp/lyra-vm-sample.txt" "$out_dir/process-sample.txt" && \
+        log "  process sample -> $out_dir/process-sample.txt" || \
+        log "  WARNING: process sample failed"
+
+    # Daemon log written by run-lyra
+    scp_get "$ip" "~/.lyra-vm-daemon.log" "$out_dir/daemon.log" 2>/dev/null && \
+        log "  daemon log -> $out_dir/daemon.log" || \
+        log "  (no daemon.log — daemon may not have been started via run-lyra)"
+
+    log "Artifacts collected in $out_dir"
+    printf '%s\n' "$out_dir"
+}
+
+cmd_restore() {
+    local vm="${1:-}"; require_vm "$vm"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+
+    # Stop the daemon we started, if any
+    ssh_run "$ip" "pid=\"\$(cat ~/.lyra-vm-daemon.pid 2>/dev/null)\"; \
+        [ -n \"\$pid\" ] && kill \"\$pid\" 2>/dev/null; rm -f ~/.lyra-vm-daemon.pid" \
+        2>/dev/null || true
+
+    # Restore brew service to its prior state
+    local prior_state
+    prior_state="$(ssh_run "$ip" "cat ~/.lyra-vm-prior-service-state 2>/dev/null || printf 'none'")"
+    if [[ "$prior_state" == "started" ]]; then
+        log "Restoring lyra brew service on guest..."
+        ssh_run "$ip" "brew services start lyra"
+    else
+        log "Prior state was '$prior_state' — leaving brew service stopped"
+    fi
+    ssh_run "$ip" "rm -f ~/.lyra-vm-prior-service-state"
+    log "Restore complete."
+}
+
+cmd_exec() {
+    local vm="${1:-}"; require_vm "$vm"; shift
+    [[ "${1:-}" == "--" ]] && shift
+    [[ $# -gt 0 ]] || die "No command supplied after exec"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+    ssh_run "$ip" "$@"
+}
+
+cmd_ip() {
+    local vm="${1:-}"; require_vm "$vm"
+    local ip; ip="$(vm_ip "$vm")"
+    [[ -n "$ip" ]] || die "Could not determine IP for $vm (not running or guest agent unavailable)"
+    printf '%s\n' "$ip"
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+SUBCOMMAND="${1:-}"; shift || true
+
+case "$SUBCOMMAND" in
+    boot)     cmd_boot     "$@" ;;
+    shutdown) cmd_shutdown "$@" ;;
+    reboot)   cmd_reboot   "$@" ;;
+    run-lyra) cmd_run_lyra "$@" ;;
+    capture)  cmd_capture  "$@" ;;
+    restore)  cmd_restore  "$@" ;;
+    exec)     cmd_exec     "$@" ;;
+    ip)       cmd_ip       "$@" ;;
+    "")       die "Subcommand required. See .claude/rules/vm-verification.md for usage." ;;
+    *)        die "Unknown subcommand: $SUBCOMMAND" ;;
+esac
