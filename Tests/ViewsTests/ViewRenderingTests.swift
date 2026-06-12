@@ -137,16 +137,17 @@ struct HeaderViewRenderingTests {
 
         #expect(presenter.artworkOpacity > 0)
         #expect(presenter.artworkData == nil)
+        #expect(presenter.artworkImage == nil)
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
     }
 
     @Test("artwork image rendered with valid data")
-    func artworkWithImage() async {
+    func artworkWithImage() async throws {
         let image = NSImage(size: NSSize(width: 1, height: 1))
         image.lockFocus()
         NSColor.red.drawSwatch(in: NSRect(x: 0, y: 0, width: 1, height: 1))
         image.unlockFocus()
-        let pngData = image.tiffRepresentation!
+        let pngData = try #require(image.tiffRepresentation)
 
         let presenter = withDependencies {
             $0.trackInteractor = FixtureTrackInteractor(
@@ -157,9 +158,10 @@ struct HeaderViewRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.artworkData != nil && presenter.displayTitle == "Song" }
+        await waitUntil { presenter.artworkImage != nil && presenter.displayTitle == "Song" }
 
         #expect(presenter.artworkData != nil)
+        #expect(presenter.artworkImage != nil)
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
     }
 }

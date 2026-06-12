@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Dependencies
 import Domain
@@ -8,6 +9,7 @@ public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var displayTitle: String = " "
     @Published public private(set) var displayArtist: String = " "
     @Published public private(set) var artworkData: Data?
+    @Published public private(set) var artworkImage: NSImage?
     @Published public private(set) var titleState: FetchState<String> = .idle
     @Published public private(set) var artistState: FetchState<String> = .idle
 
@@ -44,8 +46,7 @@ public final class HeaderPresenter: ObservableObject {
         interactor.artwork
             .receive(on: DispatchQueue.main)
             .sink { [weak self] data in
-                guard data != self?.artworkData else { return }
-                self?.artworkData = data
+                self?.receiveArtwork(data)
             }
             .store(in: &cancellables)
     }
@@ -61,6 +62,12 @@ extension HeaderPresenter {
     private func receive(_ update: TrackUpdate) {
         revealTitle(update.title)
         revealArtist(update.artist)
+    }
+
+    private func receiveArtwork(_ data: Data?) {
+        guard data != artworkData else { return }
+        artworkData = data
+        artworkImage = data.flatMap(NSImage.init(data:))
     }
 
     private func revealTitle(_ text: String?) {

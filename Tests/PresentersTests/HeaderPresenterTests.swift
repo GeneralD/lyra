@@ -143,6 +143,7 @@ struct HeaderPresenterTests {
                 #expect(presenter.displayTitle == " ")
                 #expect(presenter.displayArtist == " ")
                 #expect(presenter.artworkData == nil)
+                #expect(presenter.artworkImage == nil)
             }
         }
     }
