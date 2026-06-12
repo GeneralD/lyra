@@ -1,3 +1,4 @@
+import AppKit
 @preconcurrency import Combine
 import Dependencies
 import Domain
@@ -30,6 +31,15 @@ private func waitForTitleSuccess(_ presenter: HeaderPresenter, timeout: Duration
     {
         try? await Task.sleep(for: .milliseconds(10))
     }
+}
+
+@MainActor
+private func fixtureArtworkData(color: NSColor = .red) throws -> Data {
+    let image = NSImage(size: NSSize(width: 1, height: 1))
+    image.lockFocus()
+    color.drawSwatch(in: NSRect(x: 0, y: 0, width: 1, height: 1))
+    image.unlockFocus()
+    return try #require(image.tiffRepresentation)
 }
 
 extension FetchState {
@@ -89,7 +99,7 @@ struct HeaderPresenterDuplicateTests {
             let artworkSubject = PassthroughSubject<Data?, Never>()
             let update = TrackUpdate(title: "Song", artist: "Band")
 
-            await withDependencies {
+            try await withDependencies {
                 $0.trackInteractor = StubTrackInteractor(
                     trackChangePublisher: trackSubject.eraseToAnyPublisher(),
                     artworkPublisher: artworkSubject.eraseToAnyPublisher(),
@@ -103,20 +113,25 @@ struct HeaderPresenterDuplicateTests {
                 trackSubject.send(update)
                 await waitForTitleSuccess(presenter)
                 #expect(presenter.titleState == .success("Song"))
-                #expect(presenter.artworkData == nil)
+                #expect(presenter.artworkImage == nil)
 
                 // Send artwork
-                let imageData = Data([0xFF, 0xD8, 0xFF])
+                let imageData = try fixtureArtworkData()
                 artworkSubject.send(imageData)
                 let artDeadline = ContinuousClock.now + .seconds(3)
-                while presenter.artworkData != imageData, ContinuousClock.now < artDeadline {
+                while presenter.artworkImage == nil, ContinuousClock.now < artDeadline {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
 
-                #expect(presenter.artworkData == imageData)
+                let cachedImage = try #require(presenter.artworkImage)
                 // Title state must remain unchanged
                 #expect(presenter.titleState == .success("Song"))
                 #expect(presenter.artistState == .success("Band"))
+
+                artworkSubject.send(imageData)
+                try? await Task.sleep(for: .milliseconds(200))
+
+                #expect(presenter.artworkImage === cachedImage)
             }
         }
 
@@ -126,7 +141,7 @@ struct HeaderPresenterDuplicateTests {
             let trackSubject = PassthroughSubject<TrackUpdate, Never>()
             let artworkSubject = PassthroughSubject<Data?, Never>()
 
-            await withDependencies {
+            try await withDependencies {
                 $0.trackInteractor = StubTrackInteractor(
                     trackChangePublisher: trackSubject.eraseToAnyPublisher(),
                     artworkPublisher: artworkSubject.eraseToAnyPublisher(),
@@ -138,24 +153,25 @@ struct HeaderPresenterDuplicateTests {
 
                 // Send track and artwork nearly simultaneously
                 trackSubject.send(TrackUpdate(title: "New Song", artist: "New Artist"))
-                let artData = Data([0x89, 0x50, 0x4E, 0x47])
+                let artData = try fixtureArtworkData()
                 artworkSubject.send(artData)
                 await waitForTitleSuccess(presenter)
 
                 // Both should have settled correctly
-                #expect(presenter.artworkData == artData)
+                let cachedImage = try #require(presenter.artworkImage)
                 #expect(presenter.titleState == .success("New Song"))
                 #expect(presenter.artistState == .success("New Artist"))
 
                 // Now change artwork again
-                let newArtData = Data([0x00, 0x01])
+                let newArtData = try fixtureArtworkData(color: .blue)
                 artworkSubject.send(newArtData)
                 let newArtDeadline = ContinuousClock.now + .seconds(3)
-                while presenter.artworkData != newArtData, ContinuousClock.now < newArtDeadline {
+                while presenter.artworkImage === cachedImage, ContinuousClock.now < newArtDeadline {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
 
-                #expect(presenter.artworkData == newArtData)
+                #expect(presenter.artworkImage != nil)
+                #expect(presenter.artworkImage !== cachedImage)
                 // Title state still untouched
                 #expect(presenter.titleState == .success("New Song"))
             }
