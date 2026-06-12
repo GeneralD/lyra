@@ -1,3 +1,9 @@
+---
+paths:
+  - "**/*.swift"
+  - "**/Package.swift"
+---
+
 # Dev Verification — Run the Debug Build, Not the Installed One
 
 When you need the user to **visually verify lyra runtime behavior** (overlay

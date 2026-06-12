@@ -1,3 +1,9 @@
+---
+paths:
+  - "**/*.swift"
+  - "**/Package.swift"
+---
+
 # VM Verification — lyra UTM Guest Harness
 
 Defines the **UTM macOS VM verification lane** for lyra. Use this when a
