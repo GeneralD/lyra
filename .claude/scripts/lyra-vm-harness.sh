@@ -178,8 +178,11 @@ cmd_run_lyra() {
     # Persist state so restore subcommand can read it back
     ssh_run "$ip" "printf '%s\n' '$prior_state' > ~/.lyra-vm-prior-service-state"
 
-    log "Stopping any running lyra instance (KeepAlive bootout)..."
+    log "Stopping any running lyra instance (KeepAlive bootout + direct kill)..."
     ssh_run "$ip" "brew services stop lyra 2>/dev/null || true"
+    # Kill any leftover daemon (e.g. from a previous run-lyra that wasn't restored).
+    # pgrep -x matches the binary name exactly to avoid killing unrelated processes.
+    ssh_run "$ip" "pid=\$(pgrep -x lyra | head -1); [ -n \"\$pid\" ] && kill \"\$pid\" 2>/dev/null; sleep 1" 2>/dev/null || true
 
     log "Starting lyra daemon on guest (GUI session via launchctl asuser)..."
     # Write a launcher script on the guest so quoting stays simple.
@@ -188,7 +191,9 @@ cmd_run_lyra() {
     # display.  nohup alone spawns in the SSH bootstrap context where WindowServer
     # is inaccessible.  sudo is required; launchctl asuser cannot switch audit
     # sessions from an SSH session without elevated privileges.
-    ssh_run "$ip" "printf '#!/bin/sh\nnohup /usr/local/bin/lyra daemon > \"\$HOME\"/.lyra-vm-daemon.log 2>&1 &\nprintf %%s\\\\n \"\$!\" > \"\$HOME\"/.lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
+    # Use 'echo' for PID capture — avoids the printf \n quoting trap where an
+    # unquoted \n in sh is consumed by the shell and becomes literal 'n'.
+    ssh_run "$ip" "printf '#!/bin/sh\nnohup /usr/local/bin/lyra daemon > \"\$HOME\"/.lyra-vm-daemon.log 2>&1 &\necho \"\$!\" > \"\$HOME\"/.lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
     ssh_run "$ip" "sudo launchctl asuser \$(id -u) /tmp/lyra-vm-launch.sh"
     sleep 3
 
