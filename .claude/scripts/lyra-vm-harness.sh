@@ -98,7 +98,7 @@ wait_for_ssh() {
     local ip=""
     log "Waiting for $vm to be reachable via SSH (timeout: ${LYRA_VM_BOOT_TIMEOUT}s)..."
     while [[ $SECONDS -lt $deadline ]]; do
-        ip="$(vm_ip "$vm")"
+        ip="$(vm_ip "$vm")" || true
         if [[ -n "$ip" ]] && ssh_run "$ip" exit 0 2>/dev/null; then
             log "SSH ready at $ip"
             echo "$ip"
@@ -168,9 +168,14 @@ cmd_run_lyra() {
         scp_put_r "$ip" "$bundle_dir" "/tmp/lyra-drop/"
     done
 
-    log "Installing on guest..."
-    ssh_run "$ip" "sudo install -m 755 /tmp/lyra-drop/lyra /usr/local/bin/lyra"
-    ssh_run "$ip" "for b in /tmp/lyra-drop/*.bundle; do [ -d \"\$b\" ] && sudo cp -r \"\$b\" /usr/local/bin/; done"
+    log "Installing on guest (isolated under /tmp/lyra-vm-test to avoid touching brew-managed binaries)..."
+    # Install to /tmp rather than /usr/local/bin so the Homebrew-managed binary is
+    # never overwritten.  restore therefore does not need to recover a clobbered
+    # brew binary, and the fix works identically on both Intel and Apple Silicon guests.
+    # Bundle resources must live next to the binary for Bundle.module lookups.
+    ssh_run "$ip" "rm -rf /tmp/lyra-vm-test && mkdir -p /tmp/lyra-vm-test"
+    ssh_run "$ip" "install -m 755 /tmp/lyra-drop/lyra /tmp/lyra-vm-test/lyra"
+    ssh_run "$ip" "for b in /tmp/lyra-drop/*.bundle; do [ -d \"\$b\" ] && cp -r \"\$b\" /tmp/lyra-vm-test/; done"
 
     log "Saving current lyra service state on guest..."
     local prior_state
@@ -200,12 +205,25 @@ cmd_run_lyra() {
     # Use fixed /tmp paths for log and PID — sudo resets HOME to /var/root so
     # "$HOME" in the launcher would point there, making the files invisible to the
     # SSH login user (babu).  /tmp is always writable and readable by all users.
-    ssh_run "$ip" "printf '#!/bin/sh\nexport UV_CACHE_DIR=/tmp/lyra-vm-uv-cache\nnohup /usr/local/bin/lyra daemon > /tmp/lyra-vm-daemon.log 2>&1 &\necho \"\$!\" > /tmp/lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
+    ssh_run "$ip" "printf '#!/bin/sh\nexport UV_CACHE_DIR=/tmp/lyra-vm-uv-cache\nnohup /tmp/lyra-vm-test/lyra daemon > /tmp/lyra-vm-daemon.log 2>&1 &\necho \"\$!\" > /tmp/lyra-vm-daemon.pid\n' > /tmp/lyra-vm-launch.sh && chmod +x /tmp/lyra-vm-launch.sh"
+    # Truncate the root-owned log before each launch so polling for new events works
+    # correctly.  babu cannot truncate root-owned files; sudo is required.
+    ssh_run "$ip" "sudo truncate -s 0 /tmp/lyra-vm-daemon.log 2>/dev/null || true"
     ssh_run "$ip" "sudo launchctl asuser \$(id -u) /tmp/lyra-vm-launch.sh"
     sleep 3
 
     local pid
     pid="$(ssh_run "$ip" "cat /tmp/lyra-vm-daemon.pid 2>/dev/null || printf '?'")"
+    if [[ "$pid" == "?" ]]; then
+        log "WARNING: PID file not written — daemon may have failed to start"
+        log "  daemon log:"; ssh_run "$ip" "cat /tmp/lyra-vm-daemon.log 2>/dev/null" >&2 || true
+        die "run-lyra: daemon did not start (no PID file)"
+    fi
+    if ! ssh_run "$ip" "kill -0 '$pid' 2>/dev/null"; then
+        log "WARNING: PID $pid is no longer alive — daemon crashed at startup"
+        log "  daemon log:"; ssh_run "$ip" "cat /tmp/lyra-vm-daemon.log 2>/dev/null" >&2 || true
+        die "run-lyra: daemon exited immediately (PID=$pid)"
+    fi
     log "lyra daemon running on guest (PID=$pid)"
 }
 
@@ -245,11 +263,17 @@ if let best = candidates.first { print(best.0) }
 SWIFT
 )"
         if [[ -n "$utm_wid" ]]; then
+            # caffeinate -u prevents the display from going dark during capture.
+            # Without it, macOS may dim/blank the display on inactivity, causing
+            # screencapture -l to return a black frame even though the window has content.
+            caffeinate -u -t 3 &
+            local caff_pid=$!
             if screencapture -l "$utm_wid" "$out_dir/screenshot.png" 2>/dev/null; then
                 log "  screenshot (host UTM wid=$utm_wid) -> $out_dir/screenshot.png"
             else
                 log "  WARNING: host screencapture also failed"
             fi
+            kill "$caff_pid" 2>/dev/null || true
         else
             log "  WARNING: no UTM window found on host — screenshot skipped"
         fi
@@ -342,21 +366,91 @@ cmd_ip() {
     printf '%s\n' "$ip"
 }
 
+# capture-loading: clear wallpaper cache, restart daemon, then take a screenshot
+# at the moment yt-dlp begins its mandatory 6-second sleep — the loading indicator
+# should be visible during this window.  Polls the daemon log (rather than sleeping
+# a fixed number of seconds) so the capture is not sensitive to build/boot timing.
+cmd_capture_loading() {
+    local vm="${1:-}"; require_vm "$vm"
+    local out_dir="${2:-$LYRA_VM_ARTIFACTS_DIR}"
+    local ip; ip="$(vm_ip "$vm")" || die "Cannot determine IP for $vm"
+    mkdir -p "$out_dir"
+
+    log "Clearing wallpaper cache on guest (both root and login-user locations)..."
+    ssh_run "$ip" "sudo rm -rf /private/var/root/.cache/lyra/wallpapers/ /Users/${LYRA_VM_SSH_USER}/.cache/lyra/wallpapers/ 2>/dev/null || true"
+
+    log "Restarting lyra daemon..."
+    local prev_pid
+    prev_pid="$(ssh_run "$ip" "pgrep -x lyra | head -1" 2>/dev/null || echo "")"
+    [[ -n "$prev_pid" ]] && ssh_run "$ip" "sudo kill '$prev_pid' 2>/dev/null || true" 2>/dev/null
+    sleep 0.5
+    ssh_run "$ip" "sudo truncate -s 0 /tmp/lyra-vm-daemon.log 2>/dev/null || true"
+    ssh_run "$ip" "sudo launchctl asuser \$(id -u) /tmp/lyra-vm-launch.sh"
+
+    log "Polling daemon log for yt-dlp download start (timeout 30s)..."
+    local deadline=$(( SECONDS + 30 ))
+    local detected=false
+    while [[ $SECONDS -lt $deadline ]]; do
+        if ssh_run "$ip" "cat /tmp/lyra-vm-daemon.log 2>/dev/null" 2>/dev/null \
+                | grep -q "Sleeping 6.00 seconds"; then
+            detected=true
+            break
+        fi
+        sleep 0.5
+    done
+
+    if ! $detected; then
+        log "WARNING: yt-dlp download start not detected within 30s — screenshotting anyway"
+    else
+        log "yt-dlp download detected — capturing loading indicator screenshot"
+    fi
+
+    # caffeinate prevents display dimming while screencapture runs
+    local utm_wid
+    utm_wid="$(swift - 2>/dev/null <<'SWIFT'
+import CoreGraphics
+let wins = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String:Any]]
+let candidates = wins.compactMap { w -> (Int, Int)? in
+    guard let owner = w["kCGWindowOwnerName"] as? String, owner == "UTM",
+          let num = w["kCGWindowNumber"] as? Int,
+          let bounds = w["kCGWindowBounds"] as? [String:Any],
+          let w2 = bounds["Width"] as? CGFloat, let h2 = bounds["Height"] as? CGFloat
+    else { return nil }
+    return (num, Int(w2 * h2))
+}.sorted { $0.1 > $1.1 }
+if let best = candidates.first { print(best.0) }
+SWIFT
+)"
+    if [[ -n "$utm_wid" ]]; then
+        caffeinate -u -t 3 &
+        local caff_pid=$!
+        if screencapture -l "$utm_wid" "$out_dir/loading-indicator.png" 2>/dev/null; then
+            log "  loading indicator screenshot -> $out_dir/loading-indicator.png"
+        else
+            log "  WARNING: screencapture failed"
+        fi
+        kill "$caff_pid" 2>/dev/null || true
+    else
+        log "  WARNING: no UTM window found — screenshot skipped"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 SUBCOMMAND="${1:-}"; shift || true
 
 case "$SUBCOMMAND" in
-    boot)     cmd_boot     "$@" ;;
-    shutdown) cmd_shutdown "$@" ;;
-    reboot)   cmd_reboot   "$@" ;;
-    run-lyra) cmd_run_lyra "$@" ;;
-    capture)  cmd_capture  "$@" ;;
-    restore)     cmd_restore    "$@" ;;
-    play-music)  cmd_play_music "$@" ;;
-    exec)        cmd_exec       "$@" ;;
-    ip)       cmd_ip       "$@" ;;
+    boot)             cmd_boot             "$@" ;;
+    shutdown)         cmd_shutdown         "$@" ;;
+    reboot)           cmd_reboot           "$@" ;;
+    run-lyra)         cmd_run_lyra         "$@" ;;
+    capture)          cmd_capture          "$@" ;;
+    capture-loading)  cmd_capture_loading  "$@" ;;
+    restore)          cmd_restore          "$@" ;;
+    play-music)       cmd_play_music       "$@" ;;
+    exec)             cmd_exec             "$@" ;;
+    ip)               cmd_ip               "$@" ;;
     "")       die "Subcommand required. See .claude/rules/vm-verification.md for usage." ;;
     *)        die "Unknown subcommand: $SUBCOMMAND" ;;
 esac
