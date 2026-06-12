@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # lyra-vm-harness.sh — UTM macOS guest verification harness for lyra
 #
-# Primary path: SSH.  utmctl is used only for VM lifecycle (start/stop/reboot)
-# and IP discovery.  All build, install, run, and artifact operations go over SSH.
+# Primary path: SSH.  utmctl is used only for VM lifecycle (start/stop/reboot).
+# All build, install, run, and artifact operations go over SSH.
+#
+# NOTE: utmctl ip-address and utmctl exec are NOT supported by the macOS
+# Apple Virtualization Framework backend (only QEMU supports them).
+# Set LYRA_VM_SSH_HOST to the guest's static/bridge IP to bypass utmctl IP lookup.
 #
 # Prerequisites: see .claude/rules/vm-verification.md
 #
@@ -37,6 +41,12 @@ log()  { printf '[lyra-vm] %s\n' "$*" >&2; }
 die()  { log "ERROR: $*"; exit 1; }
 
 vm_ip() {
+    # LYRA_VM_SSH_HOST overrides utmctl IP lookup (required for Apple Virtualization backend
+    # where utmctl ip-address is unsupported — only works for QEMU backend VMs).
+    if [[ -n "${LYRA_VM_SSH_HOST:-}" ]]; then
+        printf '%s\n' "$LYRA_VM_SSH_HOST"
+        return 0
+    fi
     utmctl ip-address "$1" 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1
 }
 
@@ -178,25 +188,32 @@ cmd_capture() {
     fi
 
     # Unified log — lyra subsystem, last 10 minutes
-    ssh_run "$ip" \
+    if ssh_run "$ip" \
         "log show --last 10m --predicate 'subsystem CONTAINS \"lyra\" OR process == \"lyra\"' 2>/dev/null" \
-        > "$out_dir/unified.log" && \
-        log "  unified log -> $out_dir/unified.log" || \
+        > "$out_dir/unified.log"; then
+        log "  unified log -> $out_dir/unified.log"
+    else
         log "  WARNING: log show failed"
+    fi
 
     # Process sample — 5 seconds
     # note: `sample` requires sudo to sample other users' processes on macOS
-    ssh_run "$ip" "pid=\"\$(pgrep -x lyra | head -1)\"; \
+    if ssh_run "$ip" "pid=\"\$(pgrep -x lyra | head -1)\"; \
         if [ -n \"\$pid\" ]; then sudo sample \"\$pid\" 5 -f /tmp/lyra-vm-sample.txt 2>/dev/null; \
         else printf 'lyra not running\n' > /tmp/lyra-vm-sample.txt; fi" 2>/dev/null && \
-        scp_get "$ip" "/tmp/lyra-vm-sample.txt" "$out_dir/process-sample.txt" && \
-        log "  process sample -> $out_dir/process-sample.txt" || \
+        scp_get "$ip" "/tmp/lyra-vm-sample.txt" "$out_dir/process-sample.txt"; then
+        log "  process sample -> $out_dir/process-sample.txt"
+    else
         log "  WARNING: process sample failed"
+    fi
 
     # Daemon log written by run-lyra
-    scp_get "$ip" "~/.lyra-vm-daemon.log" "$out_dir/daemon.log" 2>/dev/null && \
-        log "  daemon log -> $out_dir/daemon.log" || \
+    # shellcheck disable=SC2088  # ~ is in a remote scp path and intentionally expands on the guest
+    if scp_get "$ip" "~/.lyra-vm-daemon.log" "$out_dir/daemon.log" 2>/dev/null; then
+        log "  daemon log -> $out_dir/daemon.log"
+    else
         log "  (no daemon.log — daemon may not have been started via run-lyra)"
+    fi
 
     log "Artifacts collected in $out_dir"
     printf '%s\n' "$out_dir"
