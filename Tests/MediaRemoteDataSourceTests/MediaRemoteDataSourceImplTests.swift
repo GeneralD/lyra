@@ -149,6 +149,89 @@ struct MediaRemoteDataSourceImplTests {
         }
     }
 
+    @Test("artwork base64 is decoded once while the payload is unchanged")
+    func artworkDecodedOnceForUnchangedBase64() async throws {
+        let artwork = Data("artwork-bytes".utf8).base64EncodedString()
+        let gateway = StreamingGateway(streamPlans: [
+            [
+                Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true, artworkBase64: artwork),
+                Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true, artworkBase64: artwork),
+            ]
+        ])
+        let decoder = CountingDecoder()
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let artworks = [await dataSource.poll(), await dataSource.poll()].map {
+                result -> Data? in
+                guard case .info(let nowPlaying) = result else {
+                    Issue.record("Expected .info, got \(result)")
+                    return nil
+                }
+                return nowPlaying.artworkData
+            }
+
+            #expect(artworks == [Data("artwork-bytes".utf8), Data("artwork-bytes".utf8)])
+            #expect(decoder.count == 1)
+        }
+    }
+
+    @Test("artwork base64 is re-decoded when the payload changes")
+    func artworkRedecodedForChangedBase64() async throws {
+        let firstArtwork = Data("first-artwork".utf8).base64EncodedString()
+        let secondArtwork = Data("second-artwork".utf8).base64EncodedString()
+        let gateway = StreamingGateway(streamPlans: [
+            [
+                Self.jsonLine(
+                    title: "Song", artist: "Artist", hasInfo: true, artworkBase64: firstArtwork),
+                Self.jsonLine(
+                    title: "Song", artist: "Artist", hasInfo: true, artworkBase64: secondArtwork),
+            ]
+        ])
+        let decoder = CountingDecoder()
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let artworks = [await dataSource.poll(), await dataSource.poll()].map {
+                result -> Data? in
+                guard case .info(let nowPlaying) = result else {
+                    Issue.record("Expected .info, got \(result)")
+                    return nil
+                }
+                return nowPlaying.artworkData
+            }
+
+            #expect(artworks == [Data("first-artwork".utf8), Data("second-artwork".utf8)])
+            #expect(decoder.count == 2)
+        }
+    }
+
+    @Test("artwork decode is skipped when the payload has no artwork")
+    func artworkDecodeSkippedForMissingArtwork() async throws {
+        let gateway = StreamingGateway(streamPlans: [
+            [Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true)]
+        ])
+        let decoder = CountingDecoder()
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let result = await dataSource.poll()
+
+            guard case .info(let nowPlaying) = result else {
+                Issue.record("Expected .info, got \(result)")
+                return
+            }
+            #expect(nowPlaying.artworkData == nil)
+            #expect(decoder.count == 0)
+        }
+    }
+
     @Test("poll spawns the helper via the Apple-signed swift interpreter")
     func pollInvokesInterpretMode() async throws {
         let gateway = StreamingGateway(streamPlans: [
@@ -177,7 +260,9 @@ struct MediaRemoteDataSourceImplTests {
 }
 
 extension MediaRemoteDataSourceImplTests {
-    fileprivate static func jsonLine(title: String, artist: String, hasInfo: Bool) -> String {
+    fileprivate static func jsonLine(
+        title: String, artist: String, hasInfo: Bool, artworkBase64: String? = nil
+    ) -> String {
         let payload: [String: Any] = [
             "has_info": hasInfo,
             "title": title,
@@ -187,8 +272,29 @@ extension MediaRemoteDataSourceImplTests {
             "rate": 1.0,
             "timestamp": 10.0,
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "" }
+        let payloadWithArtwork = artworkBase64.map {
+            payload.merging(["artwork_base64": $0]) { _, new in new }
+        }
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payloadWithArtwork ?? payload)
+        else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+private final class CountingDecoder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var decodeCallCount = 0
+
+    var count: Int {
+        lock.withLock { decodeCallCount }
+    }
+
+    @Sendable func decode(_ base64: String) -> Data? {
+        lock.withLock {
+            decodeCallCount += 1
+            return Data(base64Encoded: base64)
+        }
     }
 }
 
