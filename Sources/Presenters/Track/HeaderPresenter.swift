@@ -8,7 +8,6 @@ import Foundation
 public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var displayTitle: String = " "
     @Published public private(set) var displayArtist: String = " "
-    @Published public private(set) var artworkData: Data?
     @Published public private(set) var artworkImage: NSImage?
     @Published public private(set) var titleState: FetchState<String> = .idle
     @Published public private(set) var artistState: FetchState<String> = .idle
@@ -20,6 +19,7 @@ public final class HeaderPresenter: ObservableObject {
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
+    private var artworkData: Data?
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor

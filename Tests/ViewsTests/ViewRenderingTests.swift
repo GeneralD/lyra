@@ -136,7 +136,6 @@ struct HeaderViewRenderingTests {
         await waitUntil { presenter.displayTitle == "Song" }
 
         #expect(presenter.artworkOpacity > 0)
-        #expect(presenter.artworkData == nil)
         #expect(presenter.artworkImage == nil)
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
     }
@@ -160,7 +159,6 @@ struct HeaderViewRenderingTests {
         defer { presenter.stop() }
         await waitUntil { presenter.artworkImage != nil && presenter.displayTitle == "Song" }
 
-        #expect(presenter.artworkData != nil)
         #expect(presenter.artworkImage != nil)
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
     }

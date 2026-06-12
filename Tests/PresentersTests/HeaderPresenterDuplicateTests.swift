@@ -113,7 +113,6 @@ struct HeaderPresenterDuplicateTests {
                 trackSubject.send(update)
                 await waitForTitleSuccess(presenter)
                 #expect(presenter.titleState == .success("Song"))
-                #expect(presenter.artworkData == nil)
                 #expect(presenter.artworkImage == nil)
 
                 // Send artwork
@@ -124,7 +123,6 @@ struct HeaderPresenterDuplicateTests {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
 
-                #expect(presenter.artworkData == imageData)
                 let cachedImage = try #require(presenter.artworkImage)
                 // Title state must remain unchanged
                 #expect(presenter.titleState == .success("Song"))
@@ -160,7 +158,6 @@ struct HeaderPresenterDuplicateTests {
                 await waitForTitleSuccess(presenter)
 
                 // Both should have settled correctly
-                #expect(presenter.artworkData == artData)
                 let cachedImage = try #require(presenter.artworkImage)
                 #expect(presenter.titleState == .success("New Song"))
                 #expect(presenter.artistState == .success("New Artist"))
@@ -169,11 +166,10 @@ struct HeaderPresenterDuplicateTests {
                 let newArtData = try fixtureArtworkData(color: .blue)
                 artworkSubject.send(newArtData)
                 let newArtDeadline = ContinuousClock.now + .seconds(3)
-                while presenter.artworkData != newArtData, ContinuousClock.now < newArtDeadline {
+                while presenter.artworkImage === cachedImage, ContinuousClock.now < newArtDeadline {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
 
-                #expect(presenter.artworkData == newArtData)
                 #expect(presenter.artworkImage != nil)
                 #expect(presenter.artworkImage !== cachedImage)
                 // Title state still untouched
