@@ -6,8 +6,15 @@ public final class MediaRemoteDataSourceImpl: @unchecked Sendable {
     @Dependency(\.processGateway) private var gateway
 
     private let state = StreamStateBox()
+    private let decodeBase64: @Sendable (String) -> Data?
 
-    public init() {}
+    public convenience init() {
+        self.init(decodeBase64: { Data(base64Encoded: $0) })
+    }
+
+    init(decodeBase64: @escaping @Sendable (String) -> Data?) {
+        self.decodeBase64 = decodeBase64
+    }
 }
 
 extension MediaRemoteDataSourceImpl: MediaRemoteDataSource {
@@ -39,7 +46,7 @@ extension MediaRemoteDataSourceImpl: MediaRemoteDataSource {
             NowPlaying(
                 title: json["title"] as? String,
                 artist: json["artist"] as? String,
-                artworkData: (json["artwork_base64"] as? String).flatMap { Data(base64Encoded: $0) },
+                artworkData: artworkData(from: json["artwork_base64"] as? String),
                 duration: json["duration"] as? Double,
                 rawElapsed: json["elapsed"] as? Double,
                 playbackRate: json["rate"] as? Double ?? 1.0,
@@ -90,10 +97,27 @@ extension MediaRemoteDataSourceImpl {
         state.isPolling = false
         state.iterator = nextIterator
     }
+
+    /// Decodes the artwork base64 payload, reusing the previous result while the
+    /// payload is unchanged. The helper re-broadcasts the full now-playing payload
+    /// on every event, so without memoization the (potentially megabyte-scale)
+    /// artwork would be re-decoded on each elapsed-time tick (#270).
+    private func artworkData(from base64: String?) -> Data? {
+        guard let base64 else { return nil }
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        if state.lastArtworkBase64 == base64 { return state.lastArtworkData }
+        let decoded = decodeBase64(base64)
+        state.lastArtworkBase64 = base64
+        state.lastArtworkData = decoded
+        return decoded
+    }
 }
 
 private final class StreamStateBox: @unchecked Sendable {
     let lock = NSLock()
     var iterator: AsyncStream<String>.AsyncIterator?
     var isPolling = false
+    var lastArtworkBase64: String?
+    var lastArtworkData: Data?
 }
