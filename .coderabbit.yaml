@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit configuration.
+# Docstring Coverage is disabled because its measurement engine does not
+# recognize Swift `///` doc comments — the metric is stuck at 0.00% no
+# matter how documented the diff is, producing a permanent noise warning
+# on every PR (verified in #266, tracked in #267).
+reviews:
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
