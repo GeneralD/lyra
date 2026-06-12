@@ -17,7 +17,7 @@ public struct HeaderView: View {
         if presenter.titleState != .idle {
             HStack(spacing: presenter.artworkOpacity > 0 ? 24 : 0) {
                 if presenter.artworkOpacity > 0 {
-                    if let artworkData = presenter.artworkData, let image = NSImage(data: artworkData) {
+                    if let image = presenter.artworkImage {
                         Image(nsImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
