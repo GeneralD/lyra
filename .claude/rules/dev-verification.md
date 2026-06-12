@@ -1,3 +1,9 @@
+---
+paths:
+  - "**/*.swift"
+  - "**/Package.swift"
+---
+
 # Dev Verification — Run the Debug Build, Not the Installed One
 
 When you need the user to **visually verify lyra runtime behavior** (overlay
@@ -90,3 +96,13 @@ brew services start lyra                  # only if step 1 showed "started"
   binary. It shares the real config and `~/.cache/lyra` (intended — you are
   verifying real behavior), but TCC-gated capabilities granted to the brew
   binary may need granting to the debug path too if a feature depends on them.
+
+## When to use the VM lane instead
+
+This document covers **host-side visual verification** (overlay rendering,
+ripple, lyrics, wallpaper). For scenarios that require OS-level side effects
+without touching the developer's machine — launchd KeepAlive, guest reboot,
+unified log observation, CPU/memory profiling — use the UTM VM lane instead:
+
+- `.claude/rules/vm-verification.md` — lyra VM verification lane map and harness usage
+- `.claude/scripts/lyra-vm-harness.sh` — harness script (boot / run-lyra / capture / restore)

@@ -110,7 +110,14 @@ extension YouTubeWallpaperDataSourceImpl {
 extension YouTubeWallpaperDataSourceImpl {
     func buildArgs(tool: Tool, url: URL, maxHeight: Int, format: String, destPath: String) -> [String] {
         let ytdlpArgs = [
-            "-f", "bestvideo[ext=\(format)][height<=\(maxHeight)][vcodec^=avc]",
+            // Use the Android player client — the default web client triggers YouTube SABR
+            // streaming (HTTP 403). Android avoids SABR, but video-only formats require a
+            // GVS PO Token that we don't have, so they get skipped. Adding
+            // best[ext=format][height<=maxHeight] as fallback picks the combined A/V format
+            // (e.g. format 18) when video-only streams are unavailable. --no-audio is a
+            // no-op for combined formats and still suppresses separate audio downloads.
+            "--extractor-args", "youtube:player_client=android",
+            "-f", "bestvideo[ext=\(format)][height<=\(maxHeight)][vcodec^=avc]/best[ext=\(format)][height<=\(maxHeight)]",
             "--no-audio",
             "-o", destPath,
             url.absoluteString,
