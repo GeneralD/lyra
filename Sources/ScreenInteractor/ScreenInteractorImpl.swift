@@ -4,6 +4,10 @@ import CoreGraphics
 import Dependencies
 import Domain
 
+/// Implementation of the `ScreenInteractor` that resolves display geometry.
+///
+/// It supports various screen selection strategies (main, primary, index, smallest, largest, vacant)
+/// and emits signals when screen parameters change or the window is moved/resized.
 public struct ScreenInteractorImpl {
     @Dependency(\.configUseCase) private var configService
     @Dependency(\.screenProvider) private var screenProvider
@@ -12,21 +16,36 @@ public struct ScreenInteractorImpl {
 }
 
 extension ScreenInteractorImpl: ScreenInteractor {
+    /// The current screen selection strategy from configuration.
     public var screenSelector: ScreenSelector {
         configService.appStyle.screen
     }
 
+    /// The debounce interval for screen reconciliation polling.
     public var screenDebounce: Double {
         configService.appStyle.screenDebounce
     }
 
+    /// Signals that the overlay geometry may need re-resolution. Besides screen
+    /// parameter changes, this includes the window being moved or resized —
+    /// during display hot-plugging the window server relocates windows behind
+    /// the app's back (#265), and the overlay (the process's only window) must
+    /// snap back to its resolved layout. The apply side is idempotent, so the
+    /// move/resize triggered by re-asserting the layout does not loop.
     public var screenChanges: AnyPublisher<Void, Never> {
-        NotificationCenter.default
-            .publisher(for: NSApplication.didChangeScreenParametersNotification)
+        let center = NotificationCenter.default
+        return center.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .merge(
+                with: center.publisher(for: NSWindow.didMoveNotification),
+                center.publisher(for: NSWindow.didResizeNotification)
+            )
             .map { _ in () }
             .eraseToAnyPublisher()
     }
 
+    /// Resolves the current screen layout based on the active selection strategy.
+    ///
+    /// - Returns: A `ScreenLayout` containing the window frame and hosting view geometry.
     public func resolveLayout() -> ScreenLayout {
         guard let screen = resolveScreen() else { return .init() }
 

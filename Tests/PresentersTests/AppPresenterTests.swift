@@ -244,8 +244,8 @@ struct AppPresenterTests {
     }
 
     @MainActor
-    @Test("onWindowFrameChange fires only when windowFrame actually changes")
-    func onWindowFrameChangeDedups() async {
+    @Test("onWindowFrameChange fires on every screen-change signal, even when the resolved frame is unchanged (regression: #265)")
+    func onWindowFrameChangeReassertsUnchangedFrame() async {
         let first = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
         let sameFrame = ScreenLayout(
             windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
@@ -274,20 +274,24 @@ struct AppPresenterTests {
         // Subscribe after start so the current layout is dropped.
         presenter.onWindowFrameChange { _ in counter.count += 1 }
 
-        // Same windowFrame (different hostingFrame) → deduped.
+        // Same windowFrame (different hostingFrame) → still fires so the window
+        // can heal from system-side moves during display reconfiguration.
         interactor.layoutToReturn = sameFrame
+        interactor.changes.send(())
+
+        // Identical layout → still fires for the same reason.
         interactor.changes.send(())
 
         // Different windowFrame → fires.
         interactor.layoutToReturn = different
         interactor.changes.send(())
 
-        // Give the DispatchQueue.main scheduling a tick to flush.
-        let deadline = ContinuousClock.now + .seconds(1)
-        while counter.count < 1, ContinuousClock.now < deadline {
+        // Give the DispatchQueue.main scheduling time to flush (CI load varies).
+        let deadline = ContinuousClock.now + .seconds(3)
+        while counter.count < 3, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
-        #expect(counter.count == 1)
+        #expect(counter.count == 3)
     }
 
     @MainActor

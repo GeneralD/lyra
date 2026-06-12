@@ -17,6 +17,11 @@ protocol OverlayWindowSurface: AnyObject {
     func orderFront(_ sender: Any?)
 }
 
+/// The main overlay window for the application.
+///
+/// It is a borderless `NSWindow` that covers the entire screen (or a specific area)
+/// and hosts the SwiftUI overlay content. It handles geometry reconciliation,
+/// wallpaper scaling, and AVPlayerLayer attachment.
 @MainActor
 public final class AppWindow: NSWindow {
     static var overlayLevel: NSWindow.Level {
@@ -33,6 +38,14 @@ public final class AppWindow: NSWindow {
 
     private let hostingView: NSHostingView<OverlayContentView>
 
+    /// Initializes the app window with the specified layout and presenters.
+    ///
+    /// - Parameters:
+    ///   - initialLayout: The initial geometry for the window and hosting view.
+    ///   - headerPresenter: Presenter for the header view.
+    ///   - lyricsPresenter: Presenter for the lyrics view.
+    ///   - ripplePresenter: Presenter for the ripple effect.
+    ///   - wallpaperPresenter: Presenter for the wallpaper view.
     public init(
         initialLayout: ScreenLayout,
         headerPresenter: HeaderPresenter,
@@ -60,22 +73,33 @@ public final class AppWindow: NSWindow {
         Self.applyOverlayStyle(to: self, hostingView: hostingView)
     }
 
+    /// Brings the window to the front.
     public func show() {
         Self.present(self)
     }
 
+    /// Updates the window and hosting view geometry.
+    ///
+    /// - Parameter layout: The new layout to apply.
     public func applyLayout(_ layout: ScreenLayout) {
         Self.apply(layout: layout, to: self, hostingView: hostingView)
     }
 
+    /// Attaches an `AVPlayer` layer to the window for wallpaper playback.
+    ///
+    /// - Parameter player: The player to attach.
     public func attachPlayerLayer(for player: AVPlayer) {
         Self.attachPlayer(player, to: self, hostingView: hostingView)
     }
 
+    /// Applies an affine transform scale to the wallpaper player layer.
+    ///
+    /// - Parameter scale: The scale factor to apply.
     public func applyWallpaperScale(_ scale: Double) {
         Self.applyWallpaperScale(scale, to: self)
     }
 
+    /// Hides the window and calls the superclass `close`.
     public override func close() {
         orderOut(nil)
         super.close()
@@ -103,12 +127,37 @@ extension AppWindow {
         surface.orderFront(nil)
     }
 
+    /// Re-asserts the full window/view/layer geometry from the resolved layout.
+    /// Idempotent by design: the window server mutates the actual window during
+    /// display reconfiguration (#265), so every call reconciles against actual
+    /// state instead of trusting that earlier applications are still in effect.
+    /// Skipping `setFrame` when the frame already matches keeps the
+    /// `NSWindow.didMove/didResize → screenChanges → apply` cycle from looping.
     static func apply(layout: ScreenLayout, to surface: OverlayWindowSurface, hostingView: NSView) {
-        surface.setFrame(layout.windowFrame, display: false)
-        hostingView.frame = layout.hostingFrame
-        if let containerView = surface.contentView, containerView !== hostingView {
-            containerView.frame = CGRect(origin: .zero, size: layout.windowFrame.size)
-        }
+        applyWindowFrame(layout.windowFrame, to: surface)
+        applyFrame(layout.hostingFrame, to: hostingView)
+        guard let containerView = surface.contentView, containerView !== hostingView else { return }
+        applyFrame(contentFrame(for: layout.windowFrame), to: containerView)
+        guard let playerLayer = playerLayer(in: surface) else { return }
+        reassertGeometry(of: playerLayer, in: containerView.bounds)
+    }
+
+    private static func applyWindowFrame(_ frame: NSRect, to surface: OverlayWindowSurface) {
+        guard surface.frame != frame else { return }
+        surface.setFrame(frame, display: false)
+    }
+
+    private static func applyFrame(_ frame: CGRect, to view: NSView) {
+        guard view.frame != frame else { return }
+        view.frame = frame
+    }
+
+    /// Sets `bounds` + `position` rather than `frame`: the layer carries the
+    /// wallpaper-scale affine transform, and `frame` is undefined under a
+    /// non-identity transform.
+    private static func reassertGeometry(of playerLayer: AVPlayerLayer, in bounds: CGRect) {
+        playerLayer.bounds = bounds
+        playerLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
     }
 
     static func attachPlayer(

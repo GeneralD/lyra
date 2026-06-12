@@ -4,6 +4,10 @@ import Domain
 import Foundation
 import os
 
+/// Implementation of the `TrackInteractor` that manages the reactive track and artwork pipeline.
+///
+/// It observes now-playing information, resolves metadata and lyrics, and handles
+/// artwork state preservation across track updates.
 public final class TrackInteractorImpl: @unchecked Sendable {
     private let playbackService: any PlaybackUseCase
     private let lyricsService: any LyricsUseCase
@@ -31,6 +35,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         }
         .share()
 
+    /// A publisher that emits `TrackUpdate` events whenever the active track changes.
     public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
         activeNowPlaying
         .removeDuplicates(by: Self.sameTrack)
@@ -42,9 +47,18 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         .share()
         .eraseToAnyPublisher()
 
+    /// Keeps the last known artwork while the track is unchanged: system
+    /// re-broadcasts (e.g. during display reconfiguration) often omit the
+    /// artwork bytes, and a raw `map(\.artworkData)` would blank the artwork
+    /// until the next event that happens to carry them (#265). A track change
+    /// without artwork still clears it.
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
-        .map(\.artworkData)
+        .scan((track: NowPlaying?.none, data: Data?.none)) { state, incoming in
+            let isSameTrack = state.track.map { $0.title != nil && Self.sameTrack($0, incoming) } ?? false
+            return (track: incoming, data: incoming.artworkData ?? (isSameTrack ? state.data : nil))
+        }
+        .map(\.data)
         .removeDuplicates()
         .eraseToAnyPublisher()
 
@@ -60,6 +74,7 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         return lhs.title == rhs.title && lhsArtist == rhsArtist
     }
 
+    /// A publisher that emits the current playback position.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
         .map { np in
