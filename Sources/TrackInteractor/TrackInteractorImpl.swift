@@ -142,6 +142,7 @@ extension TrackInteractorImpl {
         let metadata = metadataService
         let lyrics = lyricsService
         let clock = self.clock
+        let aiConfigured = configService.appStyle.ai != nil
 
         return Just(loading)
             .append(
@@ -157,6 +158,25 @@ extension TrackInteractorImpl {
                                     guard !Task.isCancelled else {
                                         unsafeSubject.send(completion: .finished)
                                         return
+                                    }
+
+                                    // AI cache miss with an endpoint configured means
+                                    // `resolveCandidates` will make a live API call — signal the
+                                    // header to show its processing indicator for the round-trip (#57).
+                                    if aiConfigured,
+                                        await metadata.isAIMetadataCached(track: rawTrack) == false
+                                    {
+                                        guard !Task.isCancelled else {
+                                            unsafeSubject.send(completion: .finished)
+                                            return
+                                        }
+                                        unsafeSubject.send(
+                                            TrackUpdate(
+                                                title: title,
+                                                artist: artist,
+                                                lyricsState: .loading,
+                                                aiResolving: true
+                                            ))
                                     }
 
                                     let candidates = await metadata.resolveCandidates(track: rawTrack)

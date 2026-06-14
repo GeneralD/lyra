@@ -218,6 +218,44 @@ struct TypeConversionTests {
     }
 }
 
+// MARK: - isAIMetadataCached
+
+@Suite("isAIMetadataCached")
+struct IsAIMetadataCachedTests {
+    @Test("returns true when the LLM cache holds a value")
+    func cachedReturnsTrue() async {
+        await withDependencies {
+            $0.llmMetadataDataStore = StubMetadataDataStore(result: Track(title: "Cached", artist: "Artist"))
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
+            $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
+            $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
+        } operation: {
+            let repo = MetadataRepositoryImpl()
+            let cached = await repo.isAIMetadataCached(track: Track(title: "raw", artist: "raw"))
+            #expect(cached)
+        }
+    }
+
+    @Test("returns false when the LLM cache is empty — no DataSource is consulted")
+    func uncachedReturnsFalse() async {
+        let llmTracker = CallTracker()
+        await withDependencies {
+            $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.llmMetadataDataSource = TrackingDataSource<Track>(tracker: llmTracker)
+            $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
+            $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
+        } operation: {
+            let repo = MetadataRepositoryImpl()
+            let cached = await repo.isAIMetadataCached(track: Track(title: "raw", artist: "raw"))
+            #expect(!cached)
+            let llmCalled = await llmTracker.called
+            #expect(!llmCalled, "isAIMetadataCached must only read the cache, never invoke the DataSource")
+        }
+    }
+}
+
 // MARK: - Test helpers
 
 private struct StubMetadataDataStore<Value: Sendable & Equatable>: MetadataDataStore {

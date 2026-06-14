@@ -34,7 +34,7 @@ public struct HeaderView: View {
                 VStack(alignment: .leading, spacing: presenter.titleStyle.spacing) {
                     Text(presenter.displayTitle)
                         .font(resolver.font(from: presenter.titleStyle))
-                        .foregroundStyle(resolver.shapeStyle(from: presenter.titleStyle.color))
+                        .foregroundStyle(resolver.shapeStyle(from: presenter.titleColor))
                         .shadow(
                             color: resolver.solidColor(from: presenter.titleStyle.shadow),
                             radius: 5, x: 0, y: 1
@@ -43,7 +43,7 @@ public struct HeaderView: View {
                         .accessibilityIdentifier("header-title")
                     Text(presenter.displayArtist)
                         .font(resolver.font(from: presenter.artistStyle))
-                        .foregroundStyle(resolver.shapeStyle(from: presenter.artistStyle.color))
+                        .foregroundStyle(resolver.shapeStyle(from: presenter.artistColor))
                         .shadow(
                             color: resolver.solidColor(from: presenter.artistStyle.shadow),
                             radius: 5, x: 0, y: 1

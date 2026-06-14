@@ -22,7 +22,8 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 highlight: config.text.highlight.toTextAppearance(),
                 decodeEffect: DecodeEffect(
                     duration: config.text.decodeEffect.duration.value,
-                    charsets: config.text.decodeEffect.charset
+                    charsets: config.text.decodeEffect.charset,
+                    processingColor: config.text.decodeEffect.processingColor
                 )
             ),
             artwork: ArtworkStyle(size: config.artwork.size.value, opacity: config.artwork.opacity.value),

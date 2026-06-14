@@ -80,6 +80,7 @@ spacing = 6.0
 [text.decode_effect]
 charset = \(charsetPlaceholder)
 duration = 0.8
+processing_color = '#4ADE80'
 
 [text.default]
 color = '#FFFFFFD9'
@@ -176,7 +177,8 @@ spacing = 6.0
     },
     "decode_effect" : {
       "charset" : "\(charsetPlaceholder)",
-      "duration" : 0.8
+      "duration" : 0.8,
+      "processing_color" : "#4ADE80"
     },
     "default" : {
       "color" : "#FFFFFFD9",
@@ -242,6 +244,7 @@ spacing = 6.0
             decoded.text.highlight.color
                 == .gradient(["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"]))
         #expect(decoded.text.decodeEffect.charset == Set(CharsetName.allCases))
+        #expect(decoded.text.decodeEffect.processingColor == .solid("#4ADE80FF"))
         #expect(decoded.ai == nil)
         #expect(decoded.wallpaper == nil)
     }

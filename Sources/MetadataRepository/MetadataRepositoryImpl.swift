@@ -42,4 +42,8 @@ extension MetadataRepositoryImpl: MetadataRepository {
             Track(title: $0.title, artist: $0.artist, duration: track.duration)
         }
     }
+
+    public func isAIMetadataCached(track: Track) async -> Bool {
+        await llmDataStore.read(title: track.title, artist: track.artist) != nil
+    }
 }

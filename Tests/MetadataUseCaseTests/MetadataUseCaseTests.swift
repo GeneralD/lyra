@@ -76,11 +76,35 @@ struct MetadataUseCaseTests {
             #expect(resolved == allCandidates.first)
         }
     }
+
+    @Test("isAIMetadataCached delegates to repository: true")
+    func isAICachedDelegatesTrue() async {
+        await withDependencies {
+            $0.metadataRepository = MockMetadataRepository(candidates: [], aiCached: true)
+        } operation: {
+            let useCase = MetadataUseCaseImpl()
+            let cached = await useCase.isAIMetadataCached(track: Track(title: "raw", artist: "raw"))
+            #expect(cached)
+        }
+    }
+
+    @Test("isAIMetadataCached delegates to repository: false")
+    func isAICachedDelegatesFalse() async {
+        await withDependencies {
+            $0.metadataRepository = MockMetadataRepository(candidates: [], aiCached: false)
+        } operation: {
+            let useCase = MetadataUseCaseImpl()
+            let cached = await useCase.isAIMetadataCached(track: Track(title: "raw", artist: "raw"))
+            #expect(!cached)
+        }
+    }
 }
 
 // MARK: - Mocks
 
 private struct MockMetadataRepository: MetadataRepository {
     let candidates: [Track]
+    var aiCached: Bool = false
     func resolve(track: Track) async -> [Track] { candidates }
+    func isAIMetadataCached(track: Track) async -> Bool { aiCached }
 }

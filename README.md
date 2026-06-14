@@ -148,6 +148,7 @@ Controls the matrix-style text reveal animation.
 |---|---|---|---|
 | `duration` | number | `0.8` | Animation duration in seconds |
 | `charset` | string / array | all | Character sets for scramble: `"latin"`, `"cyrillic"`, `"greek"`, `"symbols"`, `"cjk"`. Single string or array |
+| `processing_color` | string / array | `"#4ADE80"` (green) | Title/artist color while the AI extractor is resolving (LLM cache miss). The header scrambles in this color until the API responds, then settles to the resolved text in its normal color. Solid hex or gradient array. Only applies when an `[ai]` endpoint is configured |
 
 ### `[artwork]`
 

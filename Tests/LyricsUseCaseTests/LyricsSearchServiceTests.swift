@@ -128,6 +128,7 @@ struct LyricsSearchServiceTests {
 private struct StubMetadataRepository: MetadataRepository {
     let candidates: [Track]
     func resolve(track: Track) async -> [Track] { candidates }
+    func isAIMetadataCached(track: Track) async -> Bool { false }
 }
 
 private struct TrackingMetadataRepository: MetadataRepository {
@@ -136,6 +137,7 @@ private struct TrackingMetadataRepository: MetadataRepository {
         onResolve()
         return []
     }
+    func isAIMetadataCached(track: Track) async -> Bool { false }
 }
 
 private struct StubLyricsCache: LyricsDataStore {

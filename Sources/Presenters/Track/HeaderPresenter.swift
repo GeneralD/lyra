@@ -16,6 +16,12 @@ public final class HeaderPresenter: ObservableObject {
     // state (#275).
     @Published public private(set) var titlePhase: RevealPhase = .idle
     @Published public private(set) var artistPhase: RevealPhase = .idle
+    // Effective foreground colors. They equal the configured title/artist
+    // colors except while the AI extractor is resolving (cache miss), when both
+    // switch to `decodeEffect.processingColor` and the header scrambles in it,
+    // then settle back to the normal color on the resolved text (#57).
+    @Published public private(set) var titleColor: ColorStyle = .solid("#FFFFFFD9")
+    @Published public private(set) var artistColor: ColorStyle = .solid("#FFFFFFD9")
 
     public private(set) var titleStyle: TextAppearance = .init()
     public private(set) var artistStyle: TextAppearance = .init()
@@ -27,6 +33,7 @@ public final class HeaderPresenter: ObservableObject {
     private var titleTarget: String?
     private var artistTarget: String?
     private var artworkData: Data?
+    private var processingColor: ColorStyle = .solid("#4ADE80FF")
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
@@ -38,6 +45,9 @@ public final class HeaderPresenter: ObservableObject {
         let style = interactor.textLayout
         titleStyle = style.title
         artistStyle = style.artist
+        titleColor = style.title.color
+        artistColor = style.artist.color
+        processingColor = config.processingColor
         artworkSize = interactor.artworkStyle.size
         artworkOpacity = interactor.artworkStyle.opacity
         titleEffect = DecodeEffectState(config: config)
@@ -67,8 +77,12 @@ public final class HeaderPresenter: ObservableObject {
 
 extension HeaderPresenter {
     private func receive(_ update: TrackUpdate) {
-        revealTitle(update.title)
-        revealArtist(update.artist)
+        guard update.aiResolving else {
+            revealTitle(update.title)
+            revealArtist(update.artist)
+            return
+        }
+        startProcessing(title: update.title, artist: update.artist)
     }
 
     private func receiveArtwork(_ data: Data?) {
@@ -78,6 +92,7 @@ extension HeaderPresenter {
     }
 
     private func revealTitle(_ text: String?) {
+        titleColor = titleStyle.color
         guard let text else {
             titleTarget = nil
             titlePhase = .idle
@@ -97,6 +112,7 @@ extension HeaderPresenter {
     }
 
     private func revealArtist(_ text: String?) {
+        artistColor = artistStyle.color
         guard let text else {
             artistTarget = nil
             artistPhase = .idle
@@ -113,5 +129,38 @@ extension HeaderPresenter {
         effect.decode(to: text) { [weak self] in
             self?.artistPhase = .revealed
         }
+    }
+}
+
+extension HeaderPresenter {
+    /// Switches the header into the AI-processing state: both fields scramble
+    /// indefinitely in `processingColor` until the resolved update arrives and
+    /// `revealTitle` / `revealArtist` settle them. `*Target` is cleared so the
+    /// settle is never deduped away even when the AI result equals the raw text.
+    private func startProcessing(title: String?, artist: String?) {
+        startProcessingTitle(title)
+        startProcessingArtist(artist)
+    }
+
+    private func startProcessingTitle(_ text: String?) {
+        guard let effect = titleEffect, let text, !text.isEmpty else { return }
+        titleTarget = nil
+        titleColor = processingColor
+        titlePhase = .revealing
+        effect.onUpdate = { [weak self] displayText in
+            self?.displayTitle = displayText
+        }
+        effect.startLoading(placeholderLength: text.count)
+    }
+
+    private func startProcessingArtist(_ text: String?) {
+        guard let effect = artistEffect, let text, !text.isEmpty else { return }
+        artistTarget = nil
+        artistColor = processingColor
+        artistPhase = .revealing
+        effect.onUpdate = { [weak self] displayText in
+            self?.displayArtist = displayText
+        }
+        effect.startLoading(placeholderLength: text.count)
     }
 }
