@@ -17,6 +17,18 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var existingConfigPath: String? { nil }
 }
 
+private final class CountingScreenProvider: ScreenProvider, @unchecked Sendable {
+    var screens: [ScreenInfo] = []
+    var mainScreen: ScreenInfo? = nil
+    var occupancyHandler: @Sendable (ScreenInfo) -> Double = { _ in 0 }
+    private(set) var occupancyCallCount = 0
+
+    func windowOccupancy(for screen: ScreenInfo) -> Double {
+        occupancyCallCount += 1
+        return occupancyHandler(screen)
+    }
+}
+
 private struct StubScreenProvider: ScreenProvider {
     var screens: [ScreenInfo] = []
     var mainScreen: ScreenInfo? = nil
@@ -245,6 +257,25 @@ struct ScreenInteractorImplTests {
             }
             let layout = interactor.resolveLayout()
             #expect(layout.windowFrame == smallScreen.frame)
+        }
+
+        @Test(".vacant calls windowOccupancy exactly N times for N screens (regression: #279)")
+        func vacantOccupancyCallCount() {
+            let provider = CountingScreenProvider()
+            provider.screens = twoScreens
+            provider.occupancyHandler = { $0.frame == largeScreen.frame ? 0.7 : 0.1 }
+
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(style: AppStyle(screen: .vacant))
+                $0.screenProvider = provider
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            _ = interactor.resolveLayout()
+
+            // CGWindowListCopyWindowInfo must be called exactly N times (once per screen),
+            // not 2(N-1) times as with Array.min(by:) calling the comparator twice per comparison.
+            #expect(provider.occupancyCallCount == twoScreens.count)
         }
 
         @Test("screenDebounce reflects config value")
