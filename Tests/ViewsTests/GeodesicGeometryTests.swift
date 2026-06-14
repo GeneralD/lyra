@@ -17,6 +17,14 @@ struct GeodesicGeometryTests {
             .squareRoot()
     }
 
+    /// Quantized coordinate key so the same centroid (reused by value across
+    /// several struts) collapses to one identity. The 80 centroids are ~0.36
+    /// apart on the unit sphere, far above the 1e-6 rounding floor, so distinct
+    /// vertices never collide.
+    private func key(_ v: Vertex3D) -> [Int] {
+        [v.x, v.y, v.z].map { Int(($0 * 1_000_000).rounded()) }
+    }
+
     @Test("dual of the freq-2 icosphere has exactly 120 edges")
     func edgeCount() {
         // 80 triangles → 120 manifold edges → 120 dual struts. Any other count
@@ -37,5 +45,20 @@ struct GeodesicGeometryTests {
         for (a, b) in GeodesicGeometry.edges {
             #expect(distance(a, b) > 1e-6)
         }
+    }
+
+    @Test("struts form a closed trivalent cage — 80 hubs, each of degree 3")
+    func trivalentCage() {
+        // Each strut endpoint is the centroid of one of the 80 icosphere
+        // triangles, i.e. a vertex of the Goldberg dual. A closed manifold
+        // makes every triangle share all 3 of its edges, so each centroid is
+        // trivalent. 80 hubs × 3 / 2 = 120 struts — consistent with edgeCount.
+        // A broken face list or non-manifold subdivision would drop a hub or
+        // skew a degree, which a raw edge count alone can miss.
+        let degree = GeodesicGeometry.edges
+            .flatMap { [key($0.0), key($0.1)] }
+            .reduce(into: [[Int]: Int]()) { $0[$1, default: 0] += 1 }
+        #expect(degree.count == 80)
+        #expect(degree.values.allSatisfy { $0 == 3 })
     }
 }
