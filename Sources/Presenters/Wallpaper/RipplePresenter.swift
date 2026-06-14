@@ -88,27 +88,29 @@ public final class RipplePresenter: ObservableObject {
         guard config.enabled else { return }
         // Global mouse-monitor callbacks are delivered on the main thread, so we
         // run synchronously via `assumeIsolated` instead of hopping through a
-        // `Task` per event. This lets off-screen and throttled events bail out
-        // without ever allocating a Task, capping per-event cost during rapid
-        // mouse motion (#271).
+        // `Task` per event. Off-screen and throttled events bail out inside
+        // `processMouseMove` without further work, capping per-event cost during
+        // rapid mouse motion (#271).
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            MainActor.assumeIsolated { self?.processGlobalMouseMove() }
+            MainActor.assumeIsolated { self?.processMouseMove() }
         }
     }
 
-    private func processGlobalMouseMove() {
-        let location = NSEvent.mouseLocation
+    /// Applies the screen-exclusion filter and the ~30 Hz throttle to one
+    /// mouse-move sample before forwarding it to `handleMouseLocation` (#271).
+    /// The defaults read the live cursor/clock for the global monitor; tests
+    /// inject deterministic values, since real samples cannot be simulated.
+    func processMouseMove(at location: CGPoint = NSEvent.mouseLocation, time: CFTimeInterval = CACurrentMediaTime()) {
         // Movement outside the overlay screen never spawns a ripple — reset the
-        // hover flag and bail before touching ripple state (#271).
+        // hover flag and bail before touching ripple state.
         guard screenRect.contains(location) else {
             mouseInScreen = false
             return
         }
         // Cap ripple processing to ~30 Hz so rapid in-screen motion does not
-        // redraw the ripple layer on every event (#271).
-        let now = CACurrentMediaTime()
-        guard now - lastMouseMoveTime >= 0.033 else { return }
-        lastMouseMoveTime = now
+        // redraw the ripple layer on every event.
+        guard time - lastMouseMoveTime >= 0.033 else { return }
+        lastMouseMoveTime = time
         handleMouseLocation(location)
     }
 
