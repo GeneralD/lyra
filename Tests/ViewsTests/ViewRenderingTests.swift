@@ -104,9 +104,9 @@ struct HeaderViewRenderingTests {
         } operation: {
             HeaderPresenter()
         }
-        // Don't call start() — titleState stays .idle
+        // Don't call start() — titlePhase stays .idle
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
-        #expect(presenter.titleState == .idle)
+        #expect(presenter.titlePhase == .idle)
     }
 
     @Test("artwork hidden when opacity is 0")

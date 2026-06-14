@@ -5,6 +5,13 @@ import Foundation
 
 @MainActor
 public final class LyricsPresenter: ObservableObject {
+    // `lyricsState`'s payload is the source-of-truth lyrics content, not a
+    // display duplicate: `columns(in:)` reads `lyricsState.value` and
+    // `updateActiveLineTick()` matches `.success(.timed(...))` to lay out and
+    // highlight lines. Unlike HeaderPresenter's removed `titleState` — whose
+    // payload only mirrored `displayTitle` as a dedup key — this payload is
+    // genuinely consumed, so it stays public. A finer `lyricsContent` split is
+    // out of scope (#275).
     @Published public private(set) var lyricsState: FetchState<LyricsContent> = .idle
     @Published public private(set) var displayLyricLines: [String] = []
     @Published public private(set) var activeLineIndex: Int?
