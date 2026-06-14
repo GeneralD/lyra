@@ -13,7 +13,16 @@ typealias RegisterFn = @convention(c) (DispatchQueue) -> Void
 let getInfo = unsafeBitCast(sym, to: GetInfoFn.self)
 let register = unsafeBitCast(regSym, to: RegisterFn.self)
 
-@Sendable func fetchAndPrint() {
+// Distinguishes a genuine now-playing change (track switch, play/pause, seek —
+// delivered via MediaRemote notifications) from a periodic snapshot refresh
+// (`tick`). The client uses this to decide whether the artwork field is
+// authoritative for the current track. See `MediaRemoteDataSourceImpl`.
+enum Event: String {
+    case trackChange = "track-change"
+    case tick
+}
+
+@Sendable func fetchAndPrint(event: Event) {
     getInfo(DispatchQueue.main) { dict in
         guard let d = dict as? [String: Any],
             let title = d["kMRMediaRemoteNowPlayingInfoTitle"] as? String,
@@ -23,7 +32,7 @@ let register = unsafeBitCast(regSym, to: RegisterFn.self)
             fflush(stdout)
             return
         }
-        var r: [String: Any] = ["has_info": true]
+        var r: [String: Any] = ["has_info": true, "event": event.rawValue]
         r["title"] = d["kMRMediaRemoteNowPlayingInfoTitle"]
         r["artist"] = d["kMRMediaRemoteNowPlayingInfoArtist"]
         r["duration"] = d["kMRMediaRemoteNowPlayingInfoDuration"]
@@ -35,7 +44,13 @@ let register = unsafeBitCast(regSym, to: RegisterFn.self)
         // per polling interval for timestamp-less sources).
         let ts = (d["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date) ?? Date()
         r["timestamp"] = ts.timeIntervalSinceReferenceDate
-        if let art = d["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data {
+        // Artwork is large (hundreds of KB–several MB). Base64-encoding it and
+        // streaming it over IPC on every periodic `tick` pegged the daemon's CPU
+        // for no benefit while the track was unchanged (#255), so it is emitted
+        // only on `track-change`; the client reuses the last cover on ticks. A
+        // track-change that carries no artwork signals a genuinely cover-less
+        // track, so the client clears its cache.
+        if event == .trackChange, let art = d["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data {
             r["artwork_base64"] = art.base64EncodedString()
         }
         if let json = try? JSONSerialization.data(withJSONObject: r),
@@ -57,15 +72,16 @@ for name in [
 ] {
     NotificationCenter.default.addObserver(
         forName: NSNotification.Name(name), object: nil, queue: .main
-    ) { _ in fetchAndPrint() }
+    ) { _ in fetchAndPrint(event: .trackChange) }
 }
 
 // Periodic fallback for snapshot refresh (rawElapsed/timestamp/playbackRate).
 // The client (LyricsPresenter) interpolates elapsed on every DisplayLink tick
 // from this snapshot, so 3s polling is sufficient for lyric sync. pause/seek
 // is delivered immediately via `kMRMediaRemoteNowPlayingInfoDidChangeNotification`.
-Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in fetchAndPrint() }
+// Ticks omit artwork (see fetchAndPrint) — only the lightweight snapshot fields.
+Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in fetchAndPrint(event: .tick) }
 
-// Initial fetch
-fetchAndPrint()
+// Initial fetch — carries artwork so the first frame has a cover.
+fetchAndPrint(event: .trackChange)
 RunLoop.main.run()
