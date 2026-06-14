@@ -300,6 +300,46 @@ struct RipplePresenterTests {
         }
     }
 
+    @Suite("handleMouseLocation")
+    struct HandleMouseLocation {
+        @MainActor
+        @Test("rejects point outside screenRect and clears mouseInScreen (#271)")
+        func rejectsOutsidePoint() {
+            let screenRect = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: screenRect)
+                presenter.start()
+                // Inject a point inside first to set mouseInScreen = true
+                presenter.handleMouseLocation(CGPoint(x: 100, y: 100))
+                // Now inject a point outside — mouseInScreen must flip back to false
+                presenter.handleMouseLocation(CGPoint(x: 2000, y: 2000))
+                // idle() should not spawn a ripple since mouseInScreen is false
+                let countBefore = presenter.rippleState?.ripples.count ?? 0
+                presenter.idle()
+                let countAfter = presenter.rippleState?.ripples.count ?? 0
+                #expect(countAfter == countBefore)
+            }
+        }
+
+        @MainActor
+        @Test("accepts point inside screenRect and spawns ripple (#271)")
+        func acceptsInsidePoint() {
+            let screenRect = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: screenRect)
+                presenter.start()
+                presenter.handleMouseLocation(CGPoint(x: 960, y: 540))
+                #expect((presenter.rippleState?.ripples.count ?? 0) > 0)
+            }
+        }
+    }
+
     @Suite("isAnimating")
     struct IsAnimating {
         @MainActor

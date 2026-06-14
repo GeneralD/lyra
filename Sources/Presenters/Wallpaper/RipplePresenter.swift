@@ -1,4 +1,5 @@
 import AppKit
+import CoreFoundation
 import Dependencies
 import Domain
 import Foundation
@@ -10,6 +11,9 @@ public final class RipplePresenter: ObservableObject {
     private var screenRect: CGRect
     private var mouseInScreen = false
     private var mouseMonitor: Any?
+    /// Timestamp of the last `Task` dispatched from the global mouse monitor.
+    /// Compared using `CACurrentMediaTime()` to throttle Task creation.
+    private var lastMouseTaskTime: CFTimeInterval = 0
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
@@ -83,9 +87,21 @@ public final class RipplePresenter: ObservableObject {
 
         guard config.enabled else { return }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            Task { @MainActor in
+            guard self != nil else { return }
+            // Capture location on the callback thread before hopping to MainActor.
+            let location = NSEvent.mouseLocation
+            // Capture current time for throttle check inside the Task.
+            let callTime = CACurrentMediaTime()
+            Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.handleMouseLocation(NSEvent.mouseLocation)
+                // Throttle: skip events arriving faster than 33 ms (~30 Hz) to
+                // cap Task-creation overhead when the mouse moves rapidly (#271).
+                guard callTime - lastMouseTaskTime >= 0.033 else { return }
+                lastMouseTaskTime = callTime
+                // Reject events outside the overlay screen to avoid unnecessary
+                // ripple work on mouse movement elsewhere (#271).
+                guard screenRect.contains(location) else { return }
+                handleMouseLocation(location)
             }
         }
     }
