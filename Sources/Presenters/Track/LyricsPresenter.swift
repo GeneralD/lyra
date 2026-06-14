@@ -20,11 +20,14 @@ public final class LyricsPresenter: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
-    @Dependency(\.date.now) private var now
+    private var dateNow: @Sendable () -> Date = { Date() }
 
     public init() {}
 
     public func start() {
+        @Dependency(\.date) var date
+        dateNow = { date.now }
+
         let layout = interactor.textLayout
         decodeConfig = layout.decodeEffect
         lyricStyle = layout.lyric
@@ -110,7 +113,7 @@ public final class LyricsPresenter: ObservableObject {
     public func updateActiveLineTick() {
         guard case .success(.timed(let lines)) = lyricsState else { return }
         guard latestPlaybackRate != 0 else { return }
-        let index = interpolatedElapsed.flatMap { elapsed in lines.lastIndex { $0.time <= elapsed } }
+        let index = interpolatedElapsed.flatMap { elapsed in resolvedLineIndex(in: lines, elapsed: elapsed) }
         guard index != activeLineIndex else { return }
         activeLineIndex = index
     }
@@ -118,7 +121,24 @@ public final class LyricsPresenter: ObservableObject {
     private var interpolatedElapsed: TimeInterval? {
         guard let base = latestRawElapsed else { return nil }
         guard let ts = latestTimestamp else { return base }
-        return base + latestPlaybackRate * now.timeIntervalSince(ts)
+        return base + latestPlaybackRate * dateNow().timeIntervalSince(ts)
+    }
+
+    /// Incremental search: starts from the cached `activeLineIndex` and advances or retreats
+    /// by at most a few steps per tick. O(1) for normal playback; O(N) worst case on seek.
+    private func resolvedLineIndex(in lines: [LyricLine], elapsed: TimeInterval) -> Int? {
+        guard !lines.isEmpty, lines[0].time <= elapsed else { return nil }
+        let from = min(activeLineIndex ?? 0, lines.count - 1)
+        guard lines[from].time <= elapsed else {
+            // Seek back: scan backward from the cached position
+            var i = from - 1
+            while i > 0, lines[i].time > elapsed { i -= 1 }
+            return lines[i].time <= elapsed ? i : nil
+        }
+        // Forward scan (common case: 0–1 iterations)
+        var i = from
+        while i + 1 < lines.count, lines[i + 1].time <= elapsed { i += 1 }
+        return i
     }
 }
 

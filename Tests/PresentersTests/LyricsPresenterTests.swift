@@ -294,6 +294,91 @@ struct LyricsPresenterTests {
         }
 
         @MainActor
+        @Test("seek back updates active line to an earlier line (#272)")
+        func seekBackUpdatesActiveLine() async throws {
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "Line A"),
+                .init(time: 5, text: "Line B"),
+                .init(time: 10, text: "Line C"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+                await waitForLyricsSuccess(presenter)
+
+                // Advance to Line C (index 2)
+                positionSubject.send(PlaybackPosition(rawElapsed: 12, timestamp: nil, playbackRate: 1.0))
+                let advanceDeadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < advanceDeadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 2 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(presenter.activeLineIndex == 2)
+
+                // Seek back to Line A (index 0)
+                positionSubject.send(PlaybackPosition(rawElapsed: 3, timestamp: nil, playbackRate: 1.0))
+                let seekDeadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < seekDeadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 0 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(presenter.activeLineIndex == 0)
+            }
+        }
+
+        @MainActor
+        @Test("advances multiple lines in a single tick (#272)")
+        func advancesMultipleLinesInOneTick() async throws {
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "A"),
+                .init(time: 2, text: "B"),
+                .init(time: 4, text: "C"),
+                .init(time: 6, text: "D"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+                await waitForLyricsSuccess(presenter)
+
+                // Jump directly to elapsed=7 — should land on Line D (index 3)
+                positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
+                let deadline = ContinuousClock.now + .seconds(3)
+                while ContinuousClock.now < deadline {
+                    presenter.updateActiveLineTick()
+                    if presenter.activeLineIndex == 3 { break }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(presenter.activeLineIndex == 3)
+            }
+        }
+
+        @MainActor
         @Test("falls back to rawElapsed when timestamp is nil")
         func fallsBackWhenTimestampMissing() async throws {
             let trackSubject = PassthroughSubject<TrackUpdate, Never>()
