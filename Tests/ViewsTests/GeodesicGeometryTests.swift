@@ -17,12 +17,19 @@ struct GeodesicGeometryTests {
             .squareRoot()
     }
 
+    private struct QuantizedVertex: Hashable {
+        let x, y, z: Int
+    }
+
     /// Quantized coordinate key so the same centroid (reused by value across
     /// several struts) collapses to one identity. The 80 centroids are ~0.36
     /// apart on the unit sphere, far above the 1e-6 rounding floor, so distinct
     /// vertices never collide.
-    private func key(_ v: Vertex3D) -> [Int] {
-        [v.x, v.y, v.z].map { Int(($0 * 1_000_000).rounded()) }
+    private func key(_ v: Vertex3D) -> QuantizedVertex {
+        QuantizedVertex(
+            x: Int((v.x * 1_000_000).rounded()),
+            y: Int((v.y * 1_000_000).rounded()),
+            z: Int((v.z * 1_000_000).rounded()))
     }
 
     @Test("dual of the freq-2 icosphere has exactly 120 edges")
@@ -56,8 +63,10 @@ struct GeodesicGeometryTests {
         // A broken face list or non-manifold subdivision would drop a hub or
         // skew a degree, which a raw edge count alone can miss.
         let degree = GeodesicGeometry.edges
-            .flatMap { [key($0.0), key($0.1)] }
-            .reduce(into: [[Int]: Int]()) { $0[$1, default: 0] += 1 }
+            .reduce(into: [QuantizedVertex: Int]()) { counts, edge in
+                counts[key(edge.0), default: 0] += 1
+                counts[key(edge.1), default: 0] += 1
+            }
         #expect(degree.count == 80)
         #expect(degree.values.allSatisfy { $0 == 3 })
     }
