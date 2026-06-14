@@ -86,14 +86,21 @@ public final class RipplePresenter: ObservableObject {
         rippleState = RippleState(config: config)
 
         guard config.enabled else { return }
-        // Global mouse-monitor callbacks are delivered on the main thread, so we
-        // run synchronously via `assumeIsolated` instead of hopping through a
-        // `Task` per event. Off-screen and throttled events bail out inside
-        // `processMouseMove` without further work, capping per-event cost during
-        // rapid mouse motion (#271).
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            MainActor.assumeIsolated { self?.processMouseMove() }
+            self?.handleGlobalMouseMove()
         }
+    }
+
+    /// Bridges a global mouse-move callback onto the MainActor and forwards it
+    /// to the throttled handler. Global-monitor callbacks are delivered on the
+    /// main thread, so `assumeIsolated` runs synchronously instead of hopping
+    /// through a `Task` per event; off-screen and throttled samples bail out
+    /// inside `processMouseMove` without further work, capping per-event cost
+    /// during rapid motion (#271). Split out from the monitor closure so the
+    /// main-actor hop is unit-testable — the global monitor itself cannot be
+    /// fired from a test.
+    nonisolated func handleGlobalMouseMove() {
+        MainActor.assumeIsolated { processMouseMove() }
     }
 
     /// Applies the screen-exclusion filter and the ~30 Hz throttle to one

@@ -361,6 +361,27 @@ struct RipplePresenterTests {
         }
     }
 
+    @Suite("handleGlobalMouseMove")
+    struct HandleGlobalMouseMove {
+        @MainActor
+        @Test("hops onto the main actor and applies screen exclusion (#271)")
+        func bridgesMonitorCallback() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                // A zero screenRect can never contain the live cursor, so the
+                // bridged call must run synchronously on the main actor and exit
+                // via the exclusion guard without spawning a ripple.
+                let presenter = RipplePresenter(screenRect: .zero)
+                presenter.start()
+                presenter.handleGlobalMouseMove()
+                #expect(presenter.rippleState?.ripples.isEmpty == true)
+                #expect(!presenter.isAnimating)
+            }
+        }
+    }
+
     @Suite("isAnimating")
     struct IsAnimating {
         @MainActor
