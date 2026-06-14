@@ -46,7 +46,9 @@ extension MediaRemoteDataSourceImpl: MediaRemoteDataSource {
             NowPlaying(
                 title: json["title"] as? String,
                 artist: json["artist"] as? String,
-                artworkData: artworkData(from: json["artwork_base64"] as? String),
+                artworkData: artworkData(
+                    base64: json["artwork_base64"] as? String,
+                    isTrackChange: (json["event"] as? String) == HelperEvent.trackChange.rawValue),
                 duration: json["duration"] as? Double,
                 rawElapsed: json["elapsed"] as? Double,
                 playbackRate: json["rate"] as? Double ?? 1.0,
@@ -98,19 +100,36 @@ extension MediaRemoteDataSourceImpl {
         state.iterator = nextIterator
     }
 
-    /// Decodes the artwork base64 payload, reusing the previous result while the
-    /// payload is unchanged. The helper re-broadcasts the full now-playing payload
-    /// on every event, so without memoization the (potentially megabyte-scale)
-    /// artwork would be re-decoded on each elapsed-time tick (#270).
-    private func artworkData(from base64: String?) -> Data? {
-        guard let base64 else { return nil }
+    /// Resolves the artwork for one payload, reusing the cached cover whenever the
+    /// helper omits it. The helper sends `artwork_base64` only on `track-change`
+    /// events; periodic `tick`s drop it to avoid re-base64-encoding the
+    /// (potentially megabyte-scale) image every interval (#255). Decoding is also
+    /// memoized so an unchanged base64 is decoded only once (#270).
+    private func artworkData(base64: String?, isTrackChange: Bool) -> Data? {
         state.lock.lock()
         defer { state.lock.unlock() }
-        if state.lastArtworkBase64 == base64 { return state.lastArtworkData }
+        guard let base64 else {
+            // No artwork field. On a tick the cover is unchanged — reuse the
+            // cache. On a track-change it means the new track genuinely has no
+            // cover, so drop the stale one instead of showing the previous track's.
+            guard isTrackChange else { return state.lastArtworkData }
+            state.clearArtwork()
+            return nil
+        }
+        guard state.lastArtworkBase64 != base64 else { return state.lastArtworkData }
         let decoded = decodeBase64(base64)
         state.lastArtworkBase64 = base64
         state.lastArtworkData = decoded
         return decoded
+    }
+}
+
+extension MediaRemoteDataSourceImpl {
+    /// Wire-protocol event tag emitted by `media-remote-helper.swift`. Only
+    /// `track-change` payloads carry artwork; `tick` payloads omit it (#255).
+    fileprivate enum HelperEvent: String {
+        case trackChange = "track-change"
+        case tick
     }
 }
 
@@ -120,4 +139,10 @@ private final class StreamStateBox: @unchecked Sendable {
     var isPolling = false
     var lastArtworkBase64: String?
     var lastArtworkData: Data?
+
+    /// Drops the cached cover. The caller must already hold `lock`.
+    func clearArtwork() {
+        lastArtworkBase64 = nil
+        lastArtworkData = nil
+    }
 }

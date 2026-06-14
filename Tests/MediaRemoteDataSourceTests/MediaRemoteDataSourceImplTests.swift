@@ -232,6 +232,96 @@ struct MediaRemoteDataSourceImplTests {
         }
     }
 
+    @Test("tick payload without artwork reuses the last track-change cover (#255)")
+    func tickReusesLastArtwork() async throws {
+        let artwork = Data("cover".utf8).base64EncodedString()
+        let gateway = StreamingGateway(streamPlans: [
+            [
+                Self.jsonLine(
+                    title: "Song", artist: "Artist", hasInfo: true, artworkBase64: artwork,
+                    event: "track-change"),
+                Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true, event: "tick"),
+            ]
+        ])
+        let decoder = CountingDecoder()
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let artworks = [await dataSource.poll(), await dataSource.poll()].map {
+                result -> Data? in
+                guard case .info(let nowPlaying) = result else {
+                    Issue.record("Expected .info, got \(result)")
+                    return nil
+                }
+                return nowPlaying.artworkData
+            }
+
+            // The tick omits artwork, so the cached cover is reused — and decoded
+            // only once.
+            #expect(artworks == [Data("cover".utf8), Data("cover".utf8)])
+            #expect(decoder.count == 1)
+        }
+    }
+
+    @Test("track-change payload without artwork clears the cached cover (#255)")
+    func trackChangeWithoutArtworkClearsCache() async throws {
+        let artwork = Data("cover".utf8).base64EncodedString()
+        let gateway = StreamingGateway(streamPlans: [
+            [
+                Self.jsonLine(
+                    title: "First", artist: "Artist", hasInfo: true, artworkBase64: artwork,
+                    event: "track-change"),
+                Self.jsonLine(title: "Second", artist: "Artist", hasInfo: true, event: "track-change"),
+                Self.jsonLine(title: "Second", artist: "Artist", hasInfo: true, event: "tick"),
+            ]
+        ])
+        let decoder = CountingDecoder()
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let artworks = [
+                await dataSource.poll(), await dataSource.poll(), await dataSource.poll(),
+            ].map { result -> Data? in
+                guard case .info(let nowPlaying) = result else {
+                    Issue.record("Expected .info, got \(result)")
+                    return nil
+                }
+                return nowPlaying.artworkData
+            }
+
+            // The cover-less track-change drops the cache, and the following tick
+            // has nothing to reuse.
+            #expect(artworks == [Data("cover".utf8), nil, nil])
+            #expect(decoder.count == 1)
+        }
+    }
+
+    @Test("tick before any track-change yields no artwork (#255)")
+    func tickBeforeAnyArtworkYieldsNil() async throws {
+        let gateway = StreamingGateway(streamPlans: [
+            [Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true, event: "tick")]
+        ])
+        let decoder = CountingDecoder()
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let result = await dataSource.poll()
+
+            guard case .info(let nowPlaying) = result else {
+                Issue.record("Expected .info, got \(result)")
+                return
+            }
+            #expect(nowPlaying.artworkData == nil)
+            #expect(decoder.count == 0)
+        }
+    }
+
     @Test("poll spawns the helper via the Apple-signed swift interpreter")
     func pollInvokesInterpretMode() async throws {
         let gateway = StreamingGateway(streamPlans: [
@@ -261,7 +351,8 @@ struct MediaRemoteDataSourceImplTests {
 
 extension MediaRemoteDataSourceImplTests {
     fileprivate static func jsonLine(
-        title: String, artist: String, hasInfo: Bool, artworkBase64: String? = nil
+        title: String, artist: String, hasInfo: Bool, artworkBase64: String? = nil,
+        event: String? = nil
     ) -> String {
         let payload: [String: Any] = [
             "has_info": hasInfo,
@@ -272,12 +363,9 @@ extension MediaRemoteDataSourceImplTests {
             "rate": 1.0,
             "timestamp": 10.0,
         ]
-        let payloadWithArtwork = artworkBase64.map {
-            payload.merging(["artwork_base64": $0]) { _, new in new }
-        }
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payloadWithArtwork ?? payload)
-        else { return "" }
+        .merging(artworkBase64.map { ["artwork_base64": $0] } ?? [:]) { _, new in new }
+        .merging(event.map { ["event": $0] } ?? [:]) { _, new in new }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
 }
