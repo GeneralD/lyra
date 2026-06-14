@@ -63,6 +63,19 @@ struct MusicBrainzHealthCheckTests {
         #expect(result.latency != nil)
     }
 
+    @Test("healthCheck reports response-less PapyrusError via its message")
+    func healthCheckPapyrusErrorWithoutResponse() async {
+        let check = MusicBrainzHealthCheck {
+            throw PapyrusError("connection lost")
+        }
+
+        let result = await check.healthCheck()
+
+        #expect(result.status == .fail)
+        #expect(result.detail == "connection lost")
+        #expect(result.latency != nil)
+    }
+
     @Test("healthCheck reports request errors")
     func healthCheckError() async {
         let check = MusicBrainzHealthCheck {
