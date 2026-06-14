@@ -294,6 +294,56 @@ struct LyricsPresenterTests {
         }
 
         @MainActor
+        @Test("captures the injected date generator at init, not at start (#272)")
+        func capturesDateGeneratorAtInit() async throws {
+            let fixedNow = Date(timeIntervalSinceReferenceDate: 1_000_000)
+            let trackSubject = PassthroughSubject<TrackUpdate, Never>()
+            let positionSubject = PassthroughSubject<PlaybackPosition, Never>()
+            let lines: [LyricLine] = [
+                .init(time: 0, text: "Line A"),
+                .init(time: 5, text: "Line B"),
+                .init(time: 10, text: "Line C"),
+            ]
+            let content = LyricsContent.timed(lines)
+
+            // Construct the presenter inside the dependency scope so the date
+            // generator is captured here. `start()` is deliberately called
+            // OUTSIDE the scope below: if the generator were resolved in
+            // `start()` it would fall back to the live clock and the
+            // fixed-now interpolation would be wrong.
+            let presenter = withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: trackSubject.eraseToAnyPublisher(),
+                    playbackPositionPublisher: positionSubject.eraseToAnyPublisher(),
+                    textLayout: TextLayout(decodeEffect: .init(duration: 0))
+                )
+                $0.date = .constant(fixedNow)
+            } operation: {
+                LyricsPresenter()
+            }
+
+            presenter.start()
+
+            trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+            await waitForLyricsSuccess(presenter)
+
+            // Snapshot from 7s ago at the captured fixedNow → 7.0 → Line B.
+            positionSubject.send(
+                PlaybackPosition(
+                    rawElapsed: 0,
+                    timestamp: fixedNow.addingTimeInterval(-7),
+                    playbackRate: 1.0))
+
+            let deadline = ContinuousClock.now + .seconds(3)
+            while ContinuousClock.now < deadline {
+                presenter.updateActiveLineTick()
+                if presenter.activeLineIndex == 1 { break }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(presenter.activeLineIndex == 1)
+        }
+
+        @MainActor
         @Test("seek back updates active line to an earlier line (#272)")
         func seekBackUpdatesActiveLine() async throws {
             let trackSubject = PassthroughSubject<TrackUpdate, Never>()

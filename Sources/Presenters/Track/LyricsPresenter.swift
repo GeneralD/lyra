@@ -20,14 +20,16 @@ public final class LyricsPresenter: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
-    private var dateNow: @Sendable () -> Date = { Date() }
+    // Resolved against the dependency context captured at construction, so the
+    // injected generator's lifetime matches `interactor`'s. Resolving it inside
+    // `start()` instead (as the first #272 cut did) binds to whatever context
+    // is current when start runs rather than the one that built this presenter
+    // (#272 review).
+    @Dependency(\.date) private var date
 
     public init() {}
 
     public func start() {
-        @Dependency(\.date) var date
-        dateNow = { date.now }
-
         let layout = interactor.textLayout
         decodeConfig = layout.decodeEffect
         lyricStyle = layout.lyric
@@ -121,7 +123,7 @@ public final class LyricsPresenter: ObservableObject {
     private var interpolatedElapsed: TimeInterval? {
         guard let base = latestRawElapsed else { return nil }
         guard let ts = latestTimestamp else { return base }
-        return base + latestPlaybackRate * dateNow().timeIntervalSince(ts)
+        return base + latestPlaybackRate * date.now.timeIntervalSince(ts)
     }
 
     /// Incremental search: starts from the cached `activeLineIndex` and advances or retreats
