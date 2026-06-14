@@ -300,6 +300,88 @@ struct RipplePresenterTests {
         }
     }
 
+    @Suite("processMouseMove")
+    struct ProcessMouseMove {
+        private static let screenRect = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+
+        @MainActor
+        @Test("rejects point outside screenRect and clears mouseInScreen (#271)")
+        func rejectsOutsidePoint() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: Self.screenRect)
+                presenter.start()
+                // An in-screen sample sets mouseInScreen = true and spawns a ripple.
+                presenter.processMouseMove(at: CGPoint(x: 960, y: 540), time: 1.0)
+                let spawned = presenter.rippleState?.ripples.count ?? 0
+                #expect(spawned > 0)
+                // An off-screen sample clears the hover flag without further work,
+                // so a following idle tick spawns no idle ripple.
+                presenter.processMouseMove(at: CGPoint(x: 5000, y: 5000), time: 2.0)
+                let before = presenter.rippleState?.ripples.count ?? 0
+                presenter.idle()
+                #expect((presenter.rippleState?.ripples.count ?? 0) == before)
+            }
+        }
+
+        @MainActor
+        @Test("accepts point inside screenRect and spawns ripple (#271)")
+        func acceptsInsidePoint() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: Self.screenRect)
+                presenter.start()
+                presenter.processMouseMove(at: CGPoint(x: 960, y: 540), time: 1.0)
+                #expect((presenter.rippleState?.ripples.count ?? 0) > 0)
+            }
+        }
+
+        @MainActor
+        @Test("throttles samples arriving within 33 ms (#271)")
+        func throttlesRapidSamples() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: Self.screenRect)
+                presenter.start()
+                presenter.processMouseMove(at: CGPoint(x: 100, y: 100), time: 1.0)
+                let afterFirst = presenter.rippleState?.ripples.count ?? 0
+                // Second sample only 10 ms later is dropped by the throttle.
+                presenter.processMouseMove(at: CGPoint(x: 800, y: 800), time: 1.010)
+                #expect((presenter.rippleState?.ripples.count ?? 0) == afterFirst)
+                // A sample past the 33 ms window is processed again.
+                presenter.processMouseMove(at: CGPoint(x: 800, y: 800), time: 1.050)
+                #expect((presenter.rippleState?.ripples.count ?? 0) > afterFirst)
+            }
+        }
+    }
+
+    @Suite("handleGlobalMouseMove")
+    struct HandleGlobalMouseMove {
+        @MainActor
+        @Test("hops onto the main actor and applies screen exclusion (#271)")
+        func bridgesMonitorCallback() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                // A zero screenRect can never contain the live cursor, so the
+                // bridged call must run synchronously on the main actor and exit
+                // via the exclusion guard without spawning a ripple.
+                let presenter = RipplePresenter(screenRect: .zero)
+                presenter.start()
+                presenter.handleGlobalMouseMove()
+                #expect(presenter.rippleState?.ripples.isEmpty == true)
+                #expect(!presenter.isAnimating)
+            }
+        }
+    }
+
     @Suite("isAnimating")
     struct IsAnimating {
         @MainActor
