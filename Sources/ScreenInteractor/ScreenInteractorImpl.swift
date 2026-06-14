@@ -81,7 +81,11 @@ extension ScreenInteractorImpl: ScreenInteractor {
             return screens.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
                 ?? fallback
         case .vacant:
-            return screens.min { screenProvider.windowOccupancy(for: $0) < screenProvider.windowOccupancy(for: $1) }
+            return
+                screens
+                .map { ($0, screenProvider.windowOccupancy(for: $0)) }
+                .min { $0.1 < $1.1 }
+                .map(\.0)
                 ?? fallback
         }
     }
