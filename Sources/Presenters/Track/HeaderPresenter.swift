@@ -9,8 +9,13 @@ public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var displayTitle: String = " "
     @Published public private(set) var displayArtist: String = " "
     @Published public private(set) var artworkImage: NSImage?
-    @Published public private(set) var titleState: FetchState<String> = .idle
-    @Published public private(set) var artistState: FetchState<String> = .idle
+    // Payload-less reveal lifecycle: the View gates header visibility on
+    // `titlePhase != .idle`, and tests observe the settle to `.revealed`. The
+    // target strings the decode aims at live in private `titleTarget` /
+    // `artistTarget` below — they are an internal dedup concern, not public
+    // state (#275).
+    @Published public private(set) var titlePhase: RevealPhase = .idle
+    @Published public private(set) var artistPhase: RevealPhase = .idle
 
     public private(set) var titleStyle: TextAppearance = .init()
     public private(set) var artistStyle: TextAppearance = .init()
@@ -19,6 +24,8 @@ public final class HeaderPresenter: ObservableObject {
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
+    private var titleTarget: String?
+    private var artistTarget: String?
     private var artworkData: Data?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -72,35 +79,39 @@ extension HeaderPresenter {
 
     private func revealTitle(_ text: String?) {
         guard let text else {
-            titleState = .idle
+            titleTarget = nil
+            titlePhase = .idle
             displayTitle = " "
             return
         }
         guard let effect = titleEffect else { return }
-        guard titleState.value != text else { return }
-        titleState = .revealing(text)
+        guard titleTarget != text else { return }
+        titleTarget = text
+        titlePhase = .revealing
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
         }
         effect.decode(to: text) { [weak self] in
-            self?.titleState = .success(text)
+            self?.titlePhase = .revealed
         }
     }
 
     private func revealArtist(_ text: String?) {
         guard let text else {
-            artistState = .idle
+            artistTarget = nil
+            artistPhase = .idle
             displayArtist = " "
             return
         }
         guard let effect = artistEffect else { return }
-        guard artistState.value != text else { return }
-        artistState = .revealing(text)
+        guard artistTarget != text else { return }
+        artistTarget = text
+        artistPhase = .revealing
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText
         }
         effect.decode(to: text) { [weak self] in
-            self?.artistState = .success(text)
+            self?.artistPhase = .revealed
         }
     }
 }

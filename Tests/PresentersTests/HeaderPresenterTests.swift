@@ -21,19 +21,10 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
 
 // MARK: - Helpers
 
-extension FetchState {
-    fileprivate var isSuccess: Bool {
-        switch self {
-        case .success: true
-        default: false
-        }
-    }
-}
-
 @MainActor
-private func waitForTitleSuccess(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
+private func waitForReveal(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
     let deadline = ContinuousClock.now + timeout
-    while !presenter.titleState.isSuccess || !presenter.artistState.isSuccess,
+    while presenter.titlePhase != .revealed || presenter.artistPhase != .revealed,
         ContinuousClock.now < deadline
     {
         try? await Task.sleep(for: .milliseconds(10))
@@ -105,10 +96,12 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(update)
-                await waitForTitleSuccess(presenter)
+                await waitForReveal(presenter)
 
-                #expect(presenter.titleState == .success("Hello"))
-                #expect(presenter.artistState == .success("World"))
+                #expect(presenter.displayTitle == "Hello")
+                #expect(presenter.displayArtist == "World")
+                #expect(presenter.titlePhase == .revealed)
+                #expect(presenter.artistPhase == .revealed)
             }
         }
 
@@ -128,18 +121,18 @@ struct HeaderPresenterTests {
 
                 // First send a valid track and wait for decode to complete
                 subject.send(TrackUpdate(title: "Song", artist: "Artist"))
-                await waitForTitleSuccess(presenter)
+                await waitForReveal(presenter)
 
                 // Then send an idle (nil) update
                 subject.send(TrackUpdate())
                 // Wait for idle state
                 let deadline = ContinuousClock.now + .seconds(3)
-                while !presenter.titleState.isIdle, ContinuousClock.now < deadline {
+                while presenter.titlePhase != .idle, ContinuousClock.now < deadline {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
 
-                #expect(presenter.titleState.isIdle)
-                #expect(presenter.artistState.isIdle)
+                #expect(presenter.titlePhase == .idle)
+                #expect(presenter.artistPhase == .idle)
                 #expect(presenter.displayTitle == " ")
                 #expect(presenter.displayArtist == " ")
                 #expect(presenter.artworkImage == nil)
@@ -164,15 +157,16 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(title: "Song", artist: "Artist"))
-                await waitForTitleSuccess(presenter)
-                #expect(presenter.titleState == .success("Song"))
+                await waitForReveal(presenter)
+                #expect(presenter.displayTitle == "Song")
 
                 presenter.stop()
 
                 // After stop, new emissions should not change state
                 subject.send(TrackUpdate(title: "New Song", artist: "New Artist"))
                 try? await Task.sleep(for: .milliseconds(200))
-                #expect(presenter.titleState == .success("Song"), "State should not change after stop")
+                #expect(presenter.displayTitle == "Song", "Display should not change after stop")
+                #expect(presenter.titlePhase == .revealed, "Phase should not change after stop")
             }
         }
     }

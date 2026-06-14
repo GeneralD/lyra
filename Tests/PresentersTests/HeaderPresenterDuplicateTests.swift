@@ -24,9 +24,9 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
 // MARK: - Helpers
 
 @MainActor
-private func waitForTitleSuccess(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
+private func waitForReveal(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
     let deadline = ContinuousClock.now + timeout
-    while !presenter.titleState.isSuccess || !presenter.artistState.isSuccess,
+    while presenter.titlePhase != .revealed || presenter.artistPhase != .revealed,
         ContinuousClock.now < deadline
     {
         try? await Task.sleep(for: .milliseconds(10))
@@ -40,15 +40,6 @@ private func fixtureArtworkData(color: NSColor = .red) throws -> Data {
     color.drawSwatch(in: NSRect(x: 0, y: 0, width: 1, height: 1))
     image.unlockFocus()
     return try #require(image.tiffRepresentation)
-}
-
-extension FetchState {
-    fileprivate var isSuccess: Bool {
-        switch self {
-        case .success: true
-        default: false
-        }
-    }
 }
 
 // MARK: - Tests
@@ -75,17 +66,19 @@ struct HeaderPresenterDuplicateTests {
 
                 // First send
                 subject.send(update)
-                await waitForTitleSuccess(presenter)
-                #expect(presenter.titleState == .success("Same"))
-                #expect(presenter.artistState == .success("Artist"))
+                await waitForReveal(presenter)
+                #expect(presenter.displayTitle == "Same")
+                #expect(presenter.displayArtist == "Artist")
 
                 // Second send with identical title/artist
                 subject.send(update)
                 try? await Task.sleep(for: .milliseconds(200))
 
-                // Should remain .success, not reset to .revealing
-                #expect(presenter.titleState == .success("Same"))
-                #expect(presenter.artistState == .success("Artist"))
+                // Should remain revealed, not reset to .revealing
+                #expect(presenter.titlePhase == .revealed)
+                #expect(presenter.artistPhase == .revealed)
+                #expect(presenter.displayTitle == "Same")
+                #expect(presenter.displayArtist == "Artist")
             }
         }
     }
@@ -93,7 +86,7 @@ struct HeaderPresenterDuplicateTests {
     @Suite("artwork stream")
     struct ArtworkStream {
         @MainActor
-        @Test("artwork updates without affecting titleState")
+        @Test("artwork updates without affecting title display")
         func artworkUpdatesIndependently() async throws {
             let trackSubject = PassthroughSubject<TrackUpdate, Never>()
             let artworkSubject = PassthroughSubject<Data?, Never>()
@@ -111,8 +104,8 @@ struct HeaderPresenterDuplicateTests {
 
                 // Set up title first
                 trackSubject.send(update)
-                await waitForTitleSuccess(presenter)
-                #expect(presenter.titleState == .success("Song"))
+                await waitForReveal(presenter)
+                #expect(presenter.displayTitle == "Song")
                 #expect(presenter.artworkImage == nil)
 
                 // Send artwork
@@ -124,9 +117,9 @@ struct HeaderPresenterDuplicateTests {
                 }
 
                 let cachedImage = try #require(presenter.artworkImage)
-                // Title state must remain unchanged
-                #expect(presenter.titleState == .success("Song"))
-                #expect(presenter.artistState == .success("Band"))
+                // Title display must remain unchanged
+                #expect(presenter.displayTitle == "Song")
+                #expect(presenter.displayArtist == "Band")
 
                 artworkSubject.send(imageData)
                 try? await Task.sleep(for: .milliseconds(200))
@@ -155,12 +148,12 @@ struct HeaderPresenterDuplicateTests {
                 trackSubject.send(TrackUpdate(title: "New Song", artist: "New Artist"))
                 let artData = try fixtureArtworkData()
                 artworkSubject.send(artData)
-                await waitForTitleSuccess(presenter)
+                await waitForReveal(presenter)
 
                 // Both should have settled correctly
                 let cachedImage = try #require(presenter.artworkImage)
-                #expect(presenter.titleState == .success("New Song"))
-                #expect(presenter.artistState == .success("New Artist"))
+                #expect(presenter.displayTitle == "New Song")
+                #expect(presenter.displayArtist == "New Artist")
 
                 // Now change artwork again
                 let newArtData = try fixtureArtworkData(color: .blue)
@@ -172,8 +165,8 @@ struct HeaderPresenterDuplicateTests {
 
                 #expect(presenter.artworkImage != nil)
                 #expect(presenter.artworkImage !== cachedImage)
-                // Title state still untouched
-                #expect(presenter.titleState == .success("New Song"))
+                // Title display still untouched
+                #expect(presenter.displayTitle == "New Song")
             }
         }
     }

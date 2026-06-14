@@ -14,7 +14,7 @@ public struct HeaderView: View {
     public var body: some View {
         @Dependency(\.swiftUIResolver) var resolver
 
-        if presenter.titleState != .idle {
+        if presenter.titlePhase != .idle {
             HStack(spacing: presenter.artworkOpacity > 0 ? 24 : 0) {
                 if presenter.artworkOpacity > 0 {
                     if let image = presenter.artworkImage {
