@@ -11,9 +11,9 @@ public final class RipplePresenter: ObservableObject {
     private var screenRect: CGRect
     private var mouseInScreen = false
     private var mouseMonitor: Any?
-    /// Timestamp of the last `Task` dispatched from the global mouse monitor.
-    /// Compared using `CACurrentMediaTime()` to throttle Task creation.
-    private var lastMouseTaskTime: CFTimeInterval = 0
+    /// `CACurrentMediaTime()` of the last processed mouse-move event, used to
+    /// throttle ripple work to roughly 30 Hz during rapid motion (#271).
+    private var lastMouseMoveTime: CFTimeInterval = 0
 
     @Dependency(\.wallpaperInteractor) private var interactor
 
@@ -86,24 +86,30 @@ public final class RipplePresenter: ObservableObject {
         rippleState = RippleState(config: config)
 
         guard config.enabled else { return }
+        // Global mouse-monitor callbacks are delivered on the main thread, so we
+        // run synchronously via `assumeIsolated` instead of hopping through a
+        // `Task` per event. This lets off-screen and throttled events bail out
+        // without ever allocating a Task, capping per-event cost during rapid
+        // mouse motion (#271).
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            guard self != nil else { return }
-            // Capture location on the callback thread before hopping to MainActor.
-            let location = NSEvent.mouseLocation
-            // Capture current time for throttle check inside the Task.
-            let callTime = CACurrentMediaTime()
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Throttle: skip events arriving faster than 33 ms (~30 Hz) to
-                // cap Task-creation overhead when the mouse moves rapidly (#271).
-                guard callTime - lastMouseTaskTime >= 0.033 else { return }
-                lastMouseTaskTime = callTime
-                // Reject events outside the overlay screen to avoid unnecessary
-                // ripple work on mouse movement elsewhere (#271).
-                guard screenRect.contains(location) else { return }
-                handleMouseLocation(location)
-            }
+            MainActor.assumeIsolated { self?.processGlobalMouseMove() }
         }
+    }
+
+    private func processGlobalMouseMove() {
+        let location = NSEvent.mouseLocation
+        // Movement outside the overlay screen never spawns a ripple — reset the
+        // hover flag and bail before touching ripple state (#271).
+        guard screenRect.contains(location) else {
+            mouseInScreen = false
+            return
+        }
+        // Cap ripple processing to ~30 Hz so rapid in-screen motion does not
+        // redraw the ripple layer on every event (#271).
+        let now = CACurrentMediaTime()
+        guard now - lastMouseMoveTime >= 0.033 else { return }
+        lastMouseMoveTime = now
+        handleMouseLocation(location)
     }
 
     public func stop() {
