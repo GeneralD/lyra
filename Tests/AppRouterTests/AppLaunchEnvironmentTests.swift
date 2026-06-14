@@ -430,6 +430,50 @@ struct AppRouterTests {
         #expect(sameLayout(window.appliedLayouts.last, updatedLayout))
     }
 
+    @Test("frame scheduler tick runs through ripple-enabled callback branch (#278)")
+    func frameTickWithRippleEnabled() async {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let wallpaperInteractor = FixtureWallpaperInteractor(
+            wallpaperState: .init(items: []),
+            rippleConfig: .init(enabled: true)
+        )
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = MutableScreenInteractor(
+                    layout: ScreenLayout(
+                        windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        screenOrigin: .zero
+                    )
+                )
+                dependencies.trackInteractor = FixtureTrackInteractor(
+                    title: "Song", artist: "Artist", lyrics: ["L1"]
+                )
+                dependencies.wallpaperInteractor = wallpaperInteractor
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        defer { router.stop() }
+
+        let ripplePresenter: RipplePresenter? = value(named: "ripplePresenter", from: router)
+        #expect(ripplePresenter?.isEnabled == true)
+
+        driver.fire()
+
+        #expect(ripplePresenter?.rippleState != nil)
+        #expect(driver.startCallCount == 1)
+    }
+
     final class SpyWindow: OverlayWindow {
         var showCallCount = 0
         var closeCallCount = 0

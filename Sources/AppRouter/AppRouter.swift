@@ -105,10 +105,16 @@ public final class AppRouter {
                 window?.applyWallpaperScale(scale)
             }
 
-            let scheduler = frameSchedulerFactory { [weak self] in
-                self?.ripplePresenter?.idle()
-                self?.lyricsPresenter?.updateActiveLineTick()
-            }
+            let onFrame: @MainActor @Sendable () -> Void =
+                ripplePresenter.isEnabled
+                ? { @MainActor @Sendable [weak self] in
+                    self?.ripplePresenter?.idle()
+                    self?.lyricsPresenter?.updateActiveLineTick()
+                }
+                : { @MainActor @Sendable [weak self] in
+                    self?.lyricsPresenter?.updateActiveLineTick()
+                }
+            let scheduler = frameSchedulerFactory(onFrame)
             self.frameScheduler = scheduler
             scheduler.start(in: window)
         }
