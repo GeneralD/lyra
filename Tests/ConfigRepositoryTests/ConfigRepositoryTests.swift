@@ -99,6 +99,34 @@ struct ConfigRepositoryTests {
             }
         }
 
+        @Test("decode_effect processing_color flows through to DecodeEffect")
+        func decodeEffectProcessingColor() {
+            let config = makeAppConfig(text: ["decode_effect": ["processing_color": "#FF00FF"]])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.text.decodeEffect.processingColor == .solid("#FF00FFFF"))
+            }
+        }
+
+        @Test("decode_effect processing_color defaults to green when absent")
+        func decodeEffectProcessingColorDefault() {
+            let config = makeAppConfig()
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.text.decodeEffect.processingColor == .solid("#4ADE80FF"))
+            }
+        }
+
         @Test("ripple shape defaults to circle when [ripple] is absent")
         func rippleShapeDefaultsToCircle() {
             let config = makeAppConfig()
@@ -301,12 +329,14 @@ private enum StubError: Error, LocalizedError {
 private func makeAppConfig(
     wallpaper: Any? = nil,
     ai: AIConfig? = nil,
-    ripple: [String: Any]? = nil
+    ripple: [String: Any]? = nil,
+    text: [String: Any]? = nil
 ) -> AppConfig {
     var fields = [String: Any]()
     wallpaper.map { fields["wallpaper"] = $0 }
     ai.map { fields["ai"] = ["endpoint": $0.endpoint, "model": $0.model, "api_key": $0.apiKey] }
     ripple.map { fields["ripple"] = $0 }
+    text.map { fields["text"] = $0 }
     let data = try! JSONSerialization.data(withJSONObject: fields)
     return try! JSONDecoder().decode(AppConfig.self, from: data)
 }

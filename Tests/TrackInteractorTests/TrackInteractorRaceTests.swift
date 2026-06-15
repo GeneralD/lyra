@@ -29,6 +29,7 @@ private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
 private struct InstantMetadataUseCase: MetadataUseCase, Sendable {
     func resolve(track: Track) async -> Track? { nil }
     func resolveCandidates(track: Track) async -> [Track] { [] }
+    func isAIMetadataCached(track: Track) async -> Bool { true }
 }
 
 private struct StubLyricsUseCase: LyricsUseCase, Sendable {

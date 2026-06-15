@@ -16,4 +16,8 @@ extension MetadataUseCaseImpl: MetadataUseCase {
     public func resolveCandidates(track: Track) async -> [Track] {
         await repository.resolve(track: track)
     }
+
+    public func isAIMetadataCached(track: Track) async -> Bool {
+        await repository.isAIMetadataCached(track: track)
+    }
 }

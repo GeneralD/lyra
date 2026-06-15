@@ -216,6 +216,7 @@ private struct StubMetadataUseCase: MetadataUseCase {
     let handler: @Sendable (Track) async -> [Track]
     func resolve(track: Track) async -> Track? { await handler(track).first }
     func resolveCandidates(track: Track) async -> [Track] { await handler(track) }
+    func isAIMetadataCached(track: Track) async -> Bool { false }
 }
 
 private struct StubLyricsUseCase: LyricsUseCase {
