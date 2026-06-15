@@ -169,14 +169,14 @@ struct HeaderPresenterTests {
         @Test("aiResolving update scrambles both fields in processingColor without settling")
         func processingState() async {
             let subject = PassthroughSubject<TrackUpdate, Never>()
+            // An injected TestClock drives the indefinite scramble loop deterministically:
+            // the synchronous first frame renders immediately, then advancing the clock
+            // runs further frames without any real-time wait.
+            let clock = TestClock()
 
             await withDependencies {
                 $0.trackInteractor = Self.makeStub(subject)
-                // A never-advanced TestClock leaves the indefinite scramble loop
-                // suspended at its first sleep — the synchronous first frame still
-                // renders, so the sustained-state assertions hold without the loop
-                // busy-spinning on the unimplemented default clock.
-                $0.continuousClock = TestClock()
+                $0.continuousClock = clock
             } operation: {
                 let presenter = HeaderPresenter()
                 presenter.start()
@@ -192,8 +192,9 @@ struct HeaderPresenterTests {
                 #expect(presenter.displayTitle != " ")
                 #expect(presenter.displayArtist != " ")
 
-                // Sustained: the scramble never auto-settles to .revealed on its own.
-                try? await Task.sleep(for: .milliseconds(120))
+                // Sustained: advancing the clock through several scramble frames must keep
+                // the loop scrambling in the processing color — it never auto-settles.
+                await clock.advance(by: .milliseconds(300))
                 #expect(presenter.titlePhase == .revealing)
                 #expect(presenter.titleColor == Self.processing)
 
