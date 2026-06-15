@@ -26,6 +26,7 @@ self-contained; no user-global skill or rule is required to run it.
 | CPU / memory profiling (`lyra benchmark`, `sample`) | VM |
 | Screen resolution change (approximation via Dynamic Resolution) | VM — see note below |
 | `lyra healthcheck` / API smoke | VM |
+| Code signing / Info.plist binding (TCC bundle identity) | VM (`codesign -dvv`, `otool -P`) — see scenario below |
 | Display hot-plug (external monitor attach / detach) | ScreenProvider fixture + final manual smoke |
 | NSScreen topology change (`NSApplicationDidChangeScreenParameters`) | ScreenProvider fixture |
 | Visual overlay pixel verification | Host debug-build lane (`dev-verification.md`) |
@@ -100,6 +101,7 @@ $SCRIPT shutdown $VM          # graceful guest shutdown
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `LYRA_VM_SSH_HOST` | (unset) | Guest IP override — **required for Apple Virtualization backend**, where `utmctl ip-address` is unsupported. Find it via the guest's `/var/db/dhcpd_leases` or `ifconfig`. |
 | `LYRA_VM_SSH_USER` | `admin` | Guest login name |
 | `LYRA_VM_SSH_KEY` | `~/.ssh/vm_rsa` | SSH private key path |
 | `LYRA_VM_SSH_PORT` | `22` | Guest SSH port |
@@ -153,6 +155,32 @@ $SCRIPT restore $VM
 $SCRIPT shutdown $VM
 ```
 
+### Code signing / Info.plist binding (TCC bundle identity)
+
+When a change embeds an `Info.plist` (Mach-O `__TEXT,__info_plist` section) so
+TCC can key permission grants by **bundle identity** rather than executable
+path (#23), verify the binding inside the guest — a clean macOS install proves
+the result without the host's accumulated signing state.
+
+`swift build -c release` embeds the section but its ad-hoc signature leaves it
+**unbound** (`Info.plist=not bound`, `Identifier=<binary-name>`). Only an
+explicit `codesign --force --sign -` (what `make install` and CI packaging run)
+binds it — codesign then derives `Identifier` from the embedded
+`CFBundleIdentifier`.
+
+```sh
+$SCRIPT run-lyra $VM                                  # pushes the release binary
+BIN=/tmp/lyra-vm-test/lyra
+$SCRIPT exec $VM -- "otool -P $BIN"                   # section present? CFBundleIdentifier?
+$SCRIPT exec $VM -- "codesign -dvv $BIN 2>&1 | grep -E 'Identifier|Info.plist'"  # BEFORE: not bound
+$SCRIPT exec $VM -- "codesign --force --sign - $BIN && codesign -dvv $BIN 2>&1 | grep -E 'Identifier|Info.plist'"  # AFTER: entries=N
+```
+
+Expected transition: `Identifier=lyra` / `Info.plist=not bound` →
+`Identifier=com.generald.lyra` / `Info.plist entries=4`. Re-signing changes the
+cdhash, so **restart the daemon** with the bound binary and re-`capture` to
+prove it still executes and renders (no-regression).
+
 ---
 
 ## Agent rules
@@ -168,3 +196,14 @@ $SCRIPT shutdown $VM
   replace this requirement.
 - **Restore always runs.** The `restore` subcommand must run even if an
   intermediate step fails. Use `trap` in any script that calls `run-lyra`.
+- **`run-lyra` "daemon crashed at startup" can be a false negative.** The
+  harness checks `kill -0 $pid` shortly after launch, but the daemon's
+  first-launch `swift-frontend -interpret` of the MediaRemote helper takes
+  1–2 s; a slow guest can trip the check while the process is in fact alive.
+  Before trusting the `die`, confirm with `$SCRIPT exec $VM -- "pgrep -x lyra"`
+  and the daemon log — if the PID is alive, proceed.
+- **Never run two `run-lyra` concurrently.** Both build under the same
+  `.build` (SwiftPM serializes with a lock) and both stage into the guest's
+  `/tmp/lyra-drop`; the second `scp` hits `Permission denied` on the
+  half-written bundle. Let one finish, or `sudo rm -rf /tmp/lyra-drop` on the
+  guest before retrying.
