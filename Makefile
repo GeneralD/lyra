@@ -11,6 +11,10 @@ install: build
 	install -d $(PREFIX)/bin
 	install $(BUILD_DIR)/$(BINARY) $(PREFIX)/bin/$(BINARY)
 	find $(BUILD_DIR) -name '*.bundle' -exec cp -R {} $(PREFIX)/bin/ \;
+	# Bind the embedded __TEXT,__info_plist (CFBundleIdentifier) into the
+	# signature. `swift build -c release` leaves it unbound; TCC keys permission
+	# grants by bundle identity, so the binary needs a re-sign to expose it (#23).
+	codesign --force --sign - $(PREFIX)/bin/$(BINARY)
 
 uninstall:
 	rm -f $(PREFIX)/bin/$(BINARY)

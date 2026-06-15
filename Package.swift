@@ -25,6 +25,23 @@ let package = Package(
                 "AsyncRunnableCommand",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
+            ],
+            // Info.plist is embedded into the Mach-O __TEXT,__info_plist section
+            // (see linkerSettings) rather than copied as a bundle resource, so it
+            // is excluded from SwiftPM's resource processing here.
+            exclude: ["Info.plist"],
+            // Embed Info.plist so the binary carries a stable CFBundleIdentifier.
+            // TCC keys permission grants (e.g. system-audio capture for the planned
+            // spectrum analyzer, #23) by bundle identity; without an embedded plist
+            // the grant is keyed to the executable path and resets on every reinstall.
+            // The path is relative to the package root, where the linker is invoked.
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Sources/CLI/Info.plist",
+                ])
             ]
         ),
 
