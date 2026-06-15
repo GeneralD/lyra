@@ -64,6 +64,9 @@ jobs:
           STAGING="lyra-${VERSION}-macos-arm64"
           mkdir -p "$STAGING"
           cp "$BUILD_DIR/lyra" "$STAGING/"
+          # Bind the embedded __info_plist (CFBundleIdentifier) into the ad-hoc
+          # signature so TCC keys permission grants by bundle identity (#23).
+          codesign --force --sign - "$STAGING/lyra"
           find "$BUILD_DIR" -name '*.bundle' -exec cp -R {} "$STAGING/" \;
           tar czf "${STAGING}.tar.gz" "$STAGING"
           echo "ARCHIVE=${STAGING}.tar.gz" >> "$GITHUB_ENV"
@@ -89,6 +92,9 @@ jobs:
             STAGING="lyra-${VERSION}-macos-arm64"
             mkdir -p "$STAGING"
             cp "$BUILD_DIR/lyra" "$STAGING/"
+            # Bind the embedded __info_plist (CFBundleIdentifier) into the ad-hoc
+            # signature so TCC keys permission grants by bundle identity (#23).
+            codesign --force --sign - "$STAGING/lyra"
             find "$BUILD_DIR" -name '*.bundle' -exec cp -R {} "$STAGING/" \;
             tar czf "${STAGING}.tar.gz" "$STAGING"
             gh release upload "$TAG" "${STAGING}.tar.gz" --clobber
