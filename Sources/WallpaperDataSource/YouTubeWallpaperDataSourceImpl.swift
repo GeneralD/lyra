@@ -159,8 +159,7 @@ extension YouTubeWallpaperDataSourceImpl {
     private func normalizeForPlayback(at path: String, ffmpeg: String?, ffprobe: String?) async throws {
         guard let ffmpeg else { return }
 
-        let codec = await videoCodec(at: path, ffprobe: ffprobe)
-        let needsTranscode = codec.map(Self.requiresTranscode) ?? false
+        let needsTranscode = await self.needsTranscode(at: path, ffprobe: ffprobe)
         let tmpPath = path + ".normalized.mp4"
         removeItemAtPath(tmpPath)
 
@@ -177,6 +176,18 @@ extension YouTubeWallpaperDataSourceImpl {
                 : YouTubeDownloadError.remuxFailed(stderr: stderr)
         }
         replaceItemAtPath(path, tmpPath)
+    }
+
+    /// Whether the downloaded file must be hardware-transcoded to HEVC for universal playback.
+    /// Without `ffprobe` we only ever requested the natively-playable AVC stream, so a stream
+    /// copy is safe. With `ffprobe` available we transcode AV1/VP9 — and, crucially, also
+    /// transcode when codec detection itself *fails*: the `allowAnyCodec` download path may have
+    /// produced an AV1/VP9 file, and defaulting a probe failure to a stream copy would silently
+    /// leave it unplayable on pre-M3 Apple Silicon / Intel Macs, defeating the every-Mac guarantee.
+    func needsTranscode(at path: String, ffprobe: String?) async -> Bool {
+        guard ffprobe != nil else { return false }
+        let codec = await videoCodec(at: path, ffprobe: ffprobe)
+        return codec.map(Self.requiresTranscode) ?? true
     }
 
     /// The codec name of the first video stream, lowercased, or nil when ffprobe is unavailable or

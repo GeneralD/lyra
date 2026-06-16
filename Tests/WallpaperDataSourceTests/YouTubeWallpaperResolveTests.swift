@@ -214,6 +214,29 @@ struct YouTubeWallpaperResolveTests {
         }
     }
 
+    @Test("resolve transcodes when ffprobe was expected but codec detection fails")
+    func resolveTranscodesOnProbeFailure() async throws {
+        // download → ffprobe FAILS (non-zero) → must still HEVC-transcode, never stream-copy:
+        // the codec-agnostic download path may have produced an AV1/VP9 file that a copy would
+        // leave unplayable on pre-M3 / Intel Macs.
+        let runner = ProcessRunner(results: [(0, "", ""), (1, "", "probe error"), (0, "", "")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: [
+                "yt-dlp": "/usr/bin/yt-dlp", "ffmpeg": "/usr/bin/ffmpeg", "ffprobe": "/usr/bin/ffprobe",
+            ]),
+            runner: runner,
+            fileExists: true
+        )
+
+        _ = try await dataSource.resolve(location)
+        let calls = await runner.calls
+
+        #expect(calls.count == 3)
+        #expect(calls[2].executablePath == "/usr/bin/ffmpeg")
+        #expect(calls[2].arguments.contains("hevc_videotoolbox"))
+        #expect(!calls[2].arguments.contains("copy"))
+    }
+
     @Test("public init helper closures execute successfully")
     func publicInitHelpers() async throws {
         let dataSource = YouTubeWallpaperDataSourceImpl()
@@ -326,6 +349,26 @@ struct YouTubeWallpaperFormatTests {
     func videoCodecNilWithoutFfprobe() async {
         let codec = await dataSource.videoCodec(at: "/tmp/whatever.mp4", ffprobe: nil)
         #expect(codec == nil)
+    }
+
+    @Test("needsTranscode is false without ffprobe (AVC-only download is always playable)")
+    func needsTranscodeFalseWithoutFfprobe() async {
+        let needs = await dataSource.needsTranscode(at: "/tmp/whatever.mp4", ffprobe: nil)
+        #expect(needs == false)
+    }
+
+    @Test("needsTranscode is true when ffprobe was expected but the probe fails")
+    func needsTranscodeTrueOnProbeFailure() async {
+        // A probe failure in the codec-agnostic download path cannot rule out AV1/VP9, so the
+        // file must be transcoded rather than risk an unplayable stream copy.
+        let runner = ProcessRunner(results: [(1, "", "probe error")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: ["ffprobe": "/usr/bin/ffprobe"]),
+            runner: runner,
+            fileExists: true
+        )
+        let needs = await dataSource.needsTranscode(at: "/tmp/whatever.mp4", ffprobe: "/usr/bin/ffprobe")
+        #expect(needs == true)
     }
 }
 
