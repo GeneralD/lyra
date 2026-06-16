@@ -29,7 +29,7 @@ struct YouTubeWallpaperResolveTests {
 
     @Test("resolve throws downloadFailed when downloader exits non-zero")
     func resolveDownloadFailed() async {
-        let runner = ProcessRunner(results: [(1, "download failed")])
+        let runner = ProcessRunner(results: [(1, "", "download failed")])
         let dataSource = makeDataSource(
             gateway: StubGateway(executables: ["yt-dlp": "/usr/bin/yt-dlp"]),
             runner: runner,
@@ -53,7 +53,7 @@ struct YouTubeWallpaperResolveTests {
 
     @Test("resolve throws outputNotFound when downloader succeeds without file")
     func resolveOutputMissing() async {
-        let runner = ProcessRunner(results: [(0, "")])
+        let runner = ProcessRunner(results: [(0, "", "")])
         let dataSource = makeDataSource(
             gateway: StubGateway(executables: ["yt-dlp": "/usr/bin/yt-dlp"]),
             runner: runner,
@@ -75,7 +75,7 @@ struct YouTubeWallpaperResolveTests {
 
     @Test("resolve returns temp path when download succeeds and ffmpeg is unavailable")
     func resolveSuccessWithoutRemux() async throws {
-        let runner = ProcessRunner(results: [(0, "")])
+        let runner = ProcessRunner(results: [(0, "", "")])
         let dataSource = makeDataSource(
             gateway: StubGateway(executables: ["yt-dlp": "/usr/bin/yt-dlp"]),
             runner: runner,
@@ -89,11 +89,14 @@ struct YouTubeWallpaperResolveTests {
         #expect(calls.count == 1)
         #expect(calls[0].executablePath == "/usr/bin/yt-dlp")
         #expect(calls[0].arguments.contains(location.url.absoluteString))
+        // Without a transcode toolchain the AVC ceiling selector is used (natively playable).
+        #expect(calls[0].arguments.contains { $0.contains("vcodec^=avc") })
+        #expect(calls[0].arguments.contains("youtube:player_client=default"))
     }
 
     @Test("resolve uses uvx fallback when yt-dlp is missing")
     func resolveUsesUvx() async throws {
-        let runner = ProcessRunner(results: [(0, "")])
+        let runner = ProcessRunner(results: [(0, "", "")])
         let dataSource = makeDataSource(
             gateway: StubGateway(executables: ["uvx": "/usr/bin/uvx"]),
             runner: runner,
@@ -108,9 +111,10 @@ struct YouTubeWallpaperResolveTests {
         #expect(calls[0].arguments.first == "yt-dlp")
     }
 
-    @Test("resolve throws remuxFailed when ffmpeg step exits non-zero")
+    @Test("resolve throws remuxFailed when ffmpeg copy step exits non-zero")
     func resolveRemuxFailed() async {
-        let runner = ProcessRunner(results: [(0, ""), (1, "remux failed")])
+        // ffmpeg present but ffprobe absent → no transcode capability → AVC selector + stream-copy.
+        let runner = ProcessRunner(results: [(0, "", ""), (1, "", "remux failed")])
         let dataSource = makeDataSource(
             gateway: StubGateway(executables: ["yt-dlp": "/usr/bin/yt-dlp", "ffmpeg": "/usr/bin/ffmpeg"]),
             runner: runner,
@@ -134,6 +138,103 @@ struct YouTubeWallpaperResolveTests {
         #expect(calls.count == 2)
         #expect(calls[1].executablePath == "/usr/bin/ffmpeg")
         #expect(calls[1].arguments.first == "-nostdin")
+        #expect(calls[1].arguments.contains("copy"))
+    }
+
+    @Test("resolve transcodes AV1 to HEVC when ffmpeg and ffprobe are available")
+    func resolveTranscodesAV1() async throws {
+        // download → ffprobe (reports av1) → ffmpeg HEVC transcode
+        let runner = ProcessRunner(results: [(0, "", ""), (0, "av1", ""), (0, "", "")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: [
+                "yt-dlp": "/usr/bin/yt-dlp", "ffmpeg": "/usr/bin/ffmpeg", "ffprobe": "/usr/bin/ffprobe",
+            ]),
+            runner: runner,
+            fileExists: true
+        )
+
+        let result = try await dataSource.resolve(location)
+        let calls = await runner.calls
+
+        #expect(result == tempPath)
+        #expect(calls.count == 3)
+        // Download requests the highest-quality (codec-agnostic) selector — no AVC restriction.
+        #expect(!calls[0].arguments.contains { $0.contains("vcodec^=avc") })
+        // Codec probe.
+        #expect(calls[1].executablePath == "/usr/bin/ffprobe")
+        #expect(calls[1].arguments.contains("stream=codec_name"))
+        // HEVC hardware transcode.
+        #expect(calls[2].executablePath == "/usr/bin/ffmpeg")
+        #expect(calls[2].arguments.contains("hevc_videotoolbox"))
+        #expect(calls[2].arguments.contains("hvc1"))
+    }
+
+    @Test("resolve stream-copies AVC/HEVC instead of transcoding")
+    func resolveCopiesH264() async throws {
+        let runner = ProcessRunner(results: [(0, "", ""), (0, "h264", ""), (0, "", "")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: [
+                "yt-dlp": "/usr/bin/yt-dlp", "ffmpeg": "/usr/bin/ffmpeg", "ffprobe": "/usr/bin/ffprobe",
+            ]),
+            runner: runner,
+            fileExists: true
+        )
+
+        _ = try await dataSource.resolve(location)
+        let calls = await runner.calls
+
+        #expect(calls.count == 3)
+        #expect(calls[2].executablePath == "/usr/bin/ffmpeg")
+        #expect(calls[2].arguments.contains("copy"))
+        #expect(!calls[2].arguments.contains("hevc_videotoolbox"))
+    }
+
+    @Test("resolve throws transcodeFailed when the HEVC step exits non-zero")
+    func resolveTranscodeFailed() async {
+        let runner = ProcessRunner(results: [(0, "", ""), (0, "vp9", ""), (1, "", "gpu busy")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: [
+                "yt-dlp": "/usr/bin/yt-dlp", "ffmpeg": "/usr/bin/ffmpeg", "ffprobe": "/usr/bin/ffprobe",
+            ]),
+            runner: runner,
+            fileExists: true
+        )
+
+        do {
+            _ = try await dataSource.resolve(location)
+            Issue.record("Expected transcodeFailed")
+        } catch let error as YouTubeDownloadError {
+            guard case .transcodeFailed(let stderr) = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+            #expect(stderr == "gpu busy")
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test("resolve transcodes when ffprobe was expected but codec detection fails")
+    func resolveTranscodesOnProbeFailure() async throws {
+        // download → ffprobe FAILS (non-zero) → must still HEVC-transcode, never stream-copy:
+        // the codec-agnostic download path may have produced an AV1/VP9 file that a copy would
+        // leave unplayable on pre-M3 / Intel Macs.
+        let runner = ProcessRunner(results: [(0, "", ""), (1, "", "probe error"), (0, "", "")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: [
+                "yt-dlp": "/usr/bin/yt-dlp", "ffmpeg": "/usr/bin/ffmpeg", "ffprobe": "/usr/bin/ffprobe",
+            ]),
+            runner: runner,
+            fileExists: true
+        )
+
+        _ = try await dataSource.resolve(location)
+        let calls = await runner.calls
+
+        #expect(calls.count == 3)
+        #expect(calls[2].executablePath == "/usr/bin/ffmpeg")
+        #expect(calls[2].arguments.contains("hevc_videotoolbox"))
+        #expect(!calls[2].arguments.contains("copy"))
     }
 
     @Test("public init helper closures execute successfully")
@@ -166,14 +267,15 @@ struct YouTubeWallpaperResolveTests {
         #expect(fm.fileExists(atPath: originalPath))
     }
 
-    @Test("executeProcess returns status and captured stderr")
-    func executeProcessCapturesStderr() async throws {
+    @Test("executeProcess captures status, stdout, and stderr")
+    func executeProcessCapturesStreams() async throws {
         let result = try await YouTubeWallpaperDataSourceImpl.executeProcess(
             executablePath: "/bin/sh",
-            arguments: ["-c", "echo boom 1>&2; exit 7"]
+            arguments: ["-c", "echo hello; echo boom 1>&2; exit 7"]
         )
 
         #expect(result.status == 7)
+        #expect(result.stdout == "hello")
         #expect(result.stderr == "boom")
     }
 
@@ -193,6 +295,80 @@ struct YouTubeWallpaperResolveTests {
         #expect(YouTubeDownloadError.downloadFailed(status: 7, stderr: "boom").description == "yt-dlp exited with status 7\nboom")
         #expect(YouTubeDownloadError.outputNotFound.description == "yt-dlp completed but output file not found")
         #expect(YouTubeDownloadError.remuxFailed(stderr: "bad mux").description == "ffmpeg remux failed\nbad mux")
+        #expect(YouTubeDownloadError.transcodeFailed(stderr: "no gpu").description == "ffmpeg HEVC transcode failed\nno gpu")
+    }
+}
+
+@Suite("YouTubeWallpaperDataSourceImpl format selection and normalization")
+struct YouTubeWallpaperFormatTests {
+    private let dataSource = YouTubeWallpaperDataSourceImpl()
+
+    @Test("format selector keeps the AVC ceiling when transcoding is unavailable")
+    func selectorAVCWhenNoTranscode() {
+        let selector = dataSource.formatSelector(maxHeight: 2160, format: "mp4", allowAnyCodec: false)
+        #expect(selector.contains("vcodec^=avc"))
+        #expect(selector.contains("ext=mp4"))
+        #expect(selector.contains("height<=2160"))
+    }
+
+    @Test("format selector drops codec restrictions when transcoding is available")
+    func selectorAnyCodecWhenTranscode() {
+        let selector = dataSource.formatSelector(maxHeight: 2160, format: "mp4", allowAnyCodec: true)
+        #expect(!selector.contains("vcodec"))
+        #expect(!selector.contains("ext="))
+        #expect(selector.contains("bestvideo[height<=2160]"))
+    }
+
+    @Test("requiresTranscode flags only AV1 and VP9 families")
+    func requiresTranscodeMatrix() {
+        #expect(YouTubeWallpaperDataSourceImpl.requiresTranscode("av1"))
+        #expect(YouTubeWallpaperDataSourceImpl.requiresTranscode("av01"))
+        #expect(YouTubeWallpaperDataSourceImpl.requiresTranscode("vp9"))
+        #expect(YouTubeWallpaperDataSourceImpl.requiresTranscode("vp09"))
+        #expect(!YouTubeWallpaperDataSourceImpl.requiresTranscode("h264"))
+        #expect(!YouTubeWallpaperDataSourceImpl.requiresTranscode("hevc"))
+    }
+
+    @Test("ffmpeg argument builders produce playback-ready MP4 commands")
+    func ffmpegArgumentBuilders() {
+        let remux = YouTubeWallpaperDataSourceImpl.remuxArguments(input: "/in.mp4", output: "/out.mp4")
+        #expect(remux.first == "-nostdin")
+        #expect(remux.contains("copy"))
+        #expect(remux.contains("+faststart"))
+        #expect(remux.last == "/out.mp4")
+
+        let transcode = YouTubeWallpaperDataSourceImpl.transcodeArguments(input: "/in.mp4", output: "/out.mp4")
+        #expect(transcode.contains("hevc_videotoolbox"))
+        #expect(transcode.contains("hvc1"))
+        #expect(transcode.contains("-an"))
+        #expect(transcode.contains("+faststart"))
+        #expect(transcode.last == "/out.mp4")
+    }
+
+    @Test("videoCodec returns nil when ffprobe is unavailable")
+    func videoCodecNilWithoutFfprobe() async {
+        let codec = await dataSource.videoCodec(at: "/tmp/whatever.mp4", ffprobe: nil)
+        #expect(codec == nil)
+    }
+
+    @Test("needsTranscode is false without ffprobe (AVC-only download is always playable)")
+    func needsTranscodeFalseWithoutFfprobe() async {
+        let needs = await dataSource.needsTranscode(at: "/tmp/whatever.mp4", ffprobe: nil)
+        #expect(needs == false)
+    }
+
+    @Test("needsTranscode is true when ffprobe was expected but the probe fails")
+    func needsTranscodeTrueOnProbeFailure() async {
+        // A probe failure in the codec-agnostic download path cannot rule out AV1/VP9, so the
+        // file must be transcoded rather than risk an unplayable stream copy.
+        let runner = ProcessRunner(results: [(1, "", "probe error")])
+        let dataSource = makeDataSource(
+            gateway: StubGateway(executables: ["ffprobe": "/usr/bin/ffprobe"]),
+            runner: runner,
+            fileExists: true
+        )
+        let needs = await dataSource.needsTranscode(at: "/tmp/whatever.mp4", ffprobe: "/usr/bin/ffprobe")
+        #expect(needs == true)
     }
 }
 
@@ -238,7 +414,7 @@ private struct StubGateway: ProcessGateway {
 }
 
 private actor ProcessRunner {
-    typealias ResultTuple = (status: Int32, stderr: String)
+    typealias ResultTuple = (status: Int32, stdout: String, stderr: String)
 
     private(set) var calls: [(executablePath: String, arguments: [String])] = []
     private var results: [ResultTuple]
@@ -251,7 +427,7 @@ private actor ProcessRunner {
         calls.append((executablePath, arguments))
         guard !results.isEmpty else {
             Issue.record("ProcessRunner.run called more times than stubbed results for \(executablePath) \(arguments)")
-            return (status: 1, stderr: "No stubbed process result available.")
+            return (status: 1, stdout: "", stderr: "No stubbed process result available.")
         }
         return results.removeFirst()
     }

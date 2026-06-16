@@ -256,11 +256,17 @@ Remote and YouTube videos are downloaded once and cached in `~/.cache/lyra/wallp
 
 | Tool | Install | Notes |
 |---|---|---|
-| `yt-dlp` | `brew install yt-dlp` | Preferred. Downloads video-only H.264 at up to 4K |
+| `yt-dlp` | `brew install yt-dlp` | Preferred. Downloads the highest-quality video-only stream, up to 4K |
 | `uvx` | `brew install uv` | Zero-install alternative — runs `uvx yt-dlp` without global install |
-| `ffmpeg` | `brew install ffmpeg` | Required for auto-loop. Remuxes DASH container to standard MP4 |
+| `ffmpeg` | `brew install ffmpeg` | Remuxes DASH to MP4 and adds `+faststart` for seamless looping (1080p H.264 ceiling) |
+| `ffprobe` | included with `brew install ffmpeg` | Unlocks 4K: detects codec and transcodes AV1/VP9 → HEVC for pre-M3 Apple Silicon and Intel |
 
-If neither `yt-dlp` nor `uvx` is found, lyra will show an error. If `ffmpeg` is not found, the video plays but may not loop automatically.
+If neither `yt-dlp` nor `uvx` is found, lyra will show an error. `ffmpeg` alone
+enables DASH-to-MP4 remuxing for seamless looping at the H.264 1080p ceiling.
+Pair it with `ffprobe` (included in `brew install ffmpeg`) to unlock 4K: lyra
+then downloads the best VP9/AV1 stream and hardware-transcodes non-natively-playable
+codecs to HEVC so every Mac — including pre-M3 Apple Silicon and Intel — can play
+it. Without `ffmpeg`, lyra downloads a direct H.264 stream that may not loop automatically.
 
 **Trim playback range** (optional):
 

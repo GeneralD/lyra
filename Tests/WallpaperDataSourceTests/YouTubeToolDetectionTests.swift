@@ -136,7 +136,7 @@ struct YouTubeToolDetectionTests {
             let url = URL(string: "https://www.youtube.com/watch?v=test123")!
             let args = ds.buildArgs(
                 tool: .ytdlp(path: "/usr/local/bin/yt-dlp"),
-                url: url, maxHeight: 1080, format: "mp4", destPath: "/tmp/out.mp4"
+                url: url, maxHeight: 1080, format: "mp4", destPath: "/tmp/out.mp4", allowAnyCodec: false
             )
             #expect(args.contains("-f"))
             #expect(args.contains("--no-audio"))
@@ -155,7 +155,7 @@ struct YouTubeToolDetectionTests {
             let url = URL(string: "https://youtu.be/abc")!
             let args = ds.buildArgs(
                 tool: .uvx(path: "/opt/homebrew/bin/uvx"),
-                url: url, maxHeight: 2160, format: "mp4", destPath: "/tmp/out.mp4"
+                url: url, maxHeight: 2160, format: "mp4", destPath: "/tmp/out.mp4", allowAnyCodec: false
             )
             #expect(args.first == "yt-dlp")
         }
@@ -170,7 +170,7 @@ struct YouTubeToolDetectionTests {
             let url = URL(string: "https://youtu.be/test")!
             let args = ds.buildArgs(
                 tool: .ytdlp(path: "/usr/bin/yt-dlp"),
-                url: url, maxHeight: 720, format: "webm", destPath: "/tmp/out.webm"
+                url: url, maxHeight: 720, format: "webm", destPath: "/tmp/out.webm", allowAnyCodec: false
             )
             let formatArg = args.first { $0.contains("height<=") }
             #expect(formatArg?.contains("720") == true)
