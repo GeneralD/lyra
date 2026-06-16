@@ -225,23 +225,56 @@ extension YouTubeWallpaperDataSourceImpl {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
-            process.terminationHandler = { proc in
-                let stdoutString = Self.trimmedString(from: stdoutPipe)
-                let stderrString = Self.trimmedString(from: stderrPipe)
-                continuation.resume(returning: (proc.terminationStatus, stdoutString, stderrString))
-            }
-
             do {
                 try process.run()
             } catch {
                 continuation.resume(throwing: error)
+                return
+            }
+
+            // Drain both pipes concurrently on background threads so that neither fills
+            // its OS pipe buffer and deadlocks the child process. ffmpeg in particular
+            // streams extensive progress output to stderr throughout a transcode, which
+            // can easily exceed the ~64 KB pipe buffer before the process exits.
+            let buffer = PipeBuffer()
+            let group = DispatchGroup()
+
+            group.enter()
+            DispatchQueue.global().async {
+                buffer.stdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+
+            group.enter()
+            DispatchQueue.global().async {
+                buffer.stderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+
+            group.notify(queue: .global()) {
+                // Both pipes have drained (EOF received → child has exited), but NSTask's
+                // internal SIGCHLD processing may not have run yet.  waitUntilExit() ensures
+                // terminationStatus is valid before we read it.
+                process.waitUntilExit()
+                continuation.resume(
+                    returning: (process.terminationStatus, buffer.stdoutTrimmed, buffer.stderrTrimmed))
             }
         }
     }
+}
 
-    private static func trimmedString(from pipe: Pipe) -> String {
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+/// Accumulates stdout and stderr bytes from concurrent pipe-drain tasks.
+/// Marked `@unchecked Sendable` because each stored property is written by exactly
+/// one DispatchQueue task and read only after the DispatchGroup barrier — no lock needed.
+private final class PipeBuffer: @unchecked Sendable {
+    var stdout = Data()
+    var stderr = Data()
+
+    var stdoutTrimmed: String { trimmed(stdout) }
+    var stderrTrimmed: String { trimmed(stderr) }
+
+    private func trimmed(_ data: Data) -> String {
+        String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }
 
