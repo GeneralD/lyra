@@ -256,11 +256,16 @@ Remote and YouTube videos are downloaded once and cached in `~/.cache/lyra/wallp
 
 | Tool | Install | Notes |
 |---|---|---|
-| `yt-dlp` | `brew install yt-dlp` | Preferred. Downloads video-only H.264 at up to 4K |
+| `yt-dlp` | `brew install yt-dlp` | Preferred. Downloads the highest-quality video-only stream, up to 4K |
 | `uvx` | `brew install uv` | Zero-install alternative — runs `uvx yt-dlp` without global install |
-| `ffmpeg` | `brew install ffmpeg` | Required for auto-loop. Remuxes DASH container to standard MP4 |
+| `ffmpeg` + `ffprobe` | `brew install ffmpeg` | Unlocks 4K. Remuxes DASH to MP4 and transcodes AV1/VP9 to HEVC so any Mac can play it |
 
-If neither `yt-dlp` nor `uvx` is found, lyra will show an error. If `ffmpeg` is not found, the video plays but may not loop automatically.
+If neither `yt-dlp` nor `uvx` is found, lyra will show an error. The maximum
+quality depends on `ffmpeg`/`ffprobe`: with them installed, lyra downloads the
+best stream (4K VP9/AV1) and transcodes non-natively-playable codecs to HEVC so
+every Mac (including pre-M3 Apple Silicon and Intel, which cannot decode AV1)
+can play it. Without them, lyra falls back to the natively-playable H.264
+ceiling (1080p) and the video may not loop automatically.
 
 **Trim playback range** (optional):
 
