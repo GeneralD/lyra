@@ -70,7 +70,6 @@ import Foundation
         let trackChange: AnyPublisher<TrackUpdate, Never>
         let artwork: AnyPublisher<Data?, Never>
         let playbackPosition: AnyPublisher<PlaybackPosition, Never>
-        let audioSource: AnyPublisher<AudioSourceState, Never>
         let decodeEffectConfig: DecodeEffect
         let textLayout: TextLayout
         let artworkStyle: ArtworkStyle
@@ -80,7 +79,6 @@ import Foundation
             trackChange = Just(fixture.trackUpdate).eraseToAnyPublisher()
             artwork = Just(nil).eraseToAnyPublisher()
             playbackPosition = Just(PlaybackPosition(rawElapsed: nil, timestamp: nil, playbackRate: 0)).eraseToAnyPublisher()
-            audioSource = Just(AudioSourceState(pid: nil, isPlaying: false)).eraseToAnyPublisher()
             decodeEffectConfig = decodeEffect
             textLayout = TextLayout(decodeEffect: decodeEffect)
             artworkStyle = ArtworkStyle(opacity: 0)

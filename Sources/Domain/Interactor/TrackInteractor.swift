@@ -9,9 +9,6 @@ public protocol TrackInteractor: Sendable {
     var artwork: AnyPublisher<Data?, Never> { get }
     /// Emits continuously for playback position updates.
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { get }
-    /// Emits when the now-playing app's process id or audibility changes.
-    /// The spectrum analyzer scopes its CoreAudio process tap with this (#23).
-    var audioSource: AnyPublisher<AudioSourceState, Never> { get }
     var decodeEffectConfig: DecodeEffect { get }
     var textLayout: TextLayout { get }
     var artworkStyle: ArtworkStyle { get }
@@ -32,7 +29,6 @@ private struct UnimplementedTrackInteractor: TrackInteractor {
     var trackChange: AnyPublisher<TrackUpdate, Never> { Empty().eraseToAnyPublisher() }
     var artwork: AnyPublisher<Data?, Never> { Empty().eraseToAnyPublisher() }
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
-    var audioSource: AnyPublisher<AudioSourceState, Never> { Empty().eraseToAnyPublisher() }
     var decodeEffectConfig: DecodeEffect { .init() }
     var textLayout: TextLayout { .init() }
     var artworkStyle: ArtworkStyle { .init() }

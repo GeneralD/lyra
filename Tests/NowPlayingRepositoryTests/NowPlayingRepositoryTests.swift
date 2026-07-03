@@ -153,6 +153,70 @@ struct NowPlayingRepositoryTests {
             #expect(result?.timestamp == timestamp)
         }
     }
+
+    // MARK: - multicast (#23)
+
+    @Test("two subscribers both receive every event")
+    func multicastTwoSubscribers() async {
+        let track = NowPlaying(
+            title: "Shared", artist: "Artist", artworkData: nil,
+            duration: 100, rawElapsed: 0, playbackRate: 1, timestamp: Date()
+        )
+        let gate = GatedMediaRemoteDataSource()
+
+        await withDependencies {
+            $0.mediaRemoteDataSource = gate
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            let streamA = repo.stream()
+            let streamB = repo.stream()
+            let collectA = Task {
+                await streamA.reduce(into: [NowPlaying?]()) { $0.append($1) }
+            }
+            let collectB = Task {
+                await streamB.reduce(into: [NowPlaying?]()) { $0.append($1) }
+            }
+
+            gate.send(.info(track))
+            gate.send(.noInfo)
+            gate.send(.eof)
+
+            let a = await collectA.value
+            let b = await collectB.value
+            #expect(a.count == 2)
+            #expect(a[0]?.title == "Shared")
+            #expect(a[1] == nil)
+            #expect(b.count == 2)
+            #expect(b[0]?.title == "Shared")
+            #expect(b[1] == nil)
+        }
+    }
+
+    @Test("late subscriber immediately receives the last value")
+    func lateSubscriberReplay() async {
+        let track = NowPlaying(
+            title: "Replayed", artist: "Artist", artworkData: nil,
+            duration: 100, rawElapsed: 0, playbackRate: 1, timestamp: Date()
+        )
+        let gate = GatedMediaRemoteDataSource()
+
+        await withDependencies {
+            $0.mediaRemoteDataSource = gate
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            var iteratorA = repo.stream().makeAsyncIterator()
+            gate.send(.info(track))
+            // Once A observes the broadcast, the hub has cached it for replay.
+            let first = await iteratorA.next()
+            #expect(first??.title == "Replayed")
+
+            var iteratorB = repo.stream().makeAsyncIterator()
+            let replayed = await iteratorB.next()
+            #expect(replayed??.title == "Replayed")
+
+            gate.send(.eof)
+        }
+    }
 }
 
 // MARK: - Mock
@@ -170,5 +234,27 @@ private final class MockMediaRemoteDataSource: MediaRemoteDataSource, @unchecked
         let result = results[index]
         index += 1
         return result
+    }
+}
+
+/// Blocks `poll()` until the test feeds a result, so multicast tests control
+/// exactly when the repository's pump observes each event. Only the single
+/// pump consumes `iterator`, matching the live single-poller contract.
+private final class GatedMediaRemoteDataSource: MediaRemoteDataSource, @unchecked Sendable {
+    private var iterator: AsyncStream<MediaRemotePollResult>.AsyncIterator
+    private let feed: AsyncStream<MediaRemotePollResult>.Continuation
+
+    init() {
+        let (stream, continuation) = AsyncStream<MediaRemotePollResult>.makeStream()
+        iterator = stream.makeAsyncIterator()
+        feed = continuation
+    }
+
+    func send(_ result: MediaRemotePollResult) {
+        feed.yield(result)
+    }
+
+    func poll() async -> MediaRemotePollResult {
+        await iterator.next() ?? .eof
     }
 }

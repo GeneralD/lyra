@@ -99,10 +99,6 @@ private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
         Empty().eraseToAnyPublisher()
     }
 
-    var audioSource: AnyPublisher<AudioSourceState, Never> {
-        Empty().eraseToAnyPublisher()
-    }
-
     var decodeEffectConfig: DecodeEffect { .init(duration: 0) }
     var textLayout: TextLayout { .init(decodeEffect: .init(duration: 0)) }
     var artworkStyle: ArtworkStyle { .init(opacity: 0) }

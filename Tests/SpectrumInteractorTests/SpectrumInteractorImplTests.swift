@@ -13,7 +13,7 @@ struct SpectrumInteractorImplTests {
     func playingStartsTap() async {
         let harness = Harness()
         harness.interactor.start()
-        harness.audioSource.send(AudioSourceState(pid: 4242, isPlaying: true))
+        harness.send(pid: 4242, playbackRate: 1)
 
         await harness.pollUntil { harness.tap.startedPids == [4242] }
         #expect(harness.tap.startedPids == [4242])
@@ -25,10 +25,10 @@ struct SpectrumInteractorImplTests {
     func pauseStopsTap() async {
         let harness = Harness()
         harness.interactor.start()
-        harness.audioSource.send(AudioSourceState(pid: 4242, isPlaying: true))
+        harness.send(pid: 4242, playbackRate: 1)
         await harness.pollUntil { harness.capturing.value == true }
 
-        harness.audioSource.send(AudioSourceState(pid: 4242, isPlaying: false))
+        harness.send(pid: 4242, playbackRate: 0)
         await harness.pollUntil { harness.tap.stopCount > 0 }
         #expect(harness.tap.stopCount > 0)
         await harness.pollUntil { harness.capturing.value == false }
@@ -39,18 +39,44 @@ struct SpectrumInteractorImplTests {
     func appSwitchRetaps() async {
         let harness = Harness()
         harness.interactor.start()
-        harness.audioSource.send(AudioSourceState(pid: 1, isPlaying: true))
-        harness.audioSource.send(AudioSourceState(pid: 2, isPlaying: true))
+        harness.send(pid: 1, playbackRate: 1)
+        harness.send(pid: 2, playbackRate: 1)
 
         await harness.pollUntil { harness.tap.startedPids == [1, 2] }
         #expect(harness.tap.startedPids == [1, 2])
+    }
+
+    @Test("repeated identical events tap only once (periodic tick dedup)")
+    func periodicTickDedup() async {
+        let harness = Harness()
+        harness.interactor.start()
+        harness.send(pid: 4242, playbackRate: 1)
+        harness.send(pid: 4242, playbackRate: 1)
+        harness.send(pid: 4242, playbackRate: 1)
+
+        await harness.pollUntil { harness.tap.startedPids == [4242] }
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(harness.tap.startedPids == [4242])
+    }
+
+    @Test("vanished session tears the tap down")
+    func sessionGoneStopsTap() async {
+        let harness = Harness()
+        harness.interactor.start()
+        harness.send(pid: 4242, playbackRate: 1)
+        await harness.pollUntil { harness.capturing.value == true }
+
+        harness.sendSessionGone()
+        await harness.pollUntil { harness.capturing.value == false }
+        #expect(harness.capturing.value == false)
+        #expect(harness.tap.stopCount > 0)
     }
 
     @Test("disabled spectrum never subscribes nor taps")
     func disabledIsInert() async {
         let harness = Harness(enabled: false)
         harness.interactor.start()
-        harness.audioSource.send(AudioSourceState(pid: 4242, isPlaying: true))
+        harness.send(pid: 4242, playbackRate: 1)
 
         try? await Task.sleep(for: .milliseconds(50))
         #expect(harness.tap.startedPids.isEmpty)
@@ -60,7 +86,7 @@ struct SpectrumInteractorImplTests {
     func stopTearsDown() async {
         let harness = Harness()
         harness.interactor.start()
-        harness.audioSource.send(AudioSourceState(pid: 4242, isPlaying: true))
+        harness.send(pid: 4242, playbackRate: 1)
         await harness.pollUntil { harness.capturing.value == true }
 
         harness.interactor.stop()
@@ -85,29 +111,43 @@ struct SpectrumInteractorImplTests {
 // MARK: - Harness
 
 /// Builds a `SpectrumInteractorImpl` whose dependencies are all fakes, and
-/// keeps the fakes accessible for assertions.
+/// keeps the fakes accessible for assertions. Now-playing events are fed
+/// through the stubbed `PlaybackUseCase` stream, mirroring the live wiring
+/// where the interactor consumes the repository's multicast stream directly.
 private struct Harness {
     let style: SpectrumStyle
-    let audioSource = PassthroughSubject<AudioSourceState, Never>()
     let tap = FakeAudioTapDataSource()
     let capturing = CurrentValueBox()
     let interactor: SpectrumInteractorImpl
+    private let feed: AsyncStream<NowPlaying?>.Continuation
     private let cancellable: AnyCancellable
 
     init(enabled: Bool = true, samples: [Float] = []) {
         let style = SpectrumStyle(enabled: enabled, barCount: 16, fftSize: 1024)
         self.style = style
         tap.samples = samples
-        let interactor = withDependencies { [audioSource, tap] in
+        let (stream, continuation) = AsyncStream<NowPlaying?>.makeStream()
+        feed = continuation
+        let interactor = withDependencies { [tap] in
             $0.configUseCase = StubConfigUseCase(appStyle: AppStyle(spectrum: style))
-            $0.trackInteractor = StubTrackInteractor(
-                audioSource: audioSource.eraseToAnyPublisher())
+            $0.playbackUseCase = StubPlaybackUseCase(stream: stream)
             $0.audioTapDataSource = tap
         } operation: {
             SpectrumInteractorImpl()
         }
         self.interactor = interactor
         self.cancellable = interactor.isCapturing.sink { [capturing] in capturing.value = $0 }
+    }
+
+    func send(pid: Int?, playbackRate: Double) {
+        feed.yield(
+            NowPlaying(
+                title: nil, artist: nil, artworkData: nil, duration: nil,
+                rawElapsed: nil, playbackRate: playbackRate, timestamp: nil, pid: pid))
+    }
+
+    func sendSessionGone() {
+        feed.yield(nil)
     }
 
     func pollUntil(_ condition: () -> Bool) async {
@@ -154,12 +194,9 @@ private struct StubConfigUseCase: ConfigUseCase {
     var existingConfigPath: String? { nil }
 }
 
-private struct StubTrackInteractor: TrackInteractor {
-    let audioSource: AnyPublisher<AudioSourceState, Never>
-    var trackChange: AnyPublisher<TrackUpdate, Never> { Empty().eraseToAnyPublisher() }
-    var artwork: AnyPublisher<Data?, Never> { Empty().eraseToAnyPublisher() }
-    var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
-    var decodeEffectConfig: DecodeEffect { .init() }
-    var textLayout: TextLayout { .init() }
-    var artworkStyle: ArtworkStyle { .init() }
+private struct StubPlaybackUseCase: PlaybackUseCase {
+    let stream: AsyncStream<NowPlaying?>
+    func fetchNowPlaying() async -> NowPlaying? { nil }
+    func observeNowPlaying() -> AsyncStream<NowPlaying?> { stream }
+    func elapsedTime(for nowPlaying: NowPlaying) -> TimeInterval? { nil }
 }

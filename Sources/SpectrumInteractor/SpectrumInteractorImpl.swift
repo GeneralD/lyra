@@ -5,9 +5,9 @@ import Foundation
 import FrequencyAnalyzer
 import os
 
-/// Drives the spectrum analyzer (#23): follows `TrackInteractor.audioSource`,
-/// keeps the CoreAudio process tap scoped to the now-playing app, and converts
-/// the captured PCM window into per-bar magnitudes on demand.
+/// Drives the spectrum analyzer (#23): follows the now-playing stream, keeps
+/// the CoreAudio process tap scoped to the now-playing app, and converts the
+/// captured PCM window into per-bar magnitudes on demand.
 ///
 /// Tap lifecycle rules:
 /// - playing + known pid → (re)create the tap for that pid
@@ -18,20 +18,14 @@ import os
 /// `@unchecked` only because of the lazy `analyzer`, which is touched solely
 /// from the main-thread DisplayLink tick via `magnitudes()`.
 public final class SpectrumInteractorImpl: @unchecked Sendable {
-    private struct Pipeline {
-        var cancellable: AnyCancellable?
-        var processor: Task<Void, Never>?
-        var continuation: AsyncStream<AudioSourceState>.Continuation?
-    }
-
     // Stored wrappers capture the dependency context at init, so instances
     // built inside `withDependencies` keep their fakes when methods run
-    // outside that scope (sinks, the processor task).
+    // outside that scope (the processor task).
     @Dependency(\.configUseCase) private var configService
-    @Dependency(\.trackInteractor) private var trackInteractor
+    @Dependency(\.playbackUseCase) private var playbackService
     @Dependency(\.audioTapDataSource) private var tap
     private let capturingSubject = CurrentValueSubject<Bool, Never>(false)
-    private let pipeline = OSAllocatedUnfairLock(uncheckedState: Pipeline())
+    private let processor = OSAllocatedUnfairLock(initialState: Task<Void, Never>?.none)
     private lazy var analyzer = FrequencyAnalyzer(
         fftSize: spectrumStyle.fftSize,
         barCount: spectrumStyle.barCount,
@@ -55,12 +49,18 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
         guard spectrumStyle.enabled else { return }
         let tap = tap
         let subject = capturingSubject
-        // The stream is the serialization point: audio-source events queue up
-        // and the single processor task applies them one at a time, so a rapid
-        // pause→play→pause burst can never interleave tap create/destroy calls.
-        let (stream, continuation) = AsyncStream<AudioSourceState>.makeStream()
-        let processor = Task {
-            for await source in stream {
+        let playback = playbackService
+        // A single for-await loop is the serialization point: events apply
+        // one at a time, so a rapid pause→play burst can never interleave tap
+        // create/destroy calls. `previous` dedupes the helper's periodic
+        // ticks — `startTap` rebuilds the engine, so repeats must not pass.
+        let candidate = Task {
+            var previous: AudioSourceState?
+            for await info in playback.observeNowPlaying() {
+                let source = AudioSourceState(
+                    pid: info?.pid, isPlaying: (info?.playbackRate ?? 0) > 0)
+                guard source != previous else { continue }
+                previous = source
                 guard let pid = source.pid, source.isPlaying else {
                     await tap.stopTap()
                     subject.send(false)
@@ -68,36 +68,40 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
                 }
                 subject.send(await tap.startTap(pid: pid))
             }
-            // Stream finished (stop()): tear the tap down after the last event.
+            // Upstream finished (helper EOF): tear the tap down. A cancelled
+            // task skips this — stop() owns that teardown, and a start/start
+            // race loser must not destroy the winner's tap.
             guard !Task.isCancelled else { return }
             await tap.stopTap()
             subject.send(false)
         }
-        let cancellable = trackInteractor.audioSource
-            .sink { continuation.yield($0) }
-        let adopted = pipeline.withLockUnchecked { state in
-            guard state.cancellable == nil else { return false }
-            state = Pipeline(
-                cancellable: cancellable, processor: processor, continuation: continuation)
+        let adopted = processor.withLock { task in
+            guard task == nil else { return false }
+            task = candidate
             return true
         }
         guard adopted else {
-            // Lost a start/start race: discard this pipeline without touching
-            // the winner's tap (the cancellation guard skips the teardown).
-            cancellable.cancel()
-            processor.cancel()
-            continuation.finish()
+            candidate.cancel()
             return
         }
     }
 
     public func stop() {
-        let stopped = pipeline.withLockUnchecked { state in
-            defer { state = Pipeline() }
-            return state
+        let stopped = processor.withLock { task in
+            defer { task = nil }
+            return task
         }
-        stopped.cancellable?.cancel()
-        stopped.continuation?.finish()
+        guard let stopped else { return }
+        stopped.cancel()
+        let tap = tap
+        let subject = capturingSubject
+        Task {
+            // Awaiting the cancelled processor first keeps this teardown
+            // ordered after its in-flight tap call.
+            await stopped.value
+            await tap.stopTap()
+            subject.send(false)
+        }
     }
 
     public func magnitudes() -> [Float] {
