@@ -12,11 +12,23 @@ import os
 /// live continuations, and a late subscriber immediately receives the last
 /// seen value so it doesn't wait for the next helper tick (#23).
 public final class NowPlayingRepositoryImpl: Sendable {
+    /// Pump lifecycle. The `.starting` reservation guarantees at most one
+    /// pump task ever exists — two tasks polling the shared iterator
+    /// concurrently is unsafe — and its token lets the reserving call detect
+    /// that an immediate EOF reset the hub before the task was stored:
+    /// adopting the already-finished task there would block every future
+    /// pump start.
+    private enum Pump: Sendable {
+        case idle
+        case starting(UUID)
+        case running(Task<Void, Never>)
+    }
+
     private struct Hub: Sendable {
         var continuations: [UUID: AsyncStream<NowPlaying?>.Continuation] = [:]
         /// Last broadcast payload; `.some(nil)` means "session gone" was seen.
         var last: NowPlaying?? = nil
-        var pump: Task<Void, Never>?
+        var pump: Pump = .idle
     }
 
     private let dataSource: any MediaRemoteDataSource
@@ -29,11 +41,13 @@ public final class NowPlayingRepositoryImpl: Sendable {
 }
 
 extension NowPlayingRepositoryImpl: NowPlayingRepository {
+    /// One-shot snapshot, routed through the same multicast pump: a direct
+    /// `dataSource.poll()` here would compete with a running pump for the
+    /// single helper iterator, so the snapshot is the first broadcast value
+    /// instead — replayed immediately once the pump has seen one.
     public func fetch() async -> NowPlaying? {
-        switch await dataSource.poll() {
-        case .info(let nowPlaying): nowPlaying
-        case .noInfo, .eof: nil
-        }
+        for await value in stream() { return value }
+        return nil
     }
 
     public func stream() -> AsyncStream<NowPlaying?> {
@@ -53,21 +67,29 @@ extension NowPlayingRepositoryImpl: NowPlayingRepository {
 }
 
 extension NowPlayingRepositoryImpl {
-    /// Starts the shared poll pump if it isn't running. The candidate task is
-    /// created outside the lock (task creation inside `withLock` trips region
-    /// isolation); a lost creation race is cancelled, and since every pump
-    /// broadcasts to all continuations, the overlap window loses no events.
+    /// Starts the shared poll pump if it isn't running. The slot is reserved
+    /// under the lock before the task is created outside it (task creation
+    /// inside `withLock` trips region isolation), so a competing call can
+    /// never spawn a second pump; the token check keeps a pump that hit EOF
+    /// before being stored from occupying the freshly reset hub.
     private func ensurePumping() {
-        guard hub.withLock({ $0.pump == nil }) else { return }
-        let candidate = pumpTask()
-        let adopted = hub.withLock { state in
-            guard state.pump == nil else { return false }
-            state.pump = candidate
+        let token = UUID()
+        let reserved = hub.withLock { state in
+            guard case .idle = state.pump else { return false }
+            state.pump = .starting(token)
             return true
         }
-        guard adopted else {
-            candidate.cancel()
-            return
+        guard reserved else { return }
+        let task = pumpTask()
+        hub.withLock { state in
+            guard case .starting(let current) = state.pump, current == token else {
+                // The pump hit EOF and `finishAll()` reset the hub before
+                // this store ran; the task is already finished, and the
+                // fresh slot belongs to a future pump.
+                task.cancel()
+                return
+            }
+            state.pump = .running(task)
         }
     }
 

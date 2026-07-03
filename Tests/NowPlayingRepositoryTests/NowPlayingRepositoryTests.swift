@@ -2,6 +2,7 @@ import Dependencies
 import Domain
 import Foundation
 import Testing
+import os
 
 @testable import NowPlayingRepository
 
@@ -217,6 +218,76 @@ struct NowPlayingRepositoryTests {
             gate.send(.eof)
         }
     }
+
+    @Test("concurrent first subscribers start exactly one pump")
+    func concurrentSubscribersSinglePump() async {
+        let track = NowPlaying(
+            title: "Solo", artist: "Artist", artworkData: nil,
+            duration: 100, rawElapsed: 0, playbackRate: 1, timestamp: Date()
+        )
+        let counting = CountingGatedMediaRemoteDataSource()
+
+        await withDependencies {
+            $0.mediaRemoteDataSource = counting
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            let collectors = (0..<8).map { _ in
+                Task { () -> NowPlaying?? in
+                    for await value in repo.stream() { return value }
+                    return nil
+                }
+            }
+            counting.send(.info(track))
+
+            for collector in collectors {
+                let received = await collector.value
+                #expect(received??.title == "Solo")
+            }
+            // Two pumps polling the single helper iterator concurrently
+            // would be a contract violation, so at most one poll may ever
+            // be in flight.
+            #expect(counting.maxActivePolls == 1)
+            counting.send(.eof)
+        }
+    }
+
+    @Test("EOF resets the hub so a later subscriber starts a fresh pump")
+    func pumpRestartsAfterEOF() async {
+        let track = NowPlaying(
+            title: "Second Life", artist: "Artist", artworkData: nil,
+            duration: 100, rawElapsed: 0, playbackRate: 1, timestamp: Date()
+        )
+        let counting = CountingGatedMediaRemoteDataSource()
+
+        await withDependencies {
+            $0.mediaRemoteDataSource = counting
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            counting.send(.eof)
+            var first = 0
+            for await _ in repo.stream() { first += 1 }
+            #expect(first == 0)
+
+            // A dead pump left stored in the hub would block this second
+            // round forever; the collector is cancellable so a regression
+            // fails the test instead of hanging the suite.
+            let received = ReceivedBox()
+            let collector = Task {
+                for await value in repo.stream() {
+                    received.value = value
+                    return
+                }
+            }
+            counting.send(.info(track))
+            let deadline = ContinuousClock.now + .seconds(3)
+            while received.value == nil, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            collector.cancel()
+            #expect(received.value??.title == "Second Life")
+            counting.send(.eof)
+        }
+    }
 }
 
 // MARK: - Mock
@@ -256,5 +327,59 @@ private final class GatedMediaRemoteDataSource: MediaRemoteDataSource, @unchecke
 
     func poll() async -> MediaRemotePollResult {
         await iterator.next() ?? .eof
+    }
+}
+
+/// Gated data source that additionally records how many `poll()` calls are
+/// in flight at once, proving the repository never runs two pumps against
+/// the single-consumer helper iterator.
+private final class CountingGatedMediaRemoteDataSource: MediaRemoteDataSource, @unchecked Sendable {
+    private struct State {
+        var active = 0
+        var maxActive = 0
+        var buffered: [MediaRemotePollResult] = []
+        var waiters: [CheckedContinuation<MediaRemotePollResult, Never>] = []
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var maxActivePolls: Int { state.withLock { $0.maxActive } }
+
+    func send(_ result: MediaRemotePollResult) {
+        let waiter = state.withLock { state -> CheckedContinuation<MediaRemotePollResult, Never>? in
+            guard !state.waiters.isEmpty else {
+                state.buffered.append(result)
+                return nil
+            }
+            return state.waiters.removeFirst()
+        }
+        waiter?.resume(returning: result)
+    }
+
+    func poll() async -> MediaRemotePollResult {
+        state.withLock { state in
+            state.active += 1
+            state.maxActive = max(state.maxActive, state.active)
+        }
+        defer { state.withLock { $0.active -= 1 } }
+        return await withCheckedContinuation { continuation in
+            let buffered = state.withLock { state -> MediaRemotePollResult? in
+                guard !state.buffered.isEmpty else {
+                    state.waiters.append(continuation)
+                    return nil
+                }
+                return state.buffered.removeFirst()
+            }
+            if let buffered { continuation.resume(returning: buffered) }
+        }
+    }
+}
+
+/// Thread-safe capture slot for the cancellable collector task.
+private final class ReceivedBox: @unchecked Sendable {
+    private let state = OSAllocatedUnfairLock(initialState: NowPlaying??.none)
+    var value: NowPlaying?? {
+        get { state.withLock { $0 } }
+        set { state.withLock { $0 = newValue } }
     }
 }
