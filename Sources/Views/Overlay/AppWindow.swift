@@ -45,12 +45,14 @@ public final class AppWindow: NSWindow {
     ///   - headerPresenter: Presenter for the header view.
     ///   - lyricsPresenter: Presenter for the lyrics view.
     ///   - ripplePresenter: Presenter for the ripple effect.
+    ///   - spectrumPresenter: Presenter for the spectrum analyzer bars.
     ///   - wallpaperPresenter: Presenter for the wallpaper view.
     public init(
         initialLayout: ScreenLayout,
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
         ripplePresenter: RipplePresenter,
+        spectrumPresenter: SpectrumPresenter,
         wallpaperPresenter: WallpaperPresenter
     ) {
         let hostingView = NSHostingView(
@@ -58,6 +60,7 @@ public final class AppWindow: NSWindow {
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
+                spectrumPresenter: spectrumPresenter,
                 wallpaperPresenter: wallpaperPresenter
             ))
         hostingView.frame = initialLayout.hostingFrame

@@ -1,3 +1,4 @@
+import AudioTapDataSource
 import ConfigDataSource
 import Dependencies
 import Domain
@@ -5,6 +6,10 @@ import LyricsDataSource
 import MediaRemoteDataSource
 import MetadataDataSource
 import WallpaperDataSource
+
+extension AudioTapDataSourceKey: DependencyKey {
+    public static let liveValue: any AudioTapDataSource = AudioTapDataSourceImpl()
+}
 
 extension ConfigDataSourceKey: DependencyKey {
     public static let liveValue: any ConfigDataSource = ConfigDataSourceImpl()

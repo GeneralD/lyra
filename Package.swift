@@ -15,6 +15,7 @@ let package = Package(
         .package(url: "https://github.com/LebJe/TOMLKit", from: "0.6.0"),
         .package(url: "https://github.com/joshuawright11/papyrus", from: "0.6.16"),
         .package(url: "https://github.com/JohnSundell/Files", from: "4.2.0"),
+        .package(url: "https://github.com/apple/swift-atomics", from: "1.2.0"),
     ],
     targets: [
         // ── CLI (Entry Point) ──
@@ -197,6 +198,7 @@ let package = Package(
                 "TrackInteractor",
                 "ScreenInteractor",
                 "WallpaperInteractor",
+                "SpectrumInteractor",
                 "ConfigUseCase",
                 "PlaybackUseCase",
                 "LyricsUseCase",
@@ -212,6 +214,7 @@ let package = Package(
                 "MetadataDataSource",
                 "MediaRemoteDataSource",
                 "WallpaperDataSource",
+                "AudioTapDataSource",
                 "SQLiteDataStore",
                 "DarwinGateway",
                 "ProcessHandler",
@@ -247,6 +250,20 @@ let package = Package(
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
+        ),
+        .target(
+            name: "SpectrumInteractor",
+            dependencies: [
+                "Domain",
+                "FrequencyAnalyzer",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // ── FrequencyAnalyzer ──
+        .target(
+            name: "FrequencyAnalyzer",
+            dependencies: []
         ),
 
         // ── UseCase ──
@@ -363,6 +380,13 @@ let package = Package(
                 .product(name: "Files", package: "Files"),
             ]
         ),
+        .target(
+            name: "AudioTapDataSource",
+            dependencies: [
+                "Domain",
+                .product(name: "Atomics", package: "swift-atomics"),
+            ]
+        ),
 
         // ── DataStore ──
         .target(
@@ -421,6 +445,25 @@ let package = Package(
                 "WallpaperUseCase",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "SpectrumInteractorTests",
+            dependencies: [
+                "SpectrumInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "FrequencyAnalyzerTests",
+            dependencies: ["FrequencyAnalyzer"]
+        ),
+        .testTarget(
+            name: "AudioTapDataSourceTests",
+            dependencies: [
+                "AudioTapDataSource",
+                "Domain",
             ]
         ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),

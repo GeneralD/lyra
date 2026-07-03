@@ -83,6 +83,17 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         }
         .eraseToAnyPublisher()
 
+    /// Emits when the now-playing app's process id or audibility changes.
+    /// Built from the raw shared stream — not `activeNowPlaying` — so a
+    /// vanished session (nil payload) still tears the spectrum tap down (#23).
+    public lazy var audioSource: AnyPublisher<AudioSourceState, Never> =
+        shared
+        .map { np in
+            AudioSourceState(pid: np?.pid, isPlaying: (np?.playbackRate ?? 0) > 0)
+        }
+        .removeDuplicates()
+        .eraseToAnyPublisher()
+
     public init() {
         @Dependency(\.playbackUseCase) var playback
         @Dependency(\.lyricsUseCase) var lyrics

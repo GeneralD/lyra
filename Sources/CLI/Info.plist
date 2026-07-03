@@ -10,5 +10,7 @@
 	<string>lyra</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>lyra taps the now-playing app's audio output to render the spectrum analyzer overlay.</string>
 </dict>
 </plist>

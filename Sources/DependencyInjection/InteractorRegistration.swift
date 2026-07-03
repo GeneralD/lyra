@@ -2,6 +2,7 @@ import AppKitScreenProvider
 import Dependencies
 import Domain
 import ScreenInteractor
+import SpectrumInteractor
 import TrackInteractor
 import WallpaperInteractor
 
@@ -15,6 +16,10 @@ extension ScreenInteractorKey: DependencyKey {
 
 extension WallpaperInteractorKey: DependencyKey {
     public static let liveValue: any WallpaperInteractor = WallpaperInteractorImpl()
+}
+
+extension SpectrumInteractorKey: DependencyKey {
+    public static let liveValue: any SpectrumInteractor = SpectrumInteractorImpl()
 }
 
 extension ScreenProviderKey: DependencyKey {
