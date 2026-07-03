@@ -195,6 +195,26 @@ angle = 15
 | `circle` | — | — | Same as omitting `shape` |
 | `polygon` | `sides` (int `3...256`) | `angle` (degrees, default `0`) | Out-of-range `sides` values fail config decoding. `angle = 0` orients one vertex straight up |
 
+### `[spectrum]`
+
+Real-time spectrum analyzer bars driven by the now-playing app's audio, rendered on the overlay. Disabled by default. Requires **macOS 14.4+** (CoreAudio process tap); on the first run macOS asks for the *System Audio Recording* permission.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Set to `true` to show the analyzer |
+| `bar_count` | number | `64` | Number of bars |
+| `bar_color` | string / array | `["#1E3A5F", "#4A9EFF"]` | Solid hex or gradient array |
+| `background_color` | string | — | Optional backdrop behind the bars |
+| `bar_width_ratio` | number | `0.7` | Bar width as a fraction of one bar slot (0–1) |
+| `min_db` | number | `-80` | Loudness floor mapped to bar height 0 |
+| `max_db` | number | `0` | Loudness ceiling mapped to bar height 1 |
+| `decay_rate` | number | `0.85` | Per-frame falloff of bar peaks (0–1) |
+| `fft_size` | number | `1024` | FFT window size (rounded down to a power of two) |
+| `placement` | string | `"bottom"` | `"bottom"`, `"top"`, or `"underlay"` (bars span the whole overlay behind the lyrics) |
+| `height_ratio` | number | `0.25` | Fraction of the overlay height the bars may occupy (ignored for `underlay`) |
+
+> **Known limitation:** the audio is tapped per *process*. When the now-playing app is a browser, the tap captures the browser's entire audio output — every tab, not just the one playing music.
+
 ### `[ai]`
 
 Optional LLM-based song title and artist extraction via any OpenAI-compatible API. When omitted, lyra uses regex-based parsing only. All three fields are required to enable this feature.
@@ -363,6 +383,11 @@ color = "#AAAAFFFF"
 radius = 60
 duration = 0.4
 idle = 1.3
+
+[spectrum]
+enabled = true
+bar_color = ["#1E3A5F", "#4A9EFF"]
+placement = "bottom"
 ```
 
 This example uses `Zen Maru Gothic` and `Zen Kaku Gothic New`. If those fonts are not installed, install them with Homebrew Cask:
@@ -382,7 +407,7 @@ api_key = "sk-..."
 
 ## Requirements
 
-- macOS 14+
+- macOS 14+ (spectrum analyzer requires macOS 14.4+)
 - Swift 6.0+
 
 ## License
