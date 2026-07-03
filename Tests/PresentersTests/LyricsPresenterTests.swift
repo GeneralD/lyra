@@ -18,6 +18,7 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var trackChange: AnyPublisher<TrackUpdate, Never> { trackChangePublisher }
     var artwork: AnyPublisher<Data?, Never> { Empty().eraseToAnyPublisher() }
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { playbackPositionPublisher }
+    var audioSource: AnyPublisher<AudioSourceState, Never> { Empty().eraseToAnyPublisher() }
 }
 
 // MARK: - Helpers

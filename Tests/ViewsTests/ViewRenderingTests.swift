@@ -40,6 +40,7 @@ private struct IdleTrackInteractor: TrackInteractor, @unchecked Sendable {
     let trackChange: AnyPublisher<TrackUpdate, Never> = Empty().eraseToAnyPublisher()
     let artwork: AnyPublisher<Data?, Never> = Empty().eraseToAnyPublisher()
     let playbackPosition: AnyPublisher<PlaybackPosition, Never> = Empty().eraseToAnyPublisher()
+    var audioSource: AnyPublisher<AudioSourceState, Never> { Empty().eraseToAnyPublisher() }
     var decodeEffectConfig: DecodeEffect { .init(duration: 0) }
     var textLayout: TextLayout { .init(decodeEffect: .init(duration: 0)) }
     var artworkStyle: ArtworkStyle { .init() }
@@ -87,6 +88,7 @@ private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
     }
     var artwork: AnyPublisher<Data?, Never> { Just(artworkData).eraseToAnyPublisher() }
     let playbackPosition: AnyPublisher<PlaybackPosition, Never> = Empty().eraseToAnyPublisher()
+    var audioSource: AnyPublisher<AudioSourceState, Never> { Empty().eraseToAnyPublisher() }
     var decodeEffectConfig: DecodeEffect { .init(duration: 0) }
     var textLayout: TextLayout { .init(decodeEffect: .init(duration: 0)) }
     var artworkStyle: ArtworkStyle { .init(opacity: opacity) }
@@ -417,6 +419,7 @@ struct OverlayContentViewLoadingTests {
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
+                spectrumPresenter: SpectrumPresenter(),
                 wallpaperPresenter: wallpaperPresenter
             ),
             size: CGSize(width: 800, height: 500)
@@ -462,6 +465,7 @@ struct OverlayContentViewLoadingTests {
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
+                spectrumPresenter: SpectrumPresenter(),
                 wallpaperPresenter: wallpaperPresenter
             ),
             size: CGSize(width: 800, height: 500)
