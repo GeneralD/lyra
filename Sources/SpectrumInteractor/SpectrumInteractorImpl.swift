@@ -17,6 +17,17 @@ import os
 /// `@unchecked` only because Combine subjects are not `Sendable`; the
 /// `capturingSubject` is the sole shared state and is immutable (`let`).
 public final class SpectrumInteractorImpl: @unchecked Sendable {
+    /// Processor lifecycle. The `.starting` reservation guarantees at most
+    /// one event loop ever runs — a competing `start()` never even creates a
+    /// task, so no loser can drive the tap lifecycle before its cancellation
+    /// lands. The token lets the reserving call detect that `stop()` cleared
+    /// the slot while the task was being created.
+    private enum Processor: Sendable {
+        case idle
+        case starting(UUID)
+        case running(Task<Void, Never>)
+    }
+
     // Stored wrappers capture the dependency context at init, so instances
     // built inside `withDependencies` keep their fakes when methods run
     // outside that scope (the processor task).
@@ -24,7 +35,7 @@ public final class SpectrumInteractorImpl: @unchecked Sendable {
     @Dependency(\.playbackUseCase) private var playbackService
     @Dependency(\.spectrumUseCase) private var spectrumService
     private let capturingSubject = CurrentValueSubject<Bool, Never>(false)
-    private let processor = OSAllocatedUnfairLock(initialState: Task<Void, Never>?.none)
+    private let processor = OSAllocatedUnfairLock(initialState: Processor.idle)
 
     public init() {}
 }
@@ -40,6 +51,13 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
 
     public func start() {
         guard spectrumStyle.enabled else { return }
+        let token = UUID()
+        let reserved = processor.withLock { state in
+            guard case .idle = state else { return false }
+            state = .starting(token)
+            return true
+        }
+        guard reserved else { return }
         let spectrum = spectrumService
         let subject = capturingSubject
         let playback = playbackService
@@ -63,36 +81,45 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
                 subject.send(await spectrum.startCapture(pid: pid))
             }
             // Upstream finished (helper EOF): tear the capture down. A
-            // cancelled task skips this — stop() owns that teardown, and a
-            // start/start race loser must not destroy the winner's capture.
+            // cancelled task skips this — stop() owns that teardown.
             guard !Task.isCancelled else { return }
             await spectrum.stopCapture()
             subject.send(false)
         }
-        let adopted = processor.withLock { task in
-            guard task == nil else { return false }
-            task = candidate
-            return true
-        }
-        guard adopted else {
-            candidate.cancel()
-            return
+        processor.withLock { state in
+            guard case .starting(let current) = state, current == token else {
+                // stop() cleared the reservation while the task was being
+                // created; the candidate must not drive the tap lifecycle.
+                candidate.cancel()
+                return
+            }
+            state = .running(candidate)
         }
     }
 
     public func stop() {
-        let stopped = processor.withLock { task in
-            defer { task = nil }
+        let stopped = processor.withLock { state -> Task<Void, Never>? in
+            defer { state = .idle }
+            guard case .running(let task) = state else { return nil }
             return task
         }
         guard let stopped else { return }
         stopped.cancel()
         let spectrum = spectrumService
         let subject = capturingSubject
+        let processor = processor
         Task {
             // Awaiting the cancelled processor first keeps this teardown
             // ordered after its in-flight capture call.
             await stopped.value
+            // A restart may have taken ownership while the old processor
+            // drained; the new generation owns the tap then, and a stale
+            // teardown must not destroy its capture.
+            let superseded = processor.withLock { state in
+                if case .idle = state { return false }
+                return true
+            }
+            guard !superseded else { return }
             await spectrum.stopCapture()
             subject.send(false)
         }

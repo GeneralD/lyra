@@ -98,6 +98,38 @@ struct SpectrumInteractorImplTests {
         #expect(harness.spectrum.stopCount > 0)
     }
 
+    @Test("second start() while running never spawns a competing processor")
+    func startTwiceKeepsSingleProcessor() async {
+        let harness = Harness()
+        harness.interactor.start()
+        harness.interactor.start()
+        harness.send(pid: 4242, playbackRate: 1)
+        // Pause marker: once it lands, the play event was fully evaluated
+        // by however many processors exist — a competing second processor
+        // would have doubled the capture start.
+        harness.send(pid: 4242, playbackRate: 0)
+
+        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        #expect(harness.spectrum.startedPids == [4242])
+    }
+
+    @Test("stop then start captures again for the new session")
+    func restartAfterStopCapturesAgain() async {
+        let harness = Harness()
+        harness.interactor.start()
+        harness.send(pid: 4242, playbackRate: 1)
+        await harness.pollUntil { harness.capturing.value == true }
+
+        harness.interactor.stop()
+        harness.interactor.start()
+        // The new processor replays the history and re-captures; the stale
+        // teardown from stop() must not destroy the new capture.
+        await harness.pollUntil { harness.spectrum.startedPids.count == 2 }
+        #expect(harness.spectrum.startedPids == [4242, 4242])
+        await harness.pollUntil { harness.capturing.value == true }
+        #expect(harness.capturing.value == true)
+    }
+
     @Test("magnitudes forwards the configured style to the use case")
     func magnitudesForwards() {
         let harness = Harness()
@@ -123,19 +155,17 @@ struct SpectrumInteractorImplTests {
 private struct Harness {
     let style: SpectrumStyle
     let spectrum = FakeSpectrumUseCase()
+    let playback = StubPlaybackUseCase()
     let capturing = CurrentValueBox()
     let interactor: SpectrumInteractorImpl
-    private let feed: AsyncStream<NowPlaying?>.Continuation
     private let cancellable: AnyCancellable
 
     init(enabled: Bool = true) {
         let style = SpectrumStyle(enabled: enabled, barCount: 16, fftSize: 1024)
         self.style = style
-        let (stream, continuation) = AsyncStream<NowPlaying?>.makeStream()
-        feed = continuation
-        let interactor = withDependencies { [spectrum] in
+        let interactor = withDependencies { [spectrum, playback] in
             $0.configUseCase = StubConfigUseCase(appStyle: AppStyle(spectrum: style))
-            $0.playbackUseCase = StubPlaybackUseCase(stream: stream)
+            $0.playbackUseCase = playback
             $0.spectrumUseCase = spectrum
         } operation: {
             SpectrumInteractorImpl()
@@ -145,14 +175,14 @@ private struct Harness {
     }
 
     func send(pid: Int?, playbackRate: Double) {
-        feed.yield(
+        playback.send(
             NowPlaying(
                 title: nil, artist: nil, artworkData: nil, duration: nil,
                 rawElapsed: nil, playbackRate: playbackRate, timestamp: nil, pid: pid))
     }
 
     func sendSessionGone() {
-        feed.yield(nil)
+        playback.send(nil)
     }
 
     func pollUntil(_ condition: () -> Bool) async {
@@ -202,9 +232,36 @@ private struct StubConfigUseCase: ConfigUseCase {
     var existingConfigPath: String? { nil }
 }
 
-private struct StubPlaybackUseCase: PlaybackUseCase {
-    let stream: AsyncStream<NowPlaying?>
+/// Multicast playback stub mirroring the live repository: every
+/// `observeNowPlaying()` call gets its own stream, events fan out to all
+/// subscribers, and history replays to late subscribers so events sent
+/// before the processor task registers are never lost.
+private final class StubPlaybackUseCase: PlaybackUseCase, @unchecked Sendable {
+    private struct State {
+        var subscribers: [AsyncStream<NowPlaying?>.Continuation] = []
+        var history: [NowPlaying?] = []
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
     func fetchNowPlaying() async -> NowPlaying? { nil }
-    func observeNowPlaying() -> AsyncStream<NowPlaying?> { stream }
+
+    func observeNowPlaying() -> AsyncStream<NowPlaying?> {
+        AsyncStream { continuation in
+            state.withLock { state in
+                for value in state.history { continuation.yield(value) }
+                state.subscribers.append(continuation)
+            }
+        }
+    }
+
     func elapsedTime(for nowPlaying: NowPlaying) -> TimeInterval? { nil }
+
+    func send(_ value: NowPlaying?) {
+        let subscribers = state.withLock { state -> [AsyncStream<NowPlaying?>.Continuation] in
+            state.history.append(value)
+            return state.subscribers
+        }
+        for subscriber in subscribers { subscriber.yield(value) }
+    }
 }
