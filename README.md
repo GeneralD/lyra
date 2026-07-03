@@ -213,7 +213,7 @@ Real-time spectrum analyzer bars driven by the now-playing app's audio, rendered
 | `placement` | string | `"bottom"` | `"bottom"`, `"top"`, or `"underlay"` (bars span the whole overlay behind the lyrics) |
 | `height_ratio` | number | `0.25` | Fraction of the overlay height the bars may occupy (ignored for `underlay`) |
 
-> **Known limitation:** the audio is tapped per *process*. When the now-playing app is a browser, the tap captures the browser's entire audio output — every tab, not just the one playing music.
+> **Known limitation:** the audio is tapped per *process tree* (browsers emit audio from helper subprocesses, so the whole tree must be covered). When the now-playing app is a browser, the tap captures the browser's entire audio output — every tab, not just the one playing music.
 
 ### `[ai]`
 

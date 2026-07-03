@@ -21,11 +21,12 @@ final class ProcessTapEngine {
     init?(pid: Int, ring: SampleRingBuffer) {
         self.ring = ring
 
-        guard let processObject = Self.processObject(for: pid) else { return nil }
+        let processObjects = Self.processObjects(forSubtreeOf: pid)
+        guard !processObjects.isEmpty else { return nil }
 
         // The tap is private (invisible in Audio MIDI Setup) and keeps the
         // tapped app audible — the analyzer observes, never mutes.
-        let description = CATapDescription(stereoMixdownOfProcesses: [processObject])
+        let description = CATapDescription(stereoMixdownOfProcesses: processObjects)
         description.isPrivate = true
         description.muteBehavior = .unmuted
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr,
@@ -106,29 +107,60 @@ final class ProcessTapEngine {
         }
     }
 
-    /// Translates a pid into the CoreAudio process object required by
-    /// `CATapDescription`. Returns `nil` for processes CoreAudio doesn't know
-    /// (never launched audio, or no such pid).
-    private static func processObject(for pid: Int) -> AudioObjectID? {
+    /// CoreAudio process objects for `pid` and every descendant process.
+    /// The now-playing pid alone is not enough: browsers (Chromium-based)
+    /// emit audio from a helper subprocess, so a tap scoped to the main pid
+    /// captures silence. Covering the whole subtree taps whichever family
+    /// member actually owns the audio stream.
+    private static func processObjects(forSubtreeOf pid: Int) -> [AudioObjectID] {
         var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
+            mSelector: kAudioHardwarePropertyProcessObjectList,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        var processPid = pid_t(pid)
-        var processObject = AudioObjectID(kAudioObjectUnknown)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        let status = withUnsafeMutablePointer(to: &processPid) { pidPointer in
+        var size: UInt32 = 0
+        guard
+            AudioObjectGetPropertyDataSize(
+                AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr
+        else { return [] }
+        var objects = [AudioObjectID](
+            repeating: AudioObjectID(kAudioObjectUnknown),
+            count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard
             AudioObjectGetPropertyData(
-                AudioObjectID(kAudioObjectSystemObject), &address,
-                UInt32(MemoryLayout<pid_t>.size), pidPointer,
-                &size, &processObject
-            )
+                AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &objects)
+                == noErr
+        else { return [] }
+        return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
+    }
+
+    /// The owning pid of a CoreAudio process object, or `nil` when unreadable.
+    private static func processPid(of object: AudioObjectID) -> pid_t? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyPID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var pid: pid_t = -1
+        var size = UInt32(MemoryLayout<pid_t>.size)
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &pid) == noErr,
+            pid > 0
+        else { return nil }
+        return pid
+    }
+
+    /// Whether `pid` equals `root` or has `root` among its ancestors.
+    private static func isInSubtree(_ pid: pid_t?, root: pid_t) -> Bool {
+        guard var current = pid else { return false }
+        while current > 1 {
+            guard current != root else { return true }
+            var info = proc_bsdinfo()
+            let read = proc_pidinfo(
+                current, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
+            guard read == Int32(MemoryLayout<proc_bsdinfo>.size) else { return false }
+            current = pid_t(info.pbi_ppid)
         }
-        guard status == noErr, processObject != AudioObjectID(kAudioObjectUnknown) else {
-            return nil
-        }
-        return processObject
+        return false
     }
 
     /// Real-time-safe mono mixdown of the first (interleaved) input buffer.
