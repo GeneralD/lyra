@@ -24,11 +24,20 @@ public final class AudioTapDataSourceImpl: Sendable {
 extension AudioTapDataSourceImpl: AudioTapDataSource {
     public func startTap(pid: Int) async -> Bool {
         guard #available(macOS 14.4, *) else { return false }
-        return engine.withLockUnchecked { current in
-            (current as? ProcessTapEngine)?.stop()
-            current = ProcessTapEngine(pid: pid, ring: ring)
-            return current != nil
+        // The old engine stops before the new one exists so the SPSC ring
+        // never sees two writers, and construction happens OUTSIDE the lock —
+        // CoreAudio setup (potentially a first-run TCC prompt) must not stall
+        // `latestSamples`' per-frame lock acquisition. The caller serializes
+        // start/stop through a single processor task, so the two lock
+        // sections cannot interleave with another mutation.
+        let previous = engine.withLockUnchecked { current -> AnyObject? in
+            defer { current = nil }
+            return current
         }
+        (previous as? ProcessTapEngine)?.stop()
+        let created = ProcessTapEngine(pid: pid, ring: ring)
+        engine.withLockUnchecked { $0 = created }
+        return created != nil
     }
 
     public func stopTap() async {
