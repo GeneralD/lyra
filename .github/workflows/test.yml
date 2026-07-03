@@ -34,6 +34,7 @@ jobs:
           WARNINGS=$(grep "warning:" /tmp/build.log \
             | grep -v ".build/" \
             | grep -v 'swift-syntax.*conflicts with dependency on' \
+            | grep -v 'Conflicting identity for swift-syntax' \
             || true)
           if [ -n "$WARNINGS" ]; then
             echo "::error::Build produced warnings in project sources"
