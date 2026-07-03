@@ -86,6 +86,7 @@ graph TD
             LyricsUseCase[LyricsUseCase]
             MetadataUseCase[MetadataUseCase]
             WallpaperUseCase[WallpaperUseCase]
+            SpectrumUseCase[SpectrumUseCase]
         end
 
         subgraph Repository
@@ -94,6 +95,7 @@ graph TD
             MetadataRepository[MetadataRepository]
             NowPlayingRepository[NowPlayingRepository]
             WallpaperRepository[WallpaperRepository]
+            AudioCaptureRepository[AudioCaptureRepository]
         end
 
         subgraph DataSource
@@ -136,8 +138,10 @@ graph TD
     TrackInteractor -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase & ConfigUseCase
     ScreenInteractor -.-> ConfigUseCase
     WallpaperInteractor -.-> WallpaperUseCase & ConfigUseCase
-    SpectrumInteractor -.-> ConfigUseCase & PlaybackUseCase & AudioTapDataSource
-    SpectrumInteractor --> FrequencyAnalyzer
+    SpectrumInteractor -.-> ConfigUseCase & PlaybackUseCase & SpectrumUseCase
+    SpectrumUseCase -.-> AudioCaptureRepository
+    SpectrumUseCase --> FrequencyAnalyzer
+    AudioCaptureRepository -.-> AudioTapDataSource
     ConfigUseCase -.-> ConfigRepository
     ConfigRepository -.-> ConfigDataSource
     PlaybackUseCase -.-> NowPlayingRepository
@@ -169,11 +173,13 @@ graph TD
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
     style MetadataUseCase fill:#59c,stroke:#333,color:#fff
     style WallpaperUseCase fill:#59c,stroke:#333,color:#fff
+    style SpectrumUseCase fill:#59c,stroke:#333,color:#fff
     style ConfigRepository fill:#86c,stroke:#333,color:#fff
     style LyricsRepository fill:#86c,stroke:#333,color:#fff
     style MetadataRepository fill:#86c,stroke:#333,color:#fff
     style NowPlayingRepository fill:#86c,stroke:#333,color:#fff
     style WallpaperRepository fill:#86c,stroke:#333,color:#fff
+    style AudioCaptureRepository fill:#86c,stroke:#333,color:#fff
     style LyricsDataSource fill:#c84,stroke:#333,color:#fff
     style MetadataDataSource fill:#c84,stroke:#333,color:#fff
     style ConfigDataSource fill:#c84,stroke:#333,color:#fff
@@ -221,8 +227,8 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Entity | `Entity` | Pure data types, zero external dependencies |
 | Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
-| UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase`, `WallpaperUseCase` | Business logic only, no cross-UseCase deps |
-| Repository | `ConfigRepository`, `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository`, `WallpaperRepository` | DataSource + DataStore orchestration, cache strategy |
+| UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase`, `WallpaperUseCase`, `SpectrumUseCase` | Business logic only, no cross-UseCase deps |
+| Repository | `ConfigRepository`, `LyricsRepository`, `MetadataRepository`, `NowPlayingRepository`, `WallpaperRepository`, `AudioCaptureRepository` | DataSource + DataStore orchestration, cache strategy |
 | DataSource | `LyricsDataSource`, `MetadataDataSource`, `ConfigDataSource`, `MediaRemoteDataSource`, `WallpaperDataSource`, `AudioTapDataSource` | API execution, file I/O, private framework access, CoreAudio process tap |
 | DataStore | `SQLiteDataStore` | GRDB SQLite cache |
 
@@ -240,7 +246,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 
 **FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by Presenters using `DecodeEffectState`. Use `FetchState<T>` only when the payload `T` is genuinely consumed downstream (e.g. `LyricsPresenter.lyricsState`, whose content feeds `columns(in:)` and `updateActiveLineTick()`). When a Presenter only needs the animation lifecycle and the View already renders the text from a separate `display…` property, expose the payload-less `RevealPhase` (`.idle` / `.revealing` / `.revealed`) instead and keep the decode target in a private field — `HeaderPresenter` does this for `titlePhase` / `artistPhase` so the public surface never duplicates `displayTitle` / `displayArtist` (#275).
 
-**Spectrum analyzer (#23)**: Real-time bars driven by the now-playing app's audio via a CoreAudio **process tap** (macOS 14.4+ APIs: `kAudioHardwarePropertyProcessObjectList` filtered to the now-playing pid's **process subtree** → `CATapDescription(stereoMixdownOfProcesses:)` → `AudioHardwareCreateProcessTap` → private aggregate device + `AudioDeviceCreateIOProcIDWithBlock`; requires the *System Audio Recording* TCC permission declared as `NSAudioCaptureUsageDescription` in the embedded Info.plist). The subtree matching (ppid walk via `proc_pidinfo`) is load-bearing: Chromium-based browsers emit audio from a helper subprocess, so a tap scoped to the main pid alone captures silence — empirically hit with Arc, whose "Browser Helper" child owns the audio stream. The pipeline is: `PlaybackUseCase.observeNowPlaying()` (backed by the **multicast** `NowPlayingRepository.stream()`, so no Interactor→Interactor dependency and no second helper stream) → `SpectrumInteractorImpl` consumes the stream in a single `for await` processor task — inherent serialization, so pause/play bursts cannot interleave tap create/destroy — deduping `AudioSourceState(pid:isPlaying:)` transitions itself (the helper's 3 s ticks must not rebuild the tap) → `AudioTapDataSourceImpl` owns `ProcessTapEngine` (`@available(macOS 14.4, *)`, availability-erased as `AnyObject` for the 14.0 target) and a lock-free SPSC `SampleRingBuffer` (swift-atomics `ManagedAtomic` monotonic write index; the IOProc callback is RT-safe — no allocation, locks, or Swift concurrency). `FrequencyAnalyzer` (pure, dependency-free module) converts the newest PCM window: Hann window → vDSP FFT → dB → 0…1 normalization → per-bar max grouping. `SpectrumPresenter.tick()` runs on the DisplayLink and folds fresh magnitudes into exponentially decaying bars (`decayRate`); `binHeights()` is read-only so the Canvas draw closure never mutates `@Published` state. `SpectrumView` follows the #252/#258 zero-idle-cost pattern (conditional inclusion + `TimelineView(.animation(paused:))`). Tap lifecycle: playing+pid → create; paused/pid-lost/session-gone → destroy (a dead tap costs zero CPU). Known limitation (by decision): the tap captures the whole process tree — for browsers that means every tab, documented in README. TCC caveat for dev runs: a daemon spawned from a terminal inherits the terminal as TCC responsible process, so the permission prompt never appears and the tap reads silence — launch via launchd (LaunchAgent) so lyra itself is the responsible process.
+**Spectrum analyzer (#23)**: Real-time bars driven by the now-playing app's audio via a CoreAudio **process tap** (macOS 14.4+ APIs: `kAudioHardwarePropertyProcessObjectList` filtered to the now-playing pid's **process subtree** → `CATapDescription(stereoMixdownOfProcesses:)` → `AudioHardwareCreateProcessTap` → private aggregate device + `AudioDeviceCreateIOProcIDWithBlock`; requires the *System Audio Recording* TCC permission declared as `NSAudioCaptureUsageDescription` in the embedded Info.plist). The subtree matching (ppid walk via `proc_pidinfo`) is load-bearing: Chromium-based browsers emit audio from a helper subprocess, so a tap scoped to the main pid alone captures silence — empirically hit with Arc, whose "Browser Helper" child owns the audio stream. The pipeline is: `PlaybackUseCase.observeNowPlaying()` (backed by the **multicast** `NowPlayingRepository.stream()`, so no Interactor→Interactor dependency and no second helper stream) → `SpectrumInteractorImpl` consumes the stream in a single `for await` processor task — inherent serialization, so pause/play bursts cannot interleave tap create/destroy — deduping `AudioSourceState(pid:isPlaying:)` transitions itself (the helper's 3 s ticks must not rebuild the tap) → `SpectrumUseCase` (business logic: capture lifecycle + PCM→per-bar conversion via the pure `FrequencyAnalyzer`) → `AudioCaptureRepository` (thin orchestration over the tap DataSource) → `AudioTapDataSourceImpl` owns `ProcessTapEngine` (`@available(macOS 14.4, *)`, availability-erased as `AnyObject` for the 14.0 target) and a lock-free SPSC `SampleRingBuffer` (swift-atomics `ManagedAtomic` monotonic write index; the IOProc callback is RT-safe — no allocation, locks, or Swift concurrency). `FrequencyAnalyzer` (pure, dependency-free module) converts the newest PCM window: Hann window → vDSP FFT → dB → 0…1 normalization → per-bar max grouping. `SpectrumPresenter.tick()` runs on the DisplayLink and folds fresh magnitudes into exponentially decaying bars (`decayRate`); `binHeights()` is read-only so the Canvas draw closure never mutates `@Published` state. `SpectrumView` follows the #252/#258 zero-idle-cost pattern (conditional inclusion + `TimelineView(.animation(paused:))`). Tap lifecycle: playing+pid → create; paused/pid-lost/session-gone → destroy (a dead tap costs zero CPU). Known limitation (by decision): the tap captures the whole process tree — for browsers that means every tab, documented in README. TCC caveat for dev runs: a daemon spawned from a terminal inherits the terminal as TCC responsible process, so the permission prompt never appears and the tap reads silence — launch via launchd (LaunchAgent) so lyra itself is the responsible process.
 
 **AI processing indicator (#57)**: While the AI (LLM) extractor resolves title/artist on a cache miss, the header scrambles in a configurable color so the user sees that work is happening. `TrackInteractorImpl.resolveTrack` emits an extra `TrackUpdate(aiResolving: true)` after the debounce only when an `[ai]` endpoint is configured **and** `MetadataUseCase.isAIMetadataCached(track:)` returns `false` (an LLM cache hit means no API round-trip, so no indicator). `HeaderPresenter` maps `aiResolving` to `DecodeEffectState.startLoading` (the indefinite scramble, distinct from `decode`'s settle) and swaps `titleColor` / `artistColor` to `DecodeEffect.processingColor` (default green `#4ADE80FF`, config key `text.decode_effect.processing_color`, solid or gradient). The resolved (non-`aiResolving`) update settles the scramble and restores the normal color. `HeaderView` reads the effective `titleColor` / `artistColor` (`@Published`) rather than the static `titleStyle.color`.
 

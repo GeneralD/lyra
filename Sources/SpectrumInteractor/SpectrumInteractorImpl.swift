@@ -2,36 +2,29 @@ import Combine
 import Dependencies
 import Domain
 import Foundation
-import FrequencyAnalyzer
 import os
 
-/// Drives the spectrum analyzer (#23): follows the now-playing stream, keeps
-/// the CoreAudio process tap scoped to the now-playing app, and converts the
-/// captured PCM window into per-bar magnitudes on demand.
+/// Drives the spectrum analyzer (#23): follows the now-playing stream and
+/// keeps the audio capture scoped to the now-playing app, exposing per-bar
+/// magnitudes for the Presenter's DisplayLink tick.
 ///
-/// Tap lifecycle rules:
-/// - playing + known pid → (re)create the tap for that pid
-/// - paused, pid lost, or session gone → destroy the tap (not mute — a dead
-///   tap costs zero CPU, per the idle-suspension policy)
-/// - pid change (app switch) → the destroy/create pair reruns for the new pid
+/// Capture lifecycle rules:
+/// - playing + known pid → (re)start the capture for that pid
+/// - paused, pid lost, or session gone → stop the capture (not mute — a dead
+///   capture costs zero CPU, per the idle-suspension policy)
+/// - pid change (app switch) → the stop/start pair reruns for the new pid
 ///
-/// `@unchecked` only because of the lazy `analyzer`, which is touched solely
-/// from the main-thread DisplayLink tick via `magnitudes()`.
+/// `@unchecked` only because Combine subjects are not `Sendable`; the
+/// `capturingSubject` is the sole shared state and is immutable (`let`).
 public final class SpectrumInteractorImpl: @unchecked Sendable {
     // Stored wrappers capture the dependency context at init, so instances
     // built inside `withDependencies` keep their fakes when methods run
     // outside that scope (the processor task).
     @Dependency(\.configUseCase) private var configService
     @Dependency(\.playbackUseCase) private var playbackService
-    @Dependency(\.audioTapDataSource) private var tap
+    @Dependency(\.spectrumUseCase) private var spectrumService
     private let capturingSubject = CurrentValueSubject<Bool, Never>(false)
     private let processor = OSAllocatedUnfairLock(initialState: Task<Void, Never>?.none)
-    private lazy var analyzer = FrequencyAnalyzer(
-        fftSize: spectrumStyle.fftSize,
-        barCount: spectrumStyle.barCount,
-        minDb: spectrumStyle.minDb,
-        maxDb: spectrumStyle.maxDb
-    )
 
     public init() {}
 }
@@ -47,13 +40,14 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
 
     public func start() {
         guard spectrumStyle.enabled else { return }
-        let tap = tap
+        let spectrum = spectrumService
         let subject = capturingSubject
         let playback = playbackService
         // A single for-await loop is the serialization point: events apply
-        // one at a time, so a rapid pause→play burst can never interleave tap
-        // create/destroy calls. `previous` dedupes the helper's periodic
-        // ticks — `startTap` rebuilds the engine, so repeats must not pass.
+        // one at a time, so a rapid pause→play burst can never interleave
+        // capture start/stop calls. `previous` dedupes the helper's periodic
+        // ticks — restarting the capture rebuilds the tap, so repeats must
+        // not pass.
         let candidate = Task {
             var previous: AudioSourceState?
             for await info in playback.observeNowPlaying() {
@@ -62,17 +56,17 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
                 guard source != previous else { continue }
                 previous = source
                 guard let pid = source.pid, source.isPlaying else {
-                    await tap.stopTap()
+                    await spectrum.stopCapture()
                     subject.send(false)
                     continue
                 }
-                subject.send(await tap.startTap(pid: pid))
+                subject.send(await spectrum.startCapture(pid: pid))
             }
-            // Upstream finished (helper EOF): tear the tap down. A cancelled
-            // task skips this — stop() owns that teardown, and a start/start
-            // race loser must not destroy the winner's tap.
+            // Upstream finished (helper EOF): tear the capture down. A
+            // cancelled task skips this — stop() owns that teardown, and a
+            // start/start race loser must not destroy the winner's capture.
             guard !Task.isCancelled else { return }
-            await tap.stopTap()
+            await spectrum.stopCapture()
             subject.send(false)
         }
         let adopted = processor.withLock { task in
@@ -93,20 +87,18 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
         }
         guard let stopped else { return }
         stopped.cancel()
-        let tap = tap
+        let spectrum = spectrumService
         let subject = capturingSubject
         Task {
             // Awaiting the cancelled processor first keeps this teardown
-            // ordered after its in-flight tap call.
+            // ordered after its in-flight capture call.
             await stopped.value
-            await tap.stopTap()
+            await spectrum.stopCapture()
             subject.send(false)
         }
     }
 
     public func magnitudes() -> [Float] {
-        let samples = tap.latestSamples(count: spectrumStyle.fftSize)
-        guard !samples.isEmpty else { return [] }
-        return analyzer.magnitudes(of: samples)
+        spectrumService.magnitudes(style: spectrumStyle)
     }
 }

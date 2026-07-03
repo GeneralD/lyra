@@ -204,11 +204,13 @@ let package = Package(
                 "LyricsUseCase",
                 "MetadataUseCase",
                 "WallpaperUseCase",
+                "SpectrumUseCase",
                 "ConfigRepository",
                 "LyricsRepository",
                 "MetadataRepository",
                 "NowPlayingRepository",
                 "WallpaperRepository",
+                "AudioCaptureRepository",
                 "ConfigDataSource",
                 "LyricsDataSource",
                 "MetadataDataSource",
@@ -255,7 +257,25 @@ let package = Package(
             name: "SpectrumInteractor",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // ── SpectrumUseCase ──
+        .target(
+            name: "SpectrumUseCase",
+            dependencies: [
+                "Domain",
                 "FrequencyAnalyzer",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // ── AudioCaptureRepository ──
+        .target(
+            name: "AudioCaptureRepository",
+            dependencies: [
+                "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -451,6 +471,22 @@ let package = Package(
             name: "SpectrumInteractorTests",
             dependencies: [
                 "SpectrumInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "SpectrumUseCaseTests",
+            dependencies: [
+                "SpectrumUseCase",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "AudioCaptureRepositoryTests",
+            dependencies: [
+                "AudioCaptureRepository",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

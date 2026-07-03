@@ -9,58 +9,61 @@ import os
 
 @Suite("SpectrumInteractorImpl")
 struct SpectrumInteractorImplTests {
-    @Test("playing source starts a tap for its pid and reports capturing")
-    func playingStartsTap() async {
+    @Test("playing source starts a capture for its pid and reports capturing")
+    func playingStartsCapture() async {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
 
-        await harness.pollUntil { harness.tap.startedPids == [4242] }
-        #expect(harness.tap.startedPids == [4242])
+        await harness.pollUntil { harness.spectrum.startedPids == [4242] }
+        #expect(harness.spectrum.startedPids == [4242])
         await harness.pollUntil { harness.capturing.value == true }
         #expect(harness.capturing.value == true)
     }
 
-    @Test("pausing tears the tap down and reports not capturing")
-    func pauseStopsTap() async {
+    @Test("pausing stops the capture and reports not capturing")
+    func pauseStopsCapture() async {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
         await harness.pollUntil { harness.capturing.value == true }
 
         harness.send(pid: 4242, playbackRate: 0)
-        await harness.pollUntil { harness.tap.stopCount > 0 }
-        #expect(harness.tap.stopCount > 0)
+        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        #expect(harness.spectrum.stopCount > 0)
         await harness.pollUntil { harness.capturing.value == false }
         #expect(harness.capturing.value == false)
     }
 
-    @Test("app switch re-taps the new pid")
-    func appSwitchRetaps() async {
+    @Test("app switch re-captures the new pid")
+    func appSwitchRecaptures() async {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 1, playbackRate: 1)
         harness.send(pid: 2, playbackRate: 1)
 
-        await harness.pollUntil { harness.tap.startedPids == [1, 2] }
-        #expect(harness.tap.startedPids == [1, 2])
+        await harness.pollUntil { harness.spectrum.startedPids == [1, 2] }
+        #expect(harness.spectrum.startedPids == [1, 2])
     }
 
-    @Test("repeated identical events tap only once (periodic tick dedup)")
+    @Test("repeated identical events capture only once (periodic tick dedup)")
     func periodicTickDedup() async {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
         harness.send(pid: 4242, playbackRate: 1)
         harness.send(pid: 4242, playbackRate: 1)
+        // The pause marker is processed strictly after the three identical
+        // events (single serial consumer), so once it lands every duplicate
+        // has been evaluated — no fixed sleep needed.
+        harness.send(pid: 4242, playbackRate: 0)
 
-        await harness.pollUntil { harness.tap.startedPids == [4242] }
-        try? await Task.sleep(for: .milliseconds(50))
-        #expect(harness.tap.startedPids == [4242])
+        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        #expect(harness.spectrum.startedPids == [4242])
     }
 
-    @Test("vanished session tears the tap down")
-    func sessionGoneStopsTap() async {
+    @Test("vanished session stops the capture")
+    func sessionGoneStopsCapture() async {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
@@ -69,20 +72,21 @@ struct SpectrumInteractorImplTests {
         harness.sendSessionGone()
         await harness.pollUntil { harness.capturing.value == false }
         #expect(harness.capturing.value == false)
-        #expect(harness.tap.stopCount > 0)
+        #expect(harness.spectrum.stopCount > 0)
     }
 
-    @Test("disabled spectrum never subscribes nor taps")
-    func disabledIsInert() async {
+    @Test("disabled spectrum never subscribes nor captures")
+    func disabledIsInert() {
         let harness = Harness(enabled: false)
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
 
-        try? await Task.sleep(for: .milliseconds(50))
-        #expect(harness.tap.startedPids.isEmpty)
+        // Disabled start() returns before any task exists, so nothing can
+        // consume the event — the assertion is safe immediately.
+        #expect(harness.spectrum.startedPids.isEmpty)
     }
 
-    @Test("stop tears down the active tap")
+    @Test("stop tears down the active capture")
     func stopTearsDown() async {
         let harness = Harness()
         harness.interactor.start()
@@ -90,19 +94,21 @@ struct SpectrumInteractorImplTests {
         await harness.pollUntil { harness.capturing.value == true }
 
         harness.interactor.stop()
-        await harness.pollUntil { harness.tap.stopCount > 0 }
-        #expect(harness.tap.stopCount > 0)
+        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        #expect(harness.spectrum.stopCount > 0)
     }
 
-    @Test("magnitudes converts the captured window into one value per bar")
-    func magnitudesShape() {
-        let harness = Harness(samples: [Float](repeating: 0.5, count: 1024))
-        let bins = harness.interactor.magnitudes()
-        #expect(bins.count == harness.style.barCount)
+    @Test("magnitudes forwards the configured style to the use case")
+    func magnitudesForwards() {
+        let harness = Harness()
+        harness.spectrum.magnitudesResult = [0.25, 0.5]
+
+        #expect(harness.interactor.magnitudes() == [0.25, 0.5])
+        #expect(harness.spectrum.lastStyle?.barCount == 16)
     }
 
     @Test("magnitudes is empty while nothing is captured")
-    func magnitudesEmptyWithoutSamples() {
+    func magnitudesEmptyWithoutCapture() {
         let harness = Harness()
         #expect(harness.interactor.magnitudes().isEmpty)
     }
@@ -116,22 +122,21 @@ struct SpectrumInteractorImplTests {
 /// where the interactor consumes the repository's multicast stream directly.
 private struct Harness {
     let style: SpectrumStyle
-    let tap = FakeAudioTapDataSource()
+    let spectrum = FakeSpectrumUseCase()
     let capturing = CurrentValueBox()
     let interactor: SpectrumInteractorImpl
     private let feed: AsyncStream<NowPlaying?>.Continuation
     private let cancellable: AnyCancellable
 
-    init(enabled: Bool = true, samples: [Float] = []) {
+    init(enabled: Bool = true) {
         let style = SpectrumStyle(enabled: enabled, barCount: 16, fftSize: 1024)
         self.style = style
-        tap.samples = samples
         let (stream, continuation) = AsyncStream<NowPlaying?>.makeStream()
         feed = continuation
-        let interactor = withDependencies { [tap] in
+        let interactor = withDependencies { [spectrum] in
             $0.configUseCase = StubConfigUseCase(appStyle: AppStyle(spectrum: style))
             $0.playbackUseCase = StubPlaybackUseCase(stream: stream)
-            $0.audioTapDataSource = tap
+            $0.spectrumUseCase = spectrum
         } operation: {
             SpectrumInteractorImpl()
         }
@@ -166,24 +171,27 @@ private final class CurrentValueBox: @unchecked Sendable {
     }
 }
 
-private final class FakeAudioTapDataSource: AudioTapDataSource, @unchecked Sendable {
-    private let state = OSAllocatedUnfairLock(initialState: (started: [Int](), stops: 0))
-    var samples: [Float] = []
+private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
+    private let state = OSAllocatedUnfairLock(
+        initialState: (started: [Int](), stops: 0, style: SpectrumStyle?.none))
+    var magnitudesResult: [Float] = []
 
     var startedPids: [Int] { state.withLock { $0.started } }
     var stopCount: Int { state.withLock { $0.stops } }
+    var lastStyle: SpectrumStyle? { state.withLock { $0.style } }
 
-    func startTap(pid: Int) async -> Bool {
+    func startCapture(pid: Int) async -> Bool {
         state.withLock { $0.started.append(pid) }
         return true
     }
 
-    func stopTap() async {
+    func stopCapture() async {
         state.withLock { $0.stops += 1 }
     }
 
-    func latestSamples(count: Int) -> [Float] {
-        samples.count >= count ? Array(samples.suffix(count)) : []
+    func magnitudes(style: SpectrumStyle) -> [Float] {
+        state.withLock { $0.style = style }
+        return magnitudesResult
     }
 }
 

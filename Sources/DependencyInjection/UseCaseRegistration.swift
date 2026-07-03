@@ -4,6 +4,7 @@ import Domain
 import LyricsUseCase
 import MetadataUseCase
 import PlaybackUseCase
+import SpectrumUseCase
 import WallpaperUseCase
 
 extension ConfigUseCaseKey: DependencyKey {
@@ -24,4 +25,8 @@ extension PlaybackUseCaseKey: DependencyKey {
 
 extension WallpaperUseCaseKey: DependencyKey {
     public static let liveValue: any WallpaperUseCase = WallpaperUseCaseImpl()
+}
+
+extension SpectrumUseCaseKey: DependencyKey {
+    public static let liveValue: any SpectrumUseCase = SpectrumUseCaseImpl()
 }
