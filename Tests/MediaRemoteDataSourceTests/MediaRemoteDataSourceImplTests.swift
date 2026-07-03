@@ -322,6 +322,32 @@ struct MediaRemoteDataSourceImplTests {
         }
     }
 
+    @Test("pid from the helper payload is surfaced, absent pid yields nil (#23)")
+    func pidIsDecoded() async throws {
+        let gateway = StreamingGateway(streamPlans: [
+            [
+                Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true, pid: 4242),
+                Self.jsonLine(title: "Song", artist: "Artist", hasInfo: true),
+            ]
+        ])
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl()
+            let pids = [await dataSource.poll(), await dataSource.poll()].map {
+                result -> Int? in
+                guard case .info(let nowPlaying) = result else {
+                    Issue.record("Expected .info, got \(result)")
+                    return nil
+                }
+                return nowPlaying.pid
+            }
+
+            #expect(pids == [4242, nil])
+        }
+    }
+
     @Test("poll spawns the helper via the Apple-signed swift interpreter")
     func pollInvokesInterpretMode() async throws {
         let gateway = StreamingGateway(streamPlans: [
@@ -352,7 +378,7 @@ struct MediaRemoteDataSourceImplTests {
 extension MediaRemoteDataSourceImplTests {
     fileprivate static func jsonLine(
         title: String, artist: String, hasInfo: Bool, artworkBase64: String? = nil,
-        event: String? = nil
+        event: String? = nil, pid: Int? = nil
     ) -> String {
         let payload: [String: Any] = [
             "has_info": hasInfo,
@@ -365,6 +391,7 @@ extension MediaRemoteDataSourceImplTests {
         ]
         .merging(artworkBase64.map { ["artwork_base64": $0] } ?? [:]) { _, new in new }
         .merging(event.map { ["event": $0] } ?? [:]) { _, new in new }
+        .merging(pid.map { ["pid": $0] } ?? [:]) { _, new in new }
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }

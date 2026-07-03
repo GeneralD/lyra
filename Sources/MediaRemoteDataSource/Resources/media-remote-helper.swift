@@ -9,9 +9,17 @@ else { exit(1) }
 
 typealias GetInfoFn = @convention(c) (DispatchQueue, @escaping (CFDictionary?) -> Void) -> Void
 typealias RegisterFn = @convention(c) (DispatchQueue) -> Void
+typealias GetPIDFn = @convention(c) (DispatchQueue, @escaping (Int32) -> Void) -> Void
 
 let getInfo = unsafeBitCast(sym, to: GetInfoFn.self)
 let register = unsafeBitCast(regSym, to: RegisterFn.self)
+// The now-playing app's PID lets the client scope per-process work — a
+// CoreAudio process tap for the spectrum analyzer (#23) — to exactly the
+// audio source. Auxiliary, so it is resolved optionally: a macOS release
+// dropping the symbol degrades to pid-less payloads instead of killing the
+// whole helper.
+let getPID = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationPID")
+    .map { unsafeBitCast($0, to: GetPIDFn.self) }
 
 // Distinguishes a genuine now-playing change (track switch, play/pause, seek —
 // delivered via MediaRemote notifications) from a periodic snapshot refresh
@@ -22,7 +30,7 @@ enum Event: String {
     case tick
 }
 
-@Sendable func fetchAndPrint(event: Event) {
+@Sendable func printInfo(event: Event, pid: Int?) {
     getInfo(DispatchQueue.main) { dict in
         guard let d = dict as? [String: Any],
             let title = d["kMRMediaRemoteNowPlayingInfoTitle"] as? String,
@@ -38,6 +46,7 @@ enum Event: String {
         r["duration"] = d["kMRMediaRemoteNowPlayingInfoDuration"]
         r["elapsed"] = d["kMRMediaRemoteNowPlayingInfoElapsedTime"]
         r["rate"] = d["kMRMediaRemoteNowPlayingInfoPlaybackRate"]
+        r["pid"] = pid
         // MediaRemote sometimes omits the timestamp field; synthesize it from
         // the current fetch moment so the client can always interpolate elapsed
         // between polls (otherwise lyric highlighting would only advance once
@@ -60,6 +69,13 @@ enum Event: String {
             fflush(stdout)
         }
     }
+}
+
+@Sendable func fetchAndPrint(event: Event) {
+    // MediaRemote reports PID 0 when no app owns the now-playing session; map
+    // it to "absent" so the client never sees a bogus process id.
+    guard let getPID else { return printInfo(event: event, pid: nil) }
+    getPID(DispatchQueue.main) { pid in printInfo(event: event, pid: pid > 0 ? Int(pid) : nil) }
 }
 
 // Register for notifications (required before any notifications fire)

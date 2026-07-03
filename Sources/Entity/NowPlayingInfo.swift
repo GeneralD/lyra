@@ -6,6 +6,7 @@ public struct NowPlayingInfo: Codable {
     public let album: String?
     public let duration: TimeInterval?
     public let elapsedTime: TimeInterval?
+    public let pid: Int?
     public let lyrics: String?
     public let syncedLyrics: [LyricLine]?
     public let currentLyric: String?
@@ -16,6 +17,7 @@ public struct NowPlayingInfo: Codable {
         album: String? = nil,
         duration: TimeInterval? = nil,
         elapsedTime: TimeInterval? = nil,
+        pid: Int? = nil,
         lyrics: String? = nil,
         syncedLyrics: [LyricLine]? = nil,
         currentLyric: String? = nil
@@ -25,6 +27,7 @@ public struct NowPlayingInfo: Codable {
         self.album = album
         self.duration = duration
         self.elapsedTime = elapsedTime
+        self.pid = pid
         self.lyrics = lyrics
         self.syncedLyrics = syncedLyrics
         self.currentLyric = currentLyric
