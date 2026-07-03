@@ -37,14 +37,16 @@ extension ConfigRepositoryImpl: ConfigRepository {
             ),
             spectrum: SpectrumStyle(
                 enabled: config.spectrum.enabled,
-                barCount: Int(config.spectrum.barCount.value),
+                // Clamped here so downstream consumers (Presenter bar merge,
+                // ring-buffer reads) never see a zero/negative count.
+                barCount: max(1, Int(config.spectrum.barCount.value)),
                 barColor: config.spectrum.barColor,
                 backgroundColor: config.spectrum.backgroundColor,
                 barWidthRatio: config.spectrum.barWidthRatio.value,
                 minDb: config.spectrum.minDb.value,
                 maxDb: config.spectrum.maxDb.value,
                 decayRate: config.spectrum.decayRate.value,
-                fftSize: Int(config.spectrum.fftSize.value),
+                fftSize: max(64, Int(config.spectrum.fftSize.value)),
                 placement: config.spectrum.placement,
                 heightRatio: config.spectrum.heightRatio.value
             ),

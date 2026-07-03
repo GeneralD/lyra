@@ -39,6 +39,21 @@ struct ConfigRepositoryTests {
             }
         }
 
+        @Test("clamps spectrum bar_count and fft_size to sane floors")
+        func spectrumClamped() {
+            let config = makeAppConfig(spectrum: ["bar_count": -3, "fft_size": 8])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.spectrum.barCount == 1)
+                #expect(style.spectrum.fftSize == 64)
+            }
+        }
+
         @Test("passes wallpaper scale through")
         func wallpaperScale() {
             let config = makeAppConfig(wallpaper: ["location": "bg.mp4", "scale": 1.3])
@@ -330,13 +345,15 @@ private func makeAppConfig(
     wallpaper: Any? = nil,
     ai: AIConfig? = nil,
     ripple: [String: Any]? = nil,
-    text: [String: Any]? = nil
+    text: [String: Any]? = nil,
+    spectrum: [String: Any]? = nil
 ) -> AppConfig {
     var fields = [String: Any]()
     wallpaper.map { fields["wallpaper"] = $0 }
     ai.map { fields["ai"] = ["endpoint": $0.endpoint, "model": $0.model, "api_key": $0.apiKey] }
     ripple.map { fields["ripple"] = $0 }
     text.map { fields["text"] = $0 }
+    spectrum.map { fields["spectrum"] = $0 }
     let data = try! JSONSerialization.data(withJSONObject: fields)
     return try! JSONDecoder().decode(AppConfig.self, from: data)
 }
