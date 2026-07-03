@@ -417,6 +417,7 @@ struct OverlayContentViewLoadingTests {
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
+                spectrumPresenter: SpectrumPresenter(),
                 wallpaperPresenter: wallpaperPresenter
             ),
             size: CGSize(width: 800, height: 500)
@@ -462,6 +463,7 @@ struct OverlayContentViewLoadingTests {
                 headerPresenter: headerPresenter,
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
+                spectrumPresenter: SpectrumPresenter(),
                 wallpaperPresenter: wallpaperPresenter
             ),
             size: CGSize(width: 800, height: 500)

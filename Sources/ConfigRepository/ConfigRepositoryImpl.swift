@@ -35,6 +35,21 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 idle: config.ripple.idle.value,
                 shape: config.ripple.shape
             ),
+            spectrum: SpectrumStyle(
+                enabled: config.spectrum.enabled,
+                // Clamped here so downstream consumers (Presenter bar merge,
+                // ring-buffer reads) never see a zero/negative count.
+                barCount: max(1, Int(config.spectrum.barCount.value)),
+                barColor: config.spectrum.barColor,
+                backgroundColor: config.spectrum.backgroundColor,
+                barWidthRatio: config.spectrum.barWidthRatio.value,
+                minDb: config.spectrum.minDb.value,
+                maxDb: config.spectrum.maxDb.value,
+                decayRate: config.spectrum.decayRate.value,
+                fftSize: max(64, Int(config.spectrum.fftSize.value)),
+                placement: config.spectrum.placement,
+                heightRatio: config.spectrum.heightRatio.value
+            ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,
             wallpaper: config.wallpaper.map { cfg in

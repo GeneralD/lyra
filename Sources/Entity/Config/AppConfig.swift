@@ -4,6 +4,7 @@ public struct AppConfig {
     public let text: TextConfig
     public let artwork: ArtworkConfig
     public let ripple: RippleConfig
+    public let spectrum: SpectrumConfig
     public let screen: ScreenSelector
     public let screenDebounce: FlexibleDouble
     public let wallpaper: WallpaperConfig?
@@ -14,12 +15,13 @@ extension AppConfig: Sendable {}
 
 extension AppConfig {
     public static let defaults = AppConfig(
-        text: .defaults, artwork: .defaults, ripple: .defaults, screen: .main, screenDebounce: 5, wallpaper: nil, ai: nil)
+        text: .defaults, artwork: .defaults, ripple: .defaults, spectrum: .defaults, screen: .main, screenDebounce: 5,
+        wallpaper: nil, ai: nil)
 }
 
 extension AppConfig: Codable {
     enum CodingKeys: String, CodingKey {
-        case text, artwork, ripple, screen
+        case text, artwork, ripple, spectrum, screen
         case screenDebounce = "screen_debounce"
         case wallpaper, ai
     }
@@ -29,6 +31,7 @@ extension AppConfig: Codable {
         text = try c.decodeIfPresent(TextConfig.self, forKey: .text) ?? Self.defaults.text
         artwork = try c.decodeIfPresent(ArtworkConfig.self, forKey: .artwork) ?? Self.defaults.artwork
         ripple = try c.decodeIfPresent(RippleConfig.self, forKey: .ripple) ?? Self.defaults.ripple
+        spectrum = try c.decodeIfPresent(SpectrumConfig.self, forKey: .spectrum) ?? Self.defaults.spectrum
         screen = try c.decodeIfPresent(ScreenSelector.self, forKey: .screen) ?? Self.defaults.screen
         screenDebounce = try c.decodeIfPresent(FlexibleDouble.self, forKey: .screenDebounce) ?? Self.defaults.screenDebounce
         wallpaper = try c.decodeIfPresent(WallpaperConfig.self, forKey: .wallpaper) ?? Self.defaults.wallpaper

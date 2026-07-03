@@ -69,6 +69,18 @@ radius = 60.0
 [ripple.shape]
 type = 'circle'
 
+[spectrum]
+bar_color = [ '#1E3A5F', '#4A9EFF' ]
+bar_count = 64.0
+bar_width_ratio = 0.7
+decay_rate = 0.85
+enabled = false
+fft_size = 1024.0
+height_ratio = 0.25
+max_db = 0.0
+min_db = -80.0
+placement = 'bottom'
+
 [text.artist]
 color = '#FFFFFFD9'
 fontName = 'Helvetica Neue'
@@ -166,6 +178,21 @@ spacing = 6.0
   },
   "screen" : "main",
   "screen_debounce" : 5,
+  "spectrum" : {
+    "bar_color" : [
+      "#1E3A5F",
+      "#4A9EFF"
+    ],
+    "bar_count" : 64,
+    "bar_width_ratio" : 0.7,
+    "decay_rate" : 0.85,
+    "enabled" : false,
+    "fft_size" : 1024,
+    "height_ratio" : 0.25,
+    "max_db" : 0,
+    "min_db" : -80,
+    "placement" : "bottom"
+  },
   "text" : {
     "artist" : {
       "color" : "#FFFFFFD9",

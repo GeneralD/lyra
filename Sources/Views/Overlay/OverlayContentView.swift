@@ -7,22 +7,28 @@ public struct OverlayContentView: View {
     let headerPresenter: HeaderPresenter
     let lyricsPresenter: LyricsPresenter
     let ripplePresenter: RipplePresenter
+    let spectrumPresenter: SpectrumPresenter
     @ObservedObject var wallpaperPresenter: WallpaperPresenter
 
     public init(
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
         ripplePresenter: RipplePresenter,
+        spectrumPresenter: SpectrumPresenter,
         wallpaperPresenter: WallpaperPresenter
     ) {
         self.headerPresenter = headerPresenter
         self.lyricsPresenter = lyricsPresenter
         self.ripplePresenter = ripplePresenter
+        self.spectrumPresenter = spectrumPresenter
         self.wallpaperPresenter = wallpaperPresenter
     }
 
     public var body: some View {
         ZStack {
+            // Below the ripple and lyrics so the bars read as a backdrop.
+            // SpectrumView includes itself only when enabled (#252 pattern).
+            SpectrumView(presenter: spectrumPresenter)
             RippleView(presenter: ripplePresenter)
             VStack(alignment: .leading, spacing: 32) {
                 HeaderView(presenter: headerPresenter)
@@ -193,6 +199,7 @@ private enum GeodesicGold {
             headerPresenter: HeaderPresenter(),
             lyricsPresenter: LyricsPresenter(),
             ripplePresenter: RipplePresenter(),
+            spectrumPresenter: SpectrumPresenter(),
             wallpaperPresenter: WallpaperPresenter()
         )
         .frame(width: 800, height: 500)

@@ -1,3 +1,4 @@
+import AudioCaptureRepository
 import ConfigRepository
 import Dependencies
 import Domain
@@ -24,4 +25,8 @@ extension NowPlayingRepositoryKey: DependencyKey {
 
 extension WallpaperRepositoryKey: DependencyKey {
     public static let liveValue: any WallpaperRepository = WallpaperRepositoryImpl()
+}
+
+extension AudioCaptureRepositoryKey: DependencyKey {
+    public static let liveValue: any AudioCaptureRepository = AudioCaptureRepositoryImpl()
 }

@@ -4,6 +4,7 @@ public struct AppStyle {
     public let text: TextLayout
     public let artwork: ArtworkStyle
     public let ripple: RippleStyle
+    public let spectrum: SpectrumStyle
     public let screen: ScreenSelector
     public let screenDebounce: Double
     public let wallpaper: WallpaperStyle?
@@ -14,6 +15,7 @@ public struct AppStyle {
         text: TextLayout = .init(),
         artwork: ArtworkStyle = .init(),
         ripple: RippleStyle = .init(),
+        spectrum: SpectrumStyle = .init(),
         screen: ScreenSelector = .main,
         screenDebounce: Double = 5,
         wallpaper: WallpaperStyle? = nil,
@@ -23,6 +25,7 @@ public struct AppStyle {
         self.text = text
         self.artwork = artwork
         self.ripple = ripple
+        self.spectrum = spectrum
         self.screen = screen
         self.screenDebounce = screenDebounce
         self.wallpaper = wallpaper
