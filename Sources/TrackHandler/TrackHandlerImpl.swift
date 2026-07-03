@@ -24,7 +24,9 @@ extension TrackHandlerImpl: TrackHandler {
         guard query.lyrics else {
             return .init(
                 title: title, artist: artist,
-                duration: nowPlaying.duration, elapsedTime: playbackUseCase.elapsedTime(for: nowPlaying)
+                duration: nowPlaying.duration,
+                elapsedTime: playbackUseCase.elapsedTime(for: nowPlaying),
+                pid: nowPlaying.pid
             )
         }
 
@@ -68,6 +70,7 @@ extension TrackHandlerImpl {
             album: result.albumName,
             duration: nowPlaying.duration,
             elapsedTime: elapsed,
+            pid: nowPlaying.pid,
             lyrics: result.plainLyrics,
             syncedLyrics: timedLines,
             currentLyric: timedLines.flatMap { lines in

@@ -54,7 +54,8 @@ extension MediaRemoteDataSourceImpl: MediaRemoteDataSource {
                 playbackRate: json["rate"] as? Double ?? 1.0,
                 timestamp: (json["timestamp"] as? Double).map {
                     Date(timeIntervalSinceReferenceDate: $0)
-                }
+                },
+                pid: json["pid"] as? Int
             ))
     }
 }

@@ -55,6 +55,14 @@ struct TrackHandlerImplTests {
             #expect(info.elapsedTime != nil)
         }
 
+        @Test("passes through the now-playing app pid (#23)")
+        func pidPassthrough() async {
+            let info = await fetchWith(
+                nowPlaying: .stub(title: "Song", artist: "Artist", pid: 4242)
+            )
+            #expect(info.pid == 4242)
+        }
+
         @Test("does not call metadataUseCase")
         func noMetadata() async {
             let called = CallTracker()
@@ -148,6 +156,15 @@ struct TrackHandlerImplTests {
             #expect(info.currentLyric == "Line A")
         }
 
+        @Test("passes through the now-playing app pid on the lyrics path (#23)")
+        func pidPassthrough() async {
+            let info = await fetchWith(
+                nowPlaying: .stub(title: "Song", artist: "Artist", pid: 4242),
+                query: TrackQuery(lyrics: true)
+            )
+            #expect(info.pid == 4242)
+        }
+
         @Test("includes album name from lyrics result")
         func albumName() async {
             let info = await fetchWith(
@@ -233,12 +250,13 @@ extension NowPlaying {
         title: String? = nil,
         artist: String? = nil,
         duration: TimeInterval? = nil,
-        elapsed: TimeInterval? = nil
+        elapsed: TimeInterval? = nil,
+        pid: Int? = nil
     ) -> NowPlaying {
         NowPlaying(
             title: title, artist: artist, artworkData: nil,
             duration: duration, rawElapsed: elapsed,
-            playbackRate: 1.0, timestamp: nil
+            playbackRate: 1.0, timestamp: nil, pid: pid
         )
     }
 }

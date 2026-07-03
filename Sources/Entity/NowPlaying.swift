@@ -8,6 +8,11 @@ public struct NowPlaying {
     public let rawElapsed: TimeInterval?
     public let playbackRate: Double
     public let timestamp: Date?
+    /// Process id of the app that owns the now-playing session. Lets a
+    /// consumer scope per-process work (e.g. a CoreAudio process tap for the
+    /// spectrum analyzer, #23) to exactly the audio source. `nil` when
+    /// MediaRemote reports no owning app.
+    public let pid: Int?
 
     public init(
         title: String?,
@@ -16,7 +21,8 @@ public struct NowPlaying {
         duration: TimeInterval?,
         rawElapsed: TimeInterval?,
         playbackRate: Double,
-        timestamp: Date?
+        timestamp: Date?,
+        pid: Int? = nil
     ) {
         self.title = title
         self.artist = artist
@@ -25,6 +31,7 @@ public struct NowPlaying {
         self.rawElapsed = rawElapsed
         self.playbackRate = playbackRate
         self.timestamp = timestamp
+        self.pid = pid
     }
 }
 
