@@ -178,7 +178,8 @@ final class ProcessTapEngine {
         let samples = data.assumingMemoryBound(to: Float.self)
         for frame in 0..<frames {
             let base = frame * channels
-            let sum = (0..<channels).reduce(Float(0)) { $0 + samples[base + $1] }
+            var sum: Float = 0
+            for channel in 0..<channels { sum += samples[base + channel] }
             scratch[frame] = sum / Float(channels)
         }
         ring.write(scratch, count: frames)
