@@ -17,10 +17,11 @@ public final class SpectrumUseCaseImpl: @unchecked Sendable {
     // built inside `withDependencies` keep their fakes when methods run
     // outside that scope.
     @Dependency(\.audioCaptureRepository) private var repository
-    /// Memoized analyzer plus the per-channel bar count it was built for.
-    /// The displayed bar count is derived from the overlay width (cava
-    /// style), so it changes on resize — rebuild when it does.
-    private var analyzer: (bars: Int, engine: FrequencyAnalyzer)?
+    /// Memoized analyzer plus the per-channel bar count and tap sample rate it
+    /// was built for. The displayed bar count is derived from the overlay width
+    /// (cava style), so it changes on resize, and the sample rate follows the
+    /// output device (#299) — rebuild when either changes.
+    private var analyzer: (bars: Int, sampleRate: Double, engine: FrequencyAnalyzer)?
 
     public init() {}
 }
@@ -51,7 +52,7 @@ extension SpectrumUseCaseImpl {
         guard !window.left.isEmpty else { return [] }
         // Stereo gives each channel half of the displayed bars.
         let perChannel = style.stereo ? max(1, barCount / 2) : barCount
-        let analyzer = resolvedAnalyzer(for: style, bars: perChannel)
+        let analyzer = resolvedAnalyzer(for: style, bars: perChannel, sampleRate: window.sampleRate)
         guard style.stereo else {
             return analyzer.magnitudes(of: zip(window.left, window.right).map { ($0 + $1) / 2 })
         }
@@ -59,10 +60,15 @@ extension SpectrumUseCaseImpl {
             + analyzer.magnitudes(of: window.right)
     }
 
-    /// The analyzer for the current per-channel bar count, rebuilt only when
-    /// that count changes (a window resize); everything else is launch-static.
-    private func resolvedAnalyzer(for style: SpectrumStyle, bars: Int) -> FrequencyAnalyzer {
-        if let analyzer, analyzer.bars == bars { return analyzer.engine }
+    /// The analyzer for the current per-channel bar count and tap sample rate,
+    /// rebuilt only when either changes (a window resize or an output-device
+    /// rate change); everything else is launch-static.
+    private func resolvedAnalyzer(
+        for style: SpectrumStyle, bars: Int, sampleRate: Double
+    ) -> FrequencyAnalyzer {
+        if let analyzer, analyzer.bars == bars, analyzer.sampleRate == sampleRate {
+            return analyzer.engine
+        }
         let engine = FrequencyAnalyzer(
             fftSize: style.fftSize,
             barCount: bars,
@@ -70,9 +76,10 @@ extension SpectrumUseCaseImpl {
             maxDb: style.maxDb,
             linearScale: style.scale == .linear,
             minFrequency: style.minFreq,
-            maxFrequency: style.maxFreq
+            maxFrequency: style.maxFreq,
+            sampleRate: sampleRate
         )
-        analyzer = (bars, engine)
+        analyzer = (bars, sampleRate, engine)
         return engine
     }
 }

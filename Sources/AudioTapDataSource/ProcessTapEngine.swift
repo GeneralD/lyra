@@ -13,6 +13,12 @@ import Foundation
 final class ProcessTapEngine {
     private static let scratchCapacity = 4096
 
+    /// The tap's actual sample rate in Hz, read from its stream format (#299).
+    /// The process-tap mixdown follows the current output device, so this is
+    /// 44.1 kHz, 48 kHz, or whatever the hardware runs at — the analyzer needs
+    /// it to place Hz on the right FFT bins rather than assume 48 kHz.
+    let sampleRate: Double
+
     private let leftRing: SampleRingBuffer
     private let rightRing: SampleRingBuffer
     private var tapID = AudioObjectID(kAudioObjectUnknown)
@@ -35,6 +41,11 @@ final class ProcessTapEngine {
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr,
             tapID != AudioObjectID(kAudioObjectUnknown)
         else { return nil }
+
+        // The tap's stream format is valid the moment the tap exists and
+        // reflects the mixdown's rate (the output device's); fall back to
+        // 48 kHz only if the format is unreadable.
+        self.sampleRate = Self.streamSampleRate(of: tapID) ?? 48000
 
         // A tap only produces audio when read through an aggregate device that
         // lists it. The aggregate is private and auto-starts the tap.
@@ -138,6 +149,23 @@ final class ProcessTapEngine {
                 == noErr
         else { return [] }
         return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
+    }
+
+    /// The sample rate of the tap's output stream format in Hz, or `nil` when
+    /// the format is unreadable. `kAudioTapPropertyFormat` is valid once the
+    /// tap exists and carries the mixdown's rate (the output device's rate).
+    private static func streamSampleRate(of tapID: AudioObjectID) -> Double? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var format = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        guard AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &format) == noErr,
+            format.mSampleRate > 0
+        else { return nil }
+        return format.mSampleRate
     }
 
     /// The owning pid of a CoreAudio process object, or `nil` when unreadable.

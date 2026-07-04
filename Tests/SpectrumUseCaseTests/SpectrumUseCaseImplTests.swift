@@ -115,6 +115,21 @@ struct SpectrumUseCaseImplTests {
         #expect(quiet > 0)
         #expect(abs(quiet / loud - 0.5) < 0.05)
     }
+
+    // MARK: - sample-rate propagation (#299)
+
+    @Test("the tap sample rate reaches the analyzer — same PCM, different rate, different bands")
+    func magnitudesFollowSampleRate() {
+        // The band cutoffs are Hz→bin mapped with the tap rate, so the same
+        // captured window grouped for 48 kHz vs 96 kHz yields different bars.
+        // A hardcoded rate would make these identical.
+        let pcm = sine(amplitude: 0.5)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let at48k = Harness(left: pcm, sampleRate: 48000).useCase.magnitudes(style: style, barCount: 24)
+        let at96k = Harness(left: pcm, sampleRate: 96000).useCase.magnitudes(style: style, barCount: 24)
+
+        #expect(at48k != at96k)
+    }
 }
 
 /// A sine on FFT bin 8 of a 1024-sample window, at the given amplitude.
@@ -132,9 +147,10 @@ private struct Harness {
     let repository = FakeAudioCaptureRepository()
     let useCase: SpectrumUseCaseImpl
 
-    /// Omitting `right` mirrors `left` into both channels.
-    init(left: [Float] = [], right: [Float]? = nil) {
-        repository.samples = StereoSamples(left: left, right: right ?? left)
+    /// Omitting `right` mirrors `left` into both channels. `sampleRate` is the
+    /// tap rate the fake tags its window with (#299).
+    init(left: [Float] = [], right: [Float]? = nil, sampleRate: Double = 48000) {
+        repository.samples = StereoSamples(left: left, right: right ?? left, sampleRate: sampleRate)
         useCase = withDependencies { [repository] in
             $0.audioCaptureRepository = repository
         } operation: {
@@ -163,7 +179,8 @@ private final class FakeAudioCaptureRepository: AudioCaptureRepository, @uncheck
         samples.left.count >= count
             ? StereoSamples(
                 left: Array(samples.left.suffix(count)),
-                right: Array(samples.right.suffix(count)))
+                right: Array(samples.right.suffix(count)),
+                sampleRate: samples.sampleRate)
             : StereoSamples()
     }
 }

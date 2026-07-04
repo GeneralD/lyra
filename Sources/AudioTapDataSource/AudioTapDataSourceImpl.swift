@@ -51,7 +51,16 @@ extension AudioTapDataSourceImpl: AudioTapDataSource {
     }
 
     public func latestSamples(count: Int) -> StereoSamples {
-        guard engine.withLockUnchecked({ $0 != nil }) else { return StereoSamples() }
-        return StereoSamples(left: leftRing.latest(count), right: rightRing.latest(count))
+        let current = engine.withLockUnchecked { $0 }
+        guard #available(macOS 14.4, *), let tap = current as? ProcessTapEngine else {
+            return StereoSamples()
+        }
+        // The rings are their own SPSC-safe stores, so reading them outside the
+        // lock is fine; only the engine reference needs the lock. Tag the
+        // window with the tap's real rate (#299) so the analyzer maps Hz to
+        // FFT bins for the actual hardware rate, not a fixed 48 kHz.
+        return StereoSamples(
+            left: leftRing.latest(count), right: rightRing.latest(count),
+            sampleRate: tap.sampleRate)
     }
 }
