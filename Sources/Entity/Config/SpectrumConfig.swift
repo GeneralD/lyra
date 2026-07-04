@@ -42,6 +42,16 @@ public struct SpectrumConfig {
     /// otherwise stretch across the screen).
     public let minHeight: FlexibleDouble?
     public let maxHeight: FlexibleDouble?
+    /// Master opacity of the whole bar layer, 0–1, multiplied on top of
+    /// `bar_color`'s own alpha. Setting an opaque `bar_color` and driving
+    /// transparency here separates colour from opacity; the two also compose.
+    /// Independent of `background_color`.
+    public let barOpacity: FlexibleDouble
+    /// Corner radius of the bars, in points. `nil` derives it from `bar_width`
+    /// (cava-style `min(bar_width / 4, 3)`); an explicit value overrides that,
+    /// `0` for square corners. Per-bar the radius is capped at half the bar
+    /// thickness.
+    public let barCornerRadius: FlexibleDouble?
 }
 
 extension SpectrumConfig: Sendable {}
@@ -65,7 +75,9 @@ extension SpectrumConfig {
         placement: .bottom,
         heightRatio: 0.25,
         minHeight: nil,
-        maxHeight: nil
+        maxHeight: nil,
+        barOpacity: 1,
+        barCornerRadius: nil
     )
 }
 
@@ -89,6 +101,8 @@ extension SpectrumConfig: Codable {
         case heightRatio = "height_ratio"
         case minHeight = "min_height"
         case maxHeight = "max_height"
+        case barOpacity = "bar_opacity"
+        case barCornerRadius = "bar_corner_radius"
     }
 
     public init(from decoder: Decoder) throws {
@@ -111,5 +125,7 @@ extension SpectrumConfig: Codable {
         heightRatio = try c.decodeIfPresent(FlexibleDouble.self, forKey: .heightRatio) ?? Self.defaults.heightRatio
         minHeight = try c.decodeIfPresent(FlexibleDouble.self, forKey: .minHeight)
         maxHeight = try c.decodeIfPresent(FlexibleDouble.self, forKey: .maxHeight)
+        barOpacity = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barOpacity) ?? Self.defaults.barOpacity
+        barCornerRadius = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barCornerRadius)
     }
 }

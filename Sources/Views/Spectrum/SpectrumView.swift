@@ -66,9 +66,14 @@ public struct SpectrumView: View {
         }
         let bars = spectrumBarRects(
             in: size, heights: presenter.binHeights(),
-            barWidth: style.barWidth, barSpacing: style.barSpacing, placement: style.placement
+            barWidth: style.barWidth, barSpacing: style.barSpacing, placement: style.placement,
+            cornerRadius: style.barCornerRadius
         )
         guard !bars.isEmpty else { return }
+        // Master bar opacity multiplies with each colour's own alpha and is
+        // applied after the (fully-opaque) background so the two stay
+        // independent.
+        context.opacity = style.barOpacity
         fillBars(&context, bars: bars, size: size, style: style, resolver: resolver)
     }
 
@@ -214,7 +219,7 @@ struct SpectrumBar: Equatable {
 /// carries no invisible slivers.
 func spectrumBarRects(
     in size: CGSize, heights: [Float], barWidth: Double, barSpacing: Double,
-    placement: SpectrumPlacement
+    placement: SpectrumPlacement, cornerRadius: Double? = nil
 ) -> [SpectrumBar] {
     guard !heights.isEmpty, size.width > 0, size.height > 0 else { return [] }
     let thickness = CGFloat(max(barWidth, 0.5))
@@ -227,7 +232,11 @@ func spectrumBarRects(
     let growthExtent = horizontal ? size.width : size.height
     let rowLength = CGFloat(count) * thickness + CGFloat(max(count - 1, 0)) * spacing
     let start = max((trackLength - rowLength) / 2, 0)
-    let cornerRadius = min(thickness / 4, 3)
+    // An explicit radius is clamped to the bar half-thickness (a rounded rect
+    // can't curve more than that); `nil` derives the cava-style default.
+    let barCornerRadius =
+        cornerRadius.map { min(max(CGFloat($0), 0), thickness / 2) }
+        ?? autoCornerRadius(thickness: thickness)
     return heights.enumerated().compactMap { bar in
         let level = min(max(bar.element, 0), 1)
         let growth = growthExtent * CGFloat(level)
@@ -235,8 +244,15 @@ func spectrumBarRects(
         let track = start + CGFloat(bar.offset) * (thickness + spacing)
         let rect = barRect(
             placement: placement, track: track, thickness: thickness, growth: growth, in: size)
-        return SpectrumBar(rect: rect, cornerRadius: cornerRadius, level: level)
+        return SpectrumBar(rect: rect, cornerRadius: barCornerRadius, level: level)
     }
+}
+
+/// The cava-style default corner radius for a bar of the given thickness:
+/// a quarter of the thickness, capped at 3 pt, so thin bars stay legibly
+/// rounded and thick ones don't turn into lozenges.
+func autoCornerRadius(thickness: CGFloat) -> CGFloat {
+    min(thickness / 4, 3)
 }
 
 /// One bar's rect, anchored to its placement's edge and grown inward by
