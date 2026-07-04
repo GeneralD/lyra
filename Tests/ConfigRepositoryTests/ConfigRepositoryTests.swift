@@ -73,6 +73,22 @@ struct ConfigRepositoryTests {
             }
         }
 
+        @Test("floors a non-positive spectrum band to a valid ascending range")
+        func spectrumFreqNonPositive() {
+            // Pathological input (min ≥ max, non-positive) must still yield an
+            // ascending band so the analyzer never sees min ≥ max.
+            let config = makeAppConfig(spectrum: ["min_freq": -3, "max_freq": 0])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.spectrum.minFreq >= 1)
+                #expect(style.spectrum.minFreq < style.spectrum.maxFreq)
+            }
+        }
+
         @Test("passes wallpaper scale through")
         func wallpaperScale() {
             let config = makeAppConfig(wallpaper: ["location": "bg.mp4", "scale": 1.3])
