@@ -238,6 +238,18 @@ struct SpectrumPresenterTests {
         #expect(abs(spectrumFramerateConstants(frameInterval: 1).framerateMod - Float(66.0 / 24)) < 1e-5)
     }
 
+    @Test("a non-finite frame interval falls back to the 60 fps reference")
+    func framerateConstantsNonFinite() {
+        // NaN / ±infinity frame timestamps propagate through min/max, so without
+        // an explicit finiteness guard they'd poison the smoothing constants.
+        let reference = spectrumFramerateConstants(frameInterval: 1.0 / 60)
+        for interval in [Double.nan, .infinity, -.infinity] {
+            let c = spectrumFramerateConstants(frameInterval: interval)
+            #expect(c.framerateMod.isFinite)
+            #expect(c == reference)
+        }
+    }
+
     @MainActor
     @Test("the fall is refresh-rate independent — 120 Hz needs more frames to clear than 60 Hz")
     func fallIsRefreshRateIndependent() async {

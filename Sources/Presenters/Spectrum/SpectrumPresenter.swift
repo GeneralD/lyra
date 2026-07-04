@@ -200,11 +200,14 @@ struct SpectrumFramerateConstants: Equatable {
     let gravityScale: Float
 }
 
-/// The `SpectrumFramerateConstants` for a display's seconds-per-frame. The
-/// derived frame rate is clamped to 24…240 fps so a hitched, zero, or negative
-/// interval can't blow up the constants.
+/// The `SpectrumFramerateConstants` for a display's seconds-per-frame. A
+/// non-finite interval (NaN / infinite frame timestamp) can't be clamped —
+/// `min`/`max` propagate NaN — so it falls back to the 60 fps reference. A
+/// finite interval (including a zero or negative one from a hitched frame) is
+/// clamped to 24…240 fps so it can't blow up the constants.
 func spectrumFramerateConstants(frameInterval: Double) -> SpectrumFramerateConstants {
-    let fps = min(max(1 / max(frameInterval, .leastNormalMagnitude), 24), 240)
+    let hz = frameInterval.isFinite ? 1 / max(frameInterval, .leastNormalMagnitude) : 60
+    let fps = min(max(hz, 24), 240)
     let mod = Float(66 / fps)
     return SpectrumFramerateConstants(
         framerateMod: mod, integralMod: pow(mod, 0.1), gravityScale: pow(mod, 2.5) * 2)
