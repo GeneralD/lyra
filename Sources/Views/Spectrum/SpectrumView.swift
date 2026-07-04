@@ -88,7 +88,7 @@ public struct SpectrumView: View {
         }
         switch style.gradientDirection {
         case .level:
-            bars.forEach { bar in
+            for bar in bars {
                 context.fill(
                     barsPath([bar]),
                     with: .color(resolver.color(from: style.barColor, at: Double(bar.level))))
