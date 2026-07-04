@@ -71,8 +71,7 @@ public struct SpectrumView: View {
         )
         guard !bars.isEmpty else { return }
         // Master bar opacity multiplies with each colour's own alpha and is
-        // applied after the (fully-opaque) background so the two stay
-        // independent.
+        // applied after the background fill so the two stay independent.
         context.opacity = style.barOpacity
         fillBars(&context, bars: bars, size: size, style: style, resolver: resolver)
     }
