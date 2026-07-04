@@ -232,29 +232,31 @@ extension DarwinGateway: ProcessGateway {
                 return
             }
 
-            continuation.onTermination = { _ in task.terminate() }
-
             let reader = pipe.fileHandleForReading
-            DispatchQueue.global().async {
-                var buffer = Data()
-                let newline = UInt8(ascii: "\n")
-                while true {
-                    let chunk = reader.readData(ofLength: 4096)
-                    guard !chunk.isEmpty else { break }
-                    buffer.append(chunk)
-
-                    while let newlineIndex = buffer.firstIndex(of: newline) {
-                        let lineData = buffer[..<newlineIndex]
-                        if let line = String(data: Data(lineData), encoding: .utf8) {
-                            continuation.yield(line)
-                        }
-                        buffer.removeSubrange(...newlineIndex)
-                    }
-                }
-                if !buffer.isEmpty, let line = String(data: buffer, encoding: .utf8) {
+            // Deliver lines from within Swift's cooperative pool (a `Task`) rather
+            // than a raw `DispatchQueue.global()` thread. A consumer whose calling
+            // thread is blocked — the `lyra track` one-shot bridges async→sync via
+            // a `DispatchSemaphore` (see `AsyncRunnableCommand`) — was never resumed
+            // when the first line was yielded from a GCD thread, so `lyra track`
+            // hung indefinitely with no now-playing session present (#295). The
+            // daemon dodged it only because `NSApplication.run()` keeps the main
+            // run loop spinning. `FileHandle.AsyncBytes.lines` splits on newlines
+            // and emits the trailing unterminated line at EOF, so the line-parsing
+            // contract is unchanged.
+            let readerTask = Task {
+                // A read failure is indistinguishable from end-of-stream for this
+                // non-throwing line stream — the DataSource treats either as EOF —
+                // so `try?` intentionally ends the loop on both.
+                var lines = reader.bytes.lines.makeAsyncIterator()
+                while let line = try? await lines.next() {
                     continuation.yield(line)
                 }
                 continuation.finish()
+            }
+            continuation.onTermination = { _ in
+                task.terminate()
+                try? reader.close()
+                readerTask.cancel()
             }
         }
     }
