@@ -19,7 +19,7 @@ extension AudioCaptureRepositoryImpl: AudioCaptureRepository {
         await dataSource.stopTap()
     }
 
-    public func latestSamples(count: Int) -> [Float] {
+    public func latestSamples(count: Int) -> StereoSamples {
         dataSource.latestSamples(count: count)
     }
 }

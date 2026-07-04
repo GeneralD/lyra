@@ -41,7 +41,8 @@ struct ConfigRepositoryTests {
 
         @Test("clamps spectrum bar_count and fft_size to sane floors")
         func spectrumClamped() {
-            let config = makeAppConfig(spectrum: ["bar_count": -3, "fft_size": 8])
+            let config = makeAppConfig(
+                spectrum: ["stereo": false, "bar_count": -3, "fft_size": 8])
             let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
@@ -51,6 +52,21 @@ struct ConfigRepositoryTests {
                 let style = repo.loadAppStyle()
                 #expect(style.spectrum.barCount == 1)
                 #expect(style.spectrum.fftSize == 64)
+            }
+        }
+
+        @Test("stereo forces an even bar count so each channel owns half")
+        func stereoEvenBarCount() {
+            let config = makeAppConfig(spectrum: ["stereo": true, "bar_count": 15])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.spectrum.stereo == true)
+                #expect(style.spectrum.barCount == 14)
             }
         }
 

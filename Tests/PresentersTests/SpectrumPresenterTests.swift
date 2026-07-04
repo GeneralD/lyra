@@ -27,8 +27,10 @@ private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Senda
 
 @Suite("SpectrumPresenter")
 struct SpectrumPresenterTests {
-    /// decayRate 0.5 keeps decay math exact in Float and short in test time.
-    private static let enabledStyle = SpectrumStyle(enabled: true, barCount: 4, decayRate: 0.5)
+    /// noiseReduction 0 is cava's passthrough: no integral accumulation and
+    /// the gravity release is disabled (`> 0.1` guard), so the first
+    /// captured frame shows the input verbatim.
+    private static let enabledStyle = SpectrumStyle(enabled: true, barCount: 4, noiseReduction: 0)
 
     @MainActor
     private static func presenter(with interactor: FakeSpectrumInteractor) -> SpectrumPresenter {
@@ -102,28 +104,45 @@ struct SpectrumPresenterTests {
     }
 
     @MainActor
-    @Test("after capture ends the bars decay by decayRate, then clear")
-    func barsDecayAfterCapture() async {
-        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+    @Test("after capture ends the bars fall gradually, then clear")
+    func barsFallAfterCapture() async {
+        // A non-zero noise_reduction arms cava's gravity release; at 0 the
+        // release is a passthrough and the bar would blink out in one frame.
+        let style = SpectrumStyle(enabled: true, barCount: 1, noiseReduction: 0.77)
+        let interactor = FakeSpectrumInteractor(style: style)
         interactor.magnitudesValue = [1]
         let presenter = Self.presenter(with: interactor)
         presenter.start()
         interactor.capturingSubject.send(true)
         await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
 
-        // While the capturing flag is still propagating, ticks keep the bar at
-        // 1 (fresh wins the max-merge); the first tick after it lands yields
-        // exactly one decay step.
+        // The bar eases down over frames rather than snapping to zero…
         interactor.capturingSubject.send(false)
         await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 1 }
-        #expect(presenter.binHeights().first == 0.5)
+        let falling = presenter.binHeights().first ?? -1
+        #expect(falling > 0 && falling < 1)
         #expect(presenter.isAnimating)
 
-        // Keep ticking: 0.5 halves per frame and falls under the silence
-        // threshold, at which point the bins clear and the animation gate shuts.
+        // …then it reaches zero, the state clears, and the animation gate shuts.
         await Self.tickUntil(presenter) { presenter.binHeights().isEmpty }
         #expect(presenter.binHeights().isEmpty)
         #expect(!presenter.isAnimating)
+    }
+
+    @MainActor
+    @Test("attack is instant — a rising bar reaches its target on the first frame")
+    func attackIsInstant() async {
+        // cava adopts a louder value immediately (its smoothing is on the
+        // release, not the attack), so the first captured frame already
+        // shows the input — no easing ramp on the way up.
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        interactor.magnitudesValue = [0.4, 0, 0, 0]
+        let presenter = Self.presenter(with: interactor)
+        presenter.start()
+        interactor.capturingSubject.send(true)
+
+        await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+        #expect(abs((presenter.binHeights().first ?? 0) - 0.4) < 0.001)
     }
 
     @MainActor

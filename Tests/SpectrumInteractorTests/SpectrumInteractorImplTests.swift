@@ -98,6 +98,25 @@ struct SpectrumInteractorImplTests {
         #expect(harness.spectrum.stopCount > 0)
     }
 
+    @Test("same-source ticks never rebuild the tap")
+    func sameSourceDoesNotRebuildTap() async {
+        let harness = Harness()
+        harness.interactor.start()
+        harness.send(pid: 4242, playbackRate: 1, title: "Song A")
+        await harness.pollUntil { harness.capturing.value == true }
+
+        // The helper re-emits the same pid+playing state every few seconds
+        // (and on track change, which the interactor no longer inspects):
+        // the AudioSourceState dedup must swallow it so the tap is not
+        // torn down and rebuilt.
+        harness.send(pid: 4242, playbackRate: 1, title: "Song B")
+        harness.send(pid: 4242, playbackRate: 1, title: "Song B")
+        // Land a pause so the play events above were fully evaluated.
+        harness.send(pid: 4242, playbackRate: 0)
+        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        #expect(harness.spectrum.startedPids == [4242])
+    }
+
     @Test("second start() while running never spawns a competing processor")
     func startTwiceKeepsSingleProcessor() async {
         let harness = Harness()
@@ -174,10 +193,10 @@ private struct Harness {
         self.cancellable = interactor.isCapturing.sink { [capturing] in capturing.value = $0 }
     }
 
-    func send(pid: Int?, playbackRate: Double) {
+    func send(pid: Int?, playbackRate: Double, title: String? = nil) {
         playback.send(
             NowPlaying(
-                title: nil, artist: nil, artworkData: nil, duration: nil,
+                title: title, artist: nil, artworkData: nil, duration: nil,
                 rawElapsed: nil, playbackRate: playbackRate, timestamp: nil, pid: pid))
     }
 

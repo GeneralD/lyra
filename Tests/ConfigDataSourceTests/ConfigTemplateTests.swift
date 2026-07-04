@@ -73,13 +73,15 @@ type = 'circle'
 bar_color = [ '#1E3A5F', '#4A9EFF' ]
 bar_count = 64.0
 bar_width_ratio = 0.7
-decay_rate = 0.85
 enabled = false
 fft_size = 1024.0
 height_ratio = 0.25
 max_db = 0.0
-min_db = -80.0
+min_db = -60.0
+noise_reduction = 77.0
 placement = 'bottom'
+scale = 'linear'
+stereo = true
 
 [text.artist]
 color = '#FFFFFFD9'
@@ -185,13 +187,15 @@ spacing = 6.0
     ],
     "bar_count" : 64,
     "bar_width_ratio" : 0.7,
-    "decay_rate" : 0.85,
     "enabled" : false,
     "fft_size" : 1024,
     "height_ratio" : 0.25,
     "max_db" : 0,
-    "min_db" : -80,
-    "placement" : "bottom"
+    "min_db" : -60,
+    "noise_reduction" : 77,
+    "placement" : "bottom",
+    "scale" : "linear",
+    "stereo" : true
   },
   "text" : {
     "artist" : {

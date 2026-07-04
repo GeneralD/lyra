@@ -664,13 +664,15 @@ struct SpectrumTomlDecodingTests {
     func noSection() throws {
         let config = try decode("")
         #expect(config.spectrum.enabled == false)
+        #expect(config.spectrum.stereo == true)
         #expect(config.spectrum.barCount.value == 64)
         #expect(config.spectrum.barColor == .gradient(["#1E3A5F", "#4A9EFF"]))
         #expect(config.spectrum.backgroundColor == nil)
         #expect(config.spectrum.barWidthRatio.value == 0.7)
-        #expect(config.spectrum.minDb.value == -80)
+        #expect(config.spectrum.minDb.value == -60)
         #expect(config.spectrum.maxDb.value == 0)
-        #expect(config.spectrum.decayRate.value == 0.85)
+        #expect(config.spectrum.scale == .linear)
+        #expect(config.spectrum.noiseReduction.value == 77)
         #expect(config.spectrum.fftSize.value == 1024)
         #expect(config.spectrum.placement == .bottom)
         #expect(config.spectrum.heightRatio.value == 0.25)
@@ -682,25 +684,29 @@ struct SpectrumTomlDecodingTests {
             """
             [spectrum]
             enabled = true
+            stereo = false
             bar_count = 32
             bar_color = "#FF8800"
             background_color = "#00000080"
             bar_width_ratio = 0.5
             min_db = -60
             max_db = -10
-            decay_rate = 0.9
+            scale = "db"
+            noise_reduction = 85
             fft_size = 2048
             placement = "underlay"
             height_ratio = 0.5
             """)
         #expect(config.spectrum.enabled == true)
+        #expect(config.spectrum.stereo == false)
         #expect(config.spectrum.barCount.value == 32)
         #expect(config.spectrum.barColor == .solid("#FF8800"))
         #expect(config.spectrum.backgroundColor == ColorConfig(hex: "#00000080"))
         #expect(config.spectrum.barWidthRatio.value == 0.5)
         #expect(config.spectrum.minDb.value == -60)
         #expect(config.spectrum.maxDb.value == -10)
-        #expect(config.spectrum.decayRate.value == 0.9)
+        #expect(config.spectrum.scale == .db)
+        #expect(config.spectrum.noiseReduction.value == 85)
         #expect(config.spectrum.fftSize.value == 2048)
         #expect(config.spectrum.placement == .underlay)
         #expect(config.spectrum.heightRatio.value == 0.5)

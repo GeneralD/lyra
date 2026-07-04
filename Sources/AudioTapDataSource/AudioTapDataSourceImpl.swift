@@ -13,7 +13,8 @@ public final class AudioTapDataSourceImpl: Sendable {
     /// several IOProc cycles of overwrite headroom.
     private static let ringCapacity = 16384
 
-    private let ring = SampleRingBuffer(capacity: ringCapacity)
+    private let leftRing = SampleRingBuffer(capacity: ringCapacity)
+    private let rightRing = SampleRingBuffer(capacity: ringCapacity)
     /// The live `ProcessTapEngine`, held as `AnyObject` because its type is
     /// `@available(macOS 14.4, *)` while this class must exist on macOS 14.0.
     private let engine = OSAllocatedUnfairLock<AnyObject?>(uncheckedState: nil)
@@ -24,8 +25,8 @@ public final class AudioTapDataSourceImpl: Sendable {
 extension AudioTapDataSourceImpl: AudioTapDataSource {
     public func startTap(pid: Int) async -> Bool {
         guard #available(macOS 14.4, *) else { return false }
-        // The old engine stops before the new one exists so the SPSC ring
-        // never sees two writers, and construction happens OUTSIDE the lock —
+        // The old engine stops before the new one exists so the SPSC rings
+        // never see two writers, and construction happens OUTSIDE the lock —
         // CoreAudio setup (potentially a first-run TCC prompt) must not stall
         // `latestSamples`' per-frame lock acquisition. The caller serializes
         // start/stop through a single processor task, so the two lock
@@ -35,7 +36,7 @@ extension AudioTapDataSourceImpl: AudioTapDataSource {
             return current
         }
         (previous as? ProcessTapEngine)?.stop()
-        let created = ProcessTapEngine(pid: pid, ring: ring)
+        let created = ProcessTapEngine(pid: pid, leftRing: leftRing, rightRing: rightRing)
         engine.withLockUnchecked { $0 = created }
         return created != nil
     }
@@ -49,8 +50,8 @@ extension AudioTapDataSourceImpl: AudioTapDataSource {
         }
     }
 
-    public func latestSamples(count: Int) -> [Float] {
-        guard engine.withLockUnchecked({ $0 != nil }) else { return [] }
-        return ring.latest(count)
+    public func latestSamples(count: Int) -> StereoSamples {
+        guard engine.withLockUnchecked({ $0 != nil }) else { return StereoSamples() }
+        return StereoSamples(left: leftRing.latest(count), right: rightRing.latest(count))
     }
 }

@@ -37,15 +37,23 @@ extension ConfigRepositoryImpl: ConfigRepository {
             ),
             spectrum: SpectrumStyle(
                 enabled: config.spectrum.enabled,
+                stereo: config.spectrum.stereo,
                 // Clamped here so downstream consumers (Presenter bar merge,
-                // ring-buffer reads) never see a zero/negative count.
-                barCount: max(1, Int(config.spectrum.barCount.value)),
+                // ring-buffer reads) never see a zero/negative count. Stereo
+                // splits the row into two half-channels, so it forces an
+                // even count.
+                barCount: config.spectrum.stereo
+                    ? max(2, Int(config.spectrum.barCount.value) / 2 * 2)
+                    : max(1, Int(config.spectrum.barCount.value)),
                 barColor: config.spectrum.barColor,
                 backgroundColor: config.spectrum.backgroundColor,
                 barWidthRatio: config.spectrum.barWidthRatio.value,
                 minDb: config.spectrum.minDb.value,
                 maxDb: config.spectrum.maxDb.value,
-                decayRate: config.spectrum.decayRate.value,
+                scale: config.spectrum.scale,
+                // Config uses cava's familiar 0–100 scale; the style stores
+                // the 0…1 fraction, capped below 1 so the integral converges.
+                noiseReduction: min(max(config.spectrum.noiseReduction.value / 100, 0), 0.97),
                 fftSize: max(64, Int(config.spectrum.fftSize.value)),
                 placement: config.spectrum.placement,
                 heightRatio: config.spectrum.heightRatio.value
