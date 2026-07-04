@@ -11,7 +11,7 @@ public final class AppRouter {
     private let windowFactory:
         @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter)
             -> any OverlayWindow
-    private let frameSchedulerFactory: @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
+    private let frameSchedulerFactory: @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     private var appPresenter: AppPresenter?
     private var headerPresenter: HeaderPresenter?
     private var lyricsPresenter: LyricsPresenter?
@@ -23,7 +23,7 @@ public final class AppRouter {
     private var frameScheduler: (any FrameScheduler)?
 
     static func defaultFrameSchedulerFactory(
-        onFrame: @escaping @MainActor () -> Void
+        onFrame: @escaping @MainActor (Double) -> Void
     ) -> any FrameScheduler {
         DisplayLinkDriver(onFrame: onFrame)
     }
@@ -51,7 +51,7 @@ public final class AppRouter {
             @escaping @MainActor (
                 ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter
             ) -> any OverlayWindow,
-        frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
+        frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     ) {
         self.init(
             bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
@@ -66,7 +66,7 @@ public final class AppRouter {
             @escaping @MainActor (
                 ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter
             ) -> any OverlayWindow,
-        frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor () -> Void) -> any FrameScheduler
+        frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     ) {
         self.bootstrap = bootstrap
         self.windowFactory = windowFactory
@@ -120,15 +120,17 @@ public final class AppRouter {
             // Only enabled features pay a per-frame cost: each optional
             // handler is included in the frame fan-out only when its feature
             // is on, so a disabled ripple/spectrum adds zero work per tick.
-            let frameHandlers: [@MainActor @Sendable () -> Void] = [
+            let frameHandlers: [@MainActor @Sendable (Double) -> Void] = [
                 ripplePresenter.isEnabled
-                    ? { @MainActor @Sendable [weak self] in self?.ripplePresenter?.idle() } : nil,
+                    ? { @MainActor @Sendable [weak self] _ in self?.ripplePresenter?.idle() } : nil,
                 spectrumPresenter.isEnabled
-                    ? { @MainActor @Sendable [weak self] in self?.spectrumPresenter?.tick() } : nil,
-                { @MainActor @Sendable [weak self] in self?.lyricsPresenter?.updateActiveLineTick() },
+                    ? { @MainActor @Sendable [weak self] interval in
+                        self?.spectrumPresenter?.tick(frameInterval: interval)
+                    } : nil,
+                { @MainActor @Sendable [weak self] _ in self?.lyricsPresenter?.updateActiveLineTick() },
             ].compactMap { $0 }
-            let onFrame: @MainActor @Sendable () -> Void = {
-                for handler in frameHandlers { handler() }
+            let onFrame: @MainActor @Sendable (Double) -> Void = { interval in
+                for handler in frameHandlers { handler(interval) }
             }
             let scheduler = frameSchedulerFactory(onFrame)
             self.frameScheduler = scheduler

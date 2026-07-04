@@ -209,4 +209,67 @@ struct SpectrumPresenterTests {
         #expect(presenter.binHeights().isEmpty)
         #expect(!presenter.isAnimating)
     }
+
+    // MARK: - framerate-independent smoothing (#299)
+
+    @Test("framerate constants match the legacy 60 fps tuning at a 60 fps frame")
+    func framerateConstantsAt60fps() {
+        let c = spectrumFramerateConstants(frameInterval: 1.0 / 60)
+        // The old code hardcoded framerate_mod = 66/60; the default frame
+        // preserves it exactly, so 60 Hz behavior is unchanged.
+        #expect(abs(c.framerateMod - Float(66.0 / 60.0)) < 1e-5)
+        #expect(abs(c.integralMod - pow(c.framerateMod, 0.1)) < 1e-6)
+        #expect(abs(c.gravityScale - pow(c.framerateMod, 2.5) * 2) < 1e-6)
+    }
+
+    @Test("a 120 Hz frame halves framerate_mod versus 60 Hz")
+    func framerateConstantsAt120fps() {
+        let at120 = spectrumFramerateConstants(frameInterval: 1.0 / 120)
+        let at60 = spectrumFramerateConstants(frameInterval: 1.0 / 60)
+        #expect(abs(at120.framerateMod - Float(66.0 / 120.0)) < 1e-5)
+        #expect(abs(at120.framerateMod - at60.framerateMod / 2) < 1e-5)
+    }
+
+    @Test("an absurd frame interval clamps the derived rate to 24…240 fps")
+    func framerateConstantsClamp() {
+        // Zero / negative → 240 fps ceiling; a 1 fps interval → 24 fps floor.
+        #expect(abs(spectrumFramerateConstants(frameInterval: 0).framerateMod - Float(66.0 / 240)) < 1e-5)
+        #expect(abs(spectrumFramerateConstants(frameInterval: -5).framerateMod - Float(66.0 / 240)) < 1e-5)
+        #expect(abs(spectrumFramerateConstants(frameInterval: 1).framerateMod - Float(66.0 / 24)) < 1e-5)
+    }
+
+    @MainActor
+    @Test("the fall is refresh-rate independent — 120 Hz needs more frames to clear than 60 Hz")
+    func fallIsRefreshRateIndependent() async {
+        // A 120 Hz frame advances half a 60 Hz frame's worth of decay, so a
+        // bar left to fall takes more frames to clear at 120 Hz — the point of
+        // deriving the smoothing constants from the real frame interval.
+        func framesToClear(frameInterval: Double) async -> Int {
+            let style = SpectrumStyle(
+                enabled: true, stereo: false, barWidth: 1, barSpacing: 0, noiseReduction: 0.77)
+            let interactor = FakeSpectrumInteractor(style: style)
+            interactor.magnitudesValue = [0.5]
+            let presenter = Self.presenter(with: interactor)
+            presenter.start()
+            presenter.updateBarTrackLength(1)
+            interactor.capturingSubject.send(true)
+            await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+            // Let the capturing flag settle (async via the main queue) and the
+            // bar start falling at the default 60 fps, so both runs begin the
+            // counted portion from the same sub-0.5 state.
+            interactor.capturingSubject.send(false)
+            await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 0.5 }
+
+            var frames = 0
+            let deadline = ContinuousClock.now + .seconds(3)
+            while !presenter.binHeights().isEmpty, ContinuousClock.now < deadline {
+                presenter.tick(frameInterval: frameInterval)
+                frames += 1
+            }
+            return frames
+        }
+        let at120 = await framesToClear(frameInterval: 1.0 / 120)
+        let at60 = await framesToClear(frameInterval: 1.0 / 60)
+        #expect(at120 > at60)
+    }
 }

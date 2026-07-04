@@ -282,7 +282,7 @@ struct AppRouterTests {
 
     @Test("default frame scheduler factory creates DisplayLinkDriver")
     func defaultFactoryCreatesDisplayLinkDriver() {
-        let frameScheduler = AppRouter.defaultFrameSchedulerFactory(onFrame: {})
+        let frameScheduler = AppRouter.defaultFrameSchedulerFactory(onFrame: { _ in })
 
         #expect(frameScheduler is DisplayLinkDriver)
     }
@@ -506,7 +506,7 @@ struct AppRouterTests {
         var startCallCount = 0
         var stopCallCount = 0
         var startedWindow: AnyObject?
-        var onFrame: (@MainActor () -> Void)?
+        var onFrame: (@MainActor (Double) -> Void)?
 
         func start(in window: any OverlayWindow) {
             startCallCount += 1
@@ -517,8 +517,8 @@ struct AppRouterTests {
             stopCallCount += 1
         }
 
-        func fire() {
-            onFrame?()
+        func fire(frameInterval: Double = 1.0 / 60.0) {
+            onFrame?(frameInterval)
         }
     }
 

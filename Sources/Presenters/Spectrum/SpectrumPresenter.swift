@@ -79,9 +79,15 @@ public final class SpectrumPresenter: ObservableObject {
     }
 
     /// DisplayLink frame tick: advances every bar one filter step toward the
-    /// newest magnitudes and updates the animation flag.
-    public func tick() {
+    /// newest magnitudes and updates the animation flag. `frameInterval` is the
+    /// display's seconds-per-frame (from `CADisplayLink`); cava's smoothing
+    /// constants are derived from it so the fall speed and integral decay hold
+    /// constant in wall-clock time across 60 Hz, 120 Hz ProMotion, and
+    /// variable-refresh displays (#299). Defaults to 60 fps so unit tests and
+    /// any timing-agnostic caller keep the historical behavior exactly.
+    public func tick(frameInterval: Double = 1.0 / 60.0) {
         guard capturing || !motion.isEmpty else { return }
+        let constants = spectrumFramerateConstants(frameInterval: frameInterval)
         let style = interactor.spectrumStyle
         let barCount = targetBarCount(style: style)
         let fresh = capturing ? interactor.magnitudes(barCount: barCount) : []
@@ -90,10 +96,10 @@ public final class SpectrumPresenter: ObservableObject {
             stepped(
                 bar < motion.count ? motion[bar] : BarMotion(),
                 target: (bar < fresh.count ? fresh[bar] : 0) * sens,
-                reduction: reduction
+                reduction: reduction, constants: constants
             )
         }
-        adjustSens(silence: fresh.allSatisfy { $0 == 0 })
+        adjustSens(silence: fresh.allSatisfy { $0 == 0 }, framerateMod: constants.framerateMod)
         let animating =
             capturing
             || motion.contains {
@@ -127,12 +133,9 @@ public final class SpectrumPresenter: ObservableObject {
 
     /// Bars below this are treated as fully fallen (~1/4 pixel at 256 pt).
     private static let silenceThreshold: Float = 0.001
-    /// cavacore's constants at the 60 fps DisplayLink tick
-    /// (framerate_mod = 66 / 60).
+    /// cava's per-frame gravity-ramp increment (frame-count based, so the
+    /// framerate compensation rides in `gravityScale`, not here).
     private static let fallIncrement: Float = 0.028
-    private static let framerateMod: Float = 66.0 / 60.0
-    private static let integralMod: Float = pow(framerateMod, 0.1)
-    private static let gravityScale: Float = pow(framerateMod, 2.5) * 2
 
     /// One step of cava's bar filter. Attack adopts a louder input
     /// immediately as the new peak; a quieter one falls from its peak with
@@ -143,37 +146,66 @@ public final class SpectrumPresenter: ObservableObject {
     /// energy compounds toward 1/(1-reduction) of its single-frame height
     /// while one-frame spikes stay small — the beat-favoring dynamics the
     /// autosens then pins to full scale.
-    private func stepped(_ m: BarMotion, target: Float, reduction: Float) -> BarMotion {
+    private func stepped(
+        _ m: BarMotion, target: Float, reduction: Float, constants: SpectrumFramerateConstants
+    ) -> BarMotion {
         let (value, peak, fall): (Float, Float, Float) =
             target < m.prev && reduction > 0.1
             ? (
-                max(m.peak * (1 - m.fall * m.fall * Self.gravityScale / reduction), 0),
+                max(m.peak * (1 - m.fall * m.fall * constants.gravityScale / reduction), 0),
                 m.peak, m.fall + Self.fallIncrement
             )
             : (target, target, 0)
         return BarMotion(
-            mem: m.mem * reduction / Self.integralMod + value,
+            mem: m.mem * reduction / constants.integralMod + value,
             prev: value, peak: peak, fall: fall)
     }
 
     /// cava's autosens feedback: any overshoot cuts the gain and ends the
     /// initial ramp; otherwise every non-silent frame raises it slightly.
-    /// Silence freezes the gain so pauses can't wind it up.
-    private func adjustSens(silence: Bool) {
+    /// Silence freezes the gain so pauses can't wind it up. The per-frame
+    /// steps scale with `framerateMod` so the gain settles at the same rate
+    /// in wall-clock time regardless of refresh rate.
+    private func adjustSens(silence: Bool, framerateMod: Float) {
         let overshoot = motion.contains { $0.mem > 1 }
-        sens *= sensFactor(overshoot: overshoot, silence: silence)
+        sens *= sensFactor(overshoot: overshoot, silence: silence, framerateMod: framerateMod)
         sensInit = sensInit && !overshoot
     }
 
-    private func sensFactor(overshoot: Bool, silence: Bool) -> Float {
-        guard !overshoot else { return 1 - 0.02 * Self.framerateMod }
+    private func sensFactor(overshoot: Bool, silence: Bool, framerateMod: Float) -> Float {
+        guard !overshoot else { return 1 - 0.02 * framerateMod }
         guard !silence else { return 1 }
-        return (1 + 0.001 * Self.framerateMod)
-            * (sensInit ? 1 + 0.1 * Self.framerateMod : 1)
+        return (1 + 0.001 * framerateMod)
+            * (sensInit ? 1 + 0.1 * framerateMod : 1)
     }
 
     private func setAnimating(_ value: Bool) {
         guard isAnimating != value else { return }
         isAnimating = value
     }
+}
+
+/// cava's framerate-compensation constants for a display frame interval (#299).
+/// cavacore tunes its filter at a 66 fps reference (`framerate_mod = 66 / fps`)
+/// and derives the integral-decay and gravity scales from it; the old fixed
+/// 60 fps assumption made the bars fall at double speed on 120 Hz ProMotion.
+/// Deriving `fps` from the real per-frame interval keeps the fall speed and
+/// decay constant in wall-clock time regardless of refresh rate.
+struct SpectrumFramerateConstants: Equatable {
+    /// cava's `framerate_mod` = 66 / fps (1.1 at 60 fps, 0.55 at 120 fps).
+    let framerateMod: Float
+    /// Leaky-integral decay divisor, `framerateMod ^ 0.1`.
+    let integralMod: Float
+    /// Gravity-release scale, `framerateMod ^ 2.5 * 2`.
+    let gravityScale: Float
+}
+
+/// The `SpectrumFramerateConstants` for a display's seconds-per-frame. The
+/// derived frame rate is clamped to 24…240 fps so a hitched, zero, or negative
+/// interval can't blow up the constants.
+func spectrumFramerateConstants(frameInterval: Double) -> SpectrumFramerateConstants {
+    let fps = min(max(1 / max(frameInterval, .leastNormalMagnitude), 24), 240)
+    let mod = Float(66 / fps)
+    return SpectrumFramerateConstants(
+        framerateMod: mod, integralMod: pow(mod, 0.1), gravityScale: pow(mod, 2.5) * 2)
 }
