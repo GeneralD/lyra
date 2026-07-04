@@ -255,6 +255,7 @@ extension DarwinGateway: ProcessGateway {
             }
             continuation.onTermination = { _ in
                 task.terminate()
+                try? reader.close()
                 readerTask.cancel()
             }
         }
