@@ -667,6 +667,7 @@ struct SpectrumTomlDecodingTests {
         #expect(config.spectrum.stereo == true)
         #expect(config.spectrum.barCount.value == 64)
         #expect(config.spectrum.barColor == .gradient(["#1E3A5F", "#4A9EFF"]))
+        #expect(config.spectrum.gradientDirection == .amplitude)
         #expect(config.spectrum.backgroundColor == nil)
         #expect(config.spectrum.barWidthRatio.value == 0.7)
         #expect(config.spectrum.minDb.value == -60)
@@ -687,6 +688,7 @@ struct SpectrumTomlDecodingTests {
             stereo = false
             bar_count = 32
             bar_color = "#FF8800"
+            gradient_direction = "level"
             background_color = "#00000080"
             bar_width_ratio = 0.5
             min_db = -60
@@ -701,6 +703,7 @@ struct SpectrumTomlDecodingTests {
         #expect(config.spectrum.stereo == false)
         #expect(config.spectrum.barCount.value == 32)
         #expect(config.spectrum.barColor == .solid("#FF8800"))
+        #expect(config.spectrum.gradientDirection == .level)
         #expect(config.spectrum.backgroundColor == ColorConfig(hex: "#00000080"))
         #expect(config.spectrum.barWidthRatio.value == 0.5)
         #expect(config.spectrum.minDb.value == -60)

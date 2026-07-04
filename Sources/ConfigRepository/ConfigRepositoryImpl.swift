@@ -46,6 +46,7 @@ extension ConfigRepositoryImpl: ConfigRepository {
                     ? max(2, Int(config.spectrum.barCount.value) / 2 * 2)
                     : max(1, Int(config.spectrum.barCount.value)),
                 barColor: config.spectrum.barColor,
+                gradientDirection: config.spectrum.gradientDirection,
                 backgroundColor: config.spectrum.backgroundColor,
                 barWidthRatio: config.spectrum.barWidthRatio.value,
                 minDb: config.spectrum.minDb.value,

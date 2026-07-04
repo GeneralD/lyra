@@ -75,6 +75,7 @@ bar_count = 64.0
 bar_width_ratio = 0.7
 enabled = false
 fft_size = 1024.0
+gradient_direction = 'amplitude'
 height_ratio = 0.25
 max_db = 0.0
 min_db = -60.0
@@ -189,6 +190,7 @@ spacing = 6.0
     "bar_width_ratio" : 0.7,
     "enabled" : false,
     "fft_size" : 1024,
+    "gradient_direction" : "amplitude",
     "height_ratio" : 0.25,
     "max_db" : 0,
     "min_db" : -60,

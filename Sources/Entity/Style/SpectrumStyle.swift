@@ -12,6 +12,8 @@ public struct SpectrumStyle {
     /// `stereo`, so each channel owns exactly half.
     public let barCount: Int
     public let barColor: ColorStyle
+    /// Axis a multi-color `barColor` gradient runs along; ignored for solid.
+    public let gradientDirection: SpectrumGradientDirection
     public let backgroundColor: ColorConfig?
     /// Bar width as a fraction of one bar slot (bar + gap), 0–1.
     public let barWidthRatio: Double
@@ -33,6 +35,7 @@ public struct SpectrumStyle {
         stereo: Bool = true,
         barCount: Int = 64,
         barColor: ColorStyle = .gradient(["#1E3A5F", "#4A9EFF"]),
+        gradientDirection: SpectrumGradientDirection = .amplitude,
         backgroundColor: ColorConfig? = nil,
         barWidthRatio: Double = 0.7,
         minDb: Double = -60,
@@ -47,6 +50,7 @@ public struct SpectrumStyle {
         self.stereo = stereo
         self.barCount = barCount
         self.barColor = barColor
+        self.gradientDirection = gradientDirection
         self.backgroundColor = backgroundColor
         self.barWidthRatio = barWidthRatio
         self.minDb = minDb

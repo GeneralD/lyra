@@ -10,6 +10,9 @@ public struct SpectrumConfig {
     public let stereo: Bool
     public let barCount: FlexibleDouble
     public let barColor: ColorStyle
+    /// Axis a multi-color `bar_color` gradient runs along (`frequency` /
+    /// `amplitude` / `level`); ignored for a solid color.
+    public let gradientDirection: SpectrumGradientDirection
     public let backgroundColor: ColorConfig?
     /// Bar width as a fraction of one bar slot (bar + gap), 0–1.
     public let barWidthRatio: FlexibleDouble
@@ -36,6 +39,7 @@ extension SpectrumConfig {
         stereo: true,
         barCount: 64,
         barColor: .gradient(["#1E3A5F", "#4A9EFF"]),
+        gradientDirection: .amplitude,
         backgroundColor: nil,
         barWidthRatio: 0.7,
         minDb: -60,
@@ -54,6 +58,7 @@ extension SpectrumConfig: Codable {
         case stereo
         case barCount = "bar_count"
         case barColor = "bar_color"
+        case gradientDirection = "gradient_direction"
         case backgroundColor = "background_color"
         case barWidthRatio = "bar_width_ratio"
         case minDb = "min_db"
@@ -71,6 +76,7 @@ extension SpectrumConfig: Codable {
         stereo = try c.decodeIfPresent(Bool.self, forKey: .stereo) ?? Self.defaults.stereo
         barCount = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barCount) ?? Self.defaults.barCount
         barColor = try c.decodeIfPresent(ColorStyle.self, forKey: .barColor) ?? Self.defaults.barColor
+        gradientDirection = try c.decodeIfPresent(SpectrumGradientDirection.self, forKey: .gradientDirection) ?? Self.defaults.gradientDirection
         backgroundColor = try c.decodeIfPresent(ColorConfig.self, forKey: .backgroundColor) ?? Self.defaults.backgroundColor
         barWidthRatio = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barWidthRatio) ?? Self.defaults.barWidthRatio
         minDb = try c.decodeIfPresent(FlexibleDouble.self, forKey: .minDb) ?? Self.defaults.minDb

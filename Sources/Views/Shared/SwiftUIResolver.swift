@@ -9,6 +9,12 @@ public protocol SwiftUIResolver: Sendable {
     @MainActor func color(from hex: String) -> Color
     @MainActor func solidColor(from style: ColorStyle) -> Color
     @MainActor func shapeStyle(from style: ColorStyle) -> AnyShapeStyle
+    /// The palette as a SwiftUI `Gradient`, so callers can run it along any
+    /// axis (spectrum's frequency / amplitude directions).
+    @MainActor func gradient(from style: ColorStyle) -> Gradient
+    /// The palette sampled at `fraction` (0…1), interpolating between stops —
+    /// the flat per-bar color of the spectrum's `level` gradient direction.
+    @MainActor func color(from style: ColorStyle, at fraction: Double) -> Color
     @MainActor func color(_ style: ColorStyle, hueShiftedBy shift: Double, opacity: Double) -> Color
     @MainActor func hsbComponents(from style: ColorStyle) -> (hue: Double, saturation: Double, brightness: Double)
     @MainActor func lineHeight(from style: TextAppearance) -> Double
@@ -33,6 +39,8 @@ private struct StubSwiftUIResolver: SwiftUIResolver {
     @MainActor func color(from hex: String) -> Color { .white }
     @MainActor func solidColor(from style: ColorStyle) -> Color { .white }
     @MainActor func shapeStyle(from style: ColorStyle) -> AnyShapeStyle { .init(.white) }
+    @MainActor func gradient(from style: ColorStyle) -> Gradient { Gradient(colors: [.white]) }
+    @MainActor func color(from style: ColorStyle, at fraction: Double) -> Color { .white }
     @MainActor func color(_ style: ColorStyle, hueShiftedBy shift: Double, opacity: Double) -> Color { .white }
     @MainActor func hsbComponents(from style: ColorStyle) -> (hue: Double, saturation: Double, brightness: Double) { (0, 0, 1) }
     @MainActor func lineHeight(from style: TextAppearance) -> Double { style.fontSize + style.spacing * 2 }
