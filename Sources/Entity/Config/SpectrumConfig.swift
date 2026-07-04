@@ -50,10 +50,10 @@ extension SpectrumConfig {
     static let defaults = SpectrumConfig(
         enabled: false,
         stereo: true,
-        barColor: .gradient(["#060912", "#20407F", "#3E86F0", "#9C6CEE", "#F4F1FF"]),
+        barColor: .gradient(["#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3"]),
         gradientDirection: .level,
         backgroundColor: nil,
-        barWidth: 8,
+        barWidth: 6,
         barSpacing: 4,
         minFreq: 40,
         maxFreq: 14000,

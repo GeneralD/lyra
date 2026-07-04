@@ -667,10 +667,10 @@ struct SpectrumTomlDecodingTests {
         #expect(config.spectrum.stereo == true)
         #expect(
             config.spectrum.barColor
-                == .gradient(["#060912", "#20407F", "#3E86F0", "#9C6CEE", "#F4F1FF"]))
+                == .gradient(["#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3"]))
         #expect(config.spectrum.gradientDirection == .level)
         #expect(config.spectrum.backgroundColor == nil)
-        #expect(config.spectrum.barWidth.value == 8)
+        #expect(config.spectrum.barWidth.value == 6)
         #expect(config.spectrum.barSpacing.value == 4)
         #expect(config.spectrum.minFreq.value == 40)
         #expect(config.spectrum.maxFreq.value == 14000)
@@ -756,7 +756,7 @@ struct SpectrumTomlDecodingTests {
             enabled = true
             """)
         #expect(config.spectrum.enabled == true)
-        #expect(config.spectrum.barWidth.value == 8)
+        #expect(config.spectrum.barWidth.value == 6)
         #expect(config.spectrum.placement == .bottom)
         #expect(config.spectrum.fftSize.value == 1024)
     }

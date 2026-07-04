@@ -44,10 +44,12 @@ public struct SpectrumStyle {
     public init(
         enabled: Bool = false,
         stereo: Bool = true,
-        barColor: ColorStyle = .gradient(["#060912", "#20407F", "#3E86F0", "#9C6CEE", "#F4F1FF"]),
+        barColor: ColorStyle = .gradient([
+            "#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3",
+        ]),
         gradientDirection: SpectrumGradientDirection = .level,
         backgroundColor: ColorConfig? = nil,
-        barWidth: Double = 8,
+        barWidth: Double = 6,
         barSpacing: Double = 4,
         minFreq: Double = 40,
         maxFreq: Double = 14000,
