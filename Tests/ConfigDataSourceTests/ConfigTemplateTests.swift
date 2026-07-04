@@ -70,12 +70,12 @@ radius = 60.0
 type = 'circle'
 
 [spectrum]
-bar_color = [ '#1E3A5F', '#4A9EFF' ]
+bar_color = [ '#060912', '#20407F', '#3E86F0', '#9C6CEE', '#F4F1FF' ]
 bar_spacing = 4.0
 bar_width = 8.0
 enabled = false
 fft_size = 1024.0
-gradient_direction = 'amplitude'
+gradient_direction = 'level'
 height_ratio = 0.25
 max_db = 0.0
 max_freq = 14000.0
@@ -185,14 +185,17 @@ spacing = 6.0
   "screen_debounce" : 5,
   "spectrum" : {
     "bar_color" : [
-      "#1E3A5F",
-      "#4A9EFF"
+      "#060912",
+      "#20407F",
+      "#3E86F0",
+      "#9C6CEE",
+      "#F4F1FF"
     ],
     "bar_spacing" : 4,
     "bar_width" : 8,
     "enabled" : false,
     "fft_size" : 1024,
-    "gradient_direction" : "amplitude",
+    "gradient_direction" : "level",
     "height_ratio" : 0.25,
     "max_db" : 0,
     "max_freq" : 14000,

@@ -37,8 +37,8 @@ public struct SpectrumStyle {
     public init(
         enabled: Bool = false,
         stereo: Bool = true,
-        barColor: ColorStyle = .gradient(["#1E3A5F", "#4A9EFF"]),
-        gradientDirection: SpectrumGradientDirection = .amplitude,
+        barColor: ColorStyle = .gradient(["#060912", "#20407F", "#3E86F0", "#9C6CEE", "#F4F1FF"]),
+        gradientDirection: SpectrumGradientDirection = .level,
         backgroundColor: ColorConfig? = nil,
         barWidth: Double = 8,
         barSpacing: Double = 4,

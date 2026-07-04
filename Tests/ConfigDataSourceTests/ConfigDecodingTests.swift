@@ -665,8 +665,10 @@ struct SpectrumTomlDecodingTests {
         let config = try decode("")
         #expect(config.spectrum.enabled == false)
         #expect(config.spectrum.stereo == true)
-        #expect(config.spectrum.barColor == .gradient(["#1E3A5F", "#4A9EFF"]))
-        #expect(config.spectrum.gradientDirection == .amplitude)
+        #expect(
+            config.spectrum.barColor
+                == .gradient(["#060912", "#20407F", "#3E86F0", "#9C6CEE", "#F4F1FF"]))
+        #expect(config.spectrum.gradientDirection == .level)
         #expect(config.spectrum.backgroundColor == nil)
         #expect(config.spectrum.barWidth.value == 8)
         #expect(config.spectrum.barSpacing.value == 4)

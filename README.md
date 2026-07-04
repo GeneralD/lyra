@@ -205,8 +205,8 @@ The defaults are tuned to look good out of the box (cava-inspired), so `enabled 
 |---|---|---|---|
 | `enabled` | boolean | `false` | Set to `true` to show the analyzer |
 | `stereo` | boolean | `true` | Split into two channels (left mirrored on the left half, right on the right, bass meeting in the center); `false` shows one mono row |
-| `bar_color` | string / array | `["#1E3A5F", "#4A9EFF"]` | Solid hex or gradient array |
-| `gradient_direction` | string | `"amplitude"` | Axis a gradient `bar_color` runs along: `"frequency"` (across bands), `"amplitude"` (base→tip, VU-style), or `"level"` (each bar flat-colored by its height). Ignored for a solid color |
+| `bar_color` | string / array | `["#060912", "#20407F", "#3E86F0", "#9C6CEE", "#F4F1FF"]` | Solid hex or gradient array (default: deep-navy → blue → violet → white) |
+| `gradient_direction` | string | `"level"` | Axis a gradient `bar_color` runs along: `"frequency"` (across bands), `"amplitude"` (base→tip, VU-style), or `"level"` (each bar flat-colored by its height). Ignored for a solid color |
 | `background_color` | string | — | Optional backdrop behind the bars |
 | `bar_width` | number | `8` | Bar thickness in points (fixed; the bar count is derived from the overlay size, cava-style) |
 | `bar_spacing` | number | `4` | Gap between bars in points |
