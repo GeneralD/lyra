@@ -37,10 +37,12 @@ public final class SpectrumPresenter: ObservableObject {
     private var motion: [BarMotion] = []
     private var capturing = false
     private var cancellable: AnyCancellable?
-    /// Bar-area width the View last reported, in points. The bar count is
-    /// derived from it cava-style (fixed bar + gap, count fills the width),
-    /// so it is 0 until the View lays out.
-    private var renderWidth: Double = 0
+    /// Length of the track the bars distribute along, in points, as the View
+    /// last reported it — the overlay width for vertical placements, the
+    /// height for the horizontal `left`/`right` ones. The bar count is derived
+    /// from it cava-style (fixed bar + gap, count fills the track), so it is 0
+    /// until the View lays out.
+    private var barTrackLength: Double = 0
     /// cava's autosens gain applied to the incoming magnitudes: raised
     /// ~0.1% per active frame, cut ~2% the moment any bar overshoots full
     /// height, so sustained peaks ride the top of the range. Kept across
@@ -69,10 +71,11 @@ public final class SpectrumPresenter: ObservableObject {
         capturing = false
     }
 
-    /// The View reports its bar-area width so the bar count can be derived
-    /// cava-style (fixed bar + gap, the count fills the width).
-    public func updateRenderWidth(_ width: Double) {
-        renderWidth = width
+    /// The View reports the length of the bar track (overlay width for
+    /// vertical placements, height for horizontal) so the bar count can be
+    /// derived cava-style (fixed bar + gap, the count fills the track).
+    public func updateBarTrackLength(_ length: Double) {
+        barTrackLength = length
     }
 
     /// DisplayLink frame tick: advances every bar one filter step toward the
@@ -106,15 +109,15 @@ public final class SpectrumPresenter: ObservableObject {
     /// inside a Canvas draw closure.
     public func binHeights() -> [Float] { motion.map { min($0.mem, 1) } }
 
-    /// cava's bar count: as many fixed-width bars (plus gaps) as fit the
-    /// reported width, so bars keep the same thickness at any window size.
-    /// Stereo rounds down to even so the two channels split it exactly.
+    /// cava's bar count: as many fixed-thickness bars (plus gaps) as fit the
+    /// reported track length, so bars keep the same thickness at any window
+    /// size. Stereo rounds down to even so the two channels split it exactly.
     /// Capped so a tiny `bar_width` can't ask for more bars than the FFT
     /// resolves or than is worth drawing.
     private func targetBarCount(style: SpectrumStyle) -> Int {
         let slot = style.barWidth + style.barSpacing
-        guard renderWidth > 0, slot > 0 else { return 0 }
-        let fit = min(Int((renderWidth + style.barSpacing) / slot), Self.maxBars)
+        guard barTrackLength > 0, slot > 0 else { return 0 }
+        let fit = min(Int((barTrackLength + style.barSpacing) / slot), Self.maxBars)
         return style.stereo ? fit / 2 * 2 : max(fit, 0)
     }
 

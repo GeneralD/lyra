@@ -99,7 +99,7 @@ struct SpectrumPresenterTests {
         interactor.magnitudesValue = [1, 0.5, 0.25, 0.125]
         let presenter = Self.presenter(with: interactor)
         presenter.start()
-        presenter.updateRenderWidth(4)
+        presenter.updateBarTrackLength(4)
         interactor.capturingSubject.send(true)
 
         await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
@@ -117,7 +117,7 @@ struct SpectrumPresenterTests {
         interactor.magnitudesValue = [Float](repeating: 1, count: 100)
         let presenter = Self.presenter(with: interactor)
         presenter.start()
-        presenter.updateRenderWidth(21)  // (21 + 1) / 2 = 11 bars
+        presenter.updateBarTrackLength(21)  // (21 + 1) / 2 = 11 bars
         interactor.capturingSubject.send(true)
 
         await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
@@ -133,7 +133,7 @@ struct SpectrumPresenterTests {
         interactor.magnitudesValue = [Float](repeating: 1, count: 100)
         let presenter = Self.presenter(with: interactor)
         presenter.start()
-        presenter.updateRenderWidth(15)  // slot 1 → 15 → even → 14
+        presenter.updateBarTrackLength(15)  // slot 1 → 15 → even → 14
         interactor.capturingSubject.send(true)
 
         await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
@@ -166,7 +166,7 @@ struct SpectrumPresenterTests {
         interactor.magnitudesValue = [1]
         let presenter = Self.presenter(with: interactor)
         presenter.start()
-        presenter.updateRenderWidth(1)
+        presenter.updateBarTrackLength(1)
         interactor.capturingSubject.send(true)
         await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
 
@@ -193,7 +193,7 @@ struct SpectrumPresenterTests {
         interactor.magnitudesValue = [0.4, 0, 0, 0]
         let presenter = Self.presenter(with: interactor)
         presenter.start()
-        presenter.updateRenderWidth(4)
+        presenter.updateBarTrackLength(4)
         interactor.capturingSubject.send(true)
 
         await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }

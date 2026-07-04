@@ -30,7 +30,8 @@ public struct SpectrumStyle {
     public let noiseReduction: Double
     public let fftSize: Int
     public let placement: SpectrumPlacement
-    /// Fraction of the overlay height the bars may occupy, 0–1.
+    /// Fraction of the overlay the bars may occupy along their growth axis,
+    /// 0–1: the overlay height for `bottom`/`top`, the width for `left`/`right`.
     public let heightRatio: Double
 
     public init(

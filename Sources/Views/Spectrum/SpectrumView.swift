@@ -29,15 +29,23 @@ public struct SpectrumView: View {
                         drawBars(&context, size: size, style: style)
                     }
                 }
-                .frame(height: barAreaHeight(in: proxy.size, style: style))
+                // Constrain the strip to its growth depth on the edge it
+                // anchors to — height for vertical placements, width for the
+                // horizontal ones — then pin it against that edge.
+                .frame(
+                    width: isHorizontal(style.placement)
+                        ? barStripDepth(in: proxy.size, style: style) : nil,
+                    height: isHorizontal(style.placement)
+                        ? nil : barStripDepth(in: proxy.size, style: style)
+                )
                 .frame(
                     maxWidth: .infinity, maxHeight: .infinity,
                     alignment: Self.alignment(for: style.placement)
                 )
-                // The bar count is derived from this width (cava style), so
-                // keep the Presenter in sync as the overlay resizes.
-                .onChange(of: proxy.size.width, initial: true) { _, width in
-                    presenter.updateRenderWidth(width)
+                // The bar count is derived from the track length (cava style),
+                // so keep the Presenter in sync as the overlay resizes.
+                .onChange(of: trackExtent(of: proxy.size, placement: style.placement), initial: true) { _, length in
+                    presenter.updateBarTrackLength(length)
                 }
             }
             .allowsHitTesting(false)
@@ -99,36 +107,76 @@ public struct SpectrumView: View {
         }
     }
 
-    /// Endpoints of the whole-area gradient: horizontal for `frequency`,
-    /// vertical for `amplitude` — pointing from the bars' base to their tips
-    /// so the high colors always land at the growing edge.
+    /// Endpoints of the strip-spanning gradient. `frequency` runs along the
+    /// track (edge-parallel) axis, `amplitude` along the growth axis from the
+    /// bars' base to their tips, so the high colors always land at the growing
+    /// edge whichever edge the strip anchors to.
     private func gradientEnds(
         for direction: SpectrumGradientDirection, size: CGSize, placement: SpectrumPlacement
     ) -> (CGPoint, CGPoint) {
         switch direction {
         case .frequency:
-            return (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
+            return isHorizontal(placement)
+                ? (CGPoint(x: size.width / 2, y: 0), CGPoint(x: size.width / 2, y: size.height))
+                : (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
         case .amplitude:
-            let base = placement == .top ? 0 : size.height
-            let tip = placement == .top ? size.height : 0
-            return (CGPoint(x: size.width / 2, y: base), CGPoint(x: size.width / 2, y: tip))
+            return amplitudeGradientEnds(placement: placement, size: size)
         case .level:
             return (.zero, .zero)
         }
     }
 
-    private func barAreaHeight(in available: CGSize, style: SpectrumStyle) -> CGFloat {
-        switch style.placement {
-        case .underlay: available.height
-        case .bottom, .top: available.height * min(max(style.heightRatio, 0), 1)
+    /// Base → tip of the growth axis for the `amplitude` gradient, per edge.
+    private func amplitudeGradientEnds(
+        placement: SpectrumPlacement, size: CGSize
+    ) -> (CGPoint, CGPoint) {
+        switch placement {
+        case .bottom, .underlay:
+            return (CGPoint(x: size.width / 2, y: size.height), CGPoint(x: size.width / 2, y: 0))
+        case .top:
+            return (CGPoint(x: size.width / 2, y: 0), CGPoint(x: size.width / 2, y: size.height))
+        case .left:
+            return (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
+        case .right:
+            return (CGPoint(x: size.width, y: size.height / 2), CGPoint(x: 0, y: size.height / 2))
         }
+    }
+
+    /// Extent of the bar strip along its growth axis: the full overlay for
+    /// `underlay`, otherwise `heightRatio` of the height (vertical placements)
+    /// or of the width (horizontal ones).
+    private func barStripDepth(in available: CGSize, style: SpectrumStyle) -> CGFloat {
+        let ratio = min(max(style.heightRatio, 0), 1)
+        switch style.placement {
+        case .underlay: return available.height
+        case .bottom, .top: return available.height * ratio
+        case .left, .right: return available.width * ratio
+        }
+    }
+
+    /// Length of the track the bars distribute along — width for vertical
+    /// placements, height for the horizontal ones — reported to the Presenter
+    /// so it can derive the bar count.
+    private func trackExtent(of size: CGSize, placement: SpectrumPlacement) -> Double {
+        isHorizontal(placement) ? size.height : size.width
     }
 
     static func alignment(for placement: SpectrumPlacement) -> Alignment {
         switch placement {
         case .bottom, .underlay: .bottom
         case .top: .top
+        case .left: .leading
+        case .right: .trailing
         }
+    }
+}
+
+/// Horizontal placements rotate the bars into columns growing sideways; the
+/// vertical ones grow the bars up or down.
+func isHorizontal(_ placement: SpectrumPlacement) -> Bool {
+    switch placement {
+    case .left, .right: true
+    case .bottom, .top, .underlay: false
     }
 }
 
@@ -140,32 +188,54 @@ struct SpectrumBar: Equatable {
     let level: Float
 }
 
-/// The visible bars of the current frame — those tall enough to draw — laid
-/// out at a fixed `barWidth` and `barSpacing` (cava style) and centered in
-/// the width. Bars below half a point are dropped so the path carries no
-/// invisible slivers.
+/// The visible bars of the current frame — those long enough to draw — laid
+/// out at a fixed `barWidth` thickness and `barSpacing` gap (cava style) and
+/// centered along the track. Each bar grows along the axis perpendicular to
+/// its anchoring edge: up/down for `bottom`/`top`, left↔right for the
+/// horizontal placements. Bars below half a point are dropped so the path
+/// carries no invisible slivers.
 func spectrumBarRects(
     in size: CGSize, heights: [Float], barWidth: Double, barSpacing: Double,
     placement: SpectrumPlacement
 ) -> [SpectrumBar] {
     guard !heights.isEmpty, size.width > 0, size.height > 0 else { return [] }
-    let width = CGFloat(max(barWidth, 0.5))
+    let thickness = CGFloat(max(barWidth, 0.5))
     let spacing = CGFloat(max(barSpacing, 0))
     let count = heights.count
-    let rowWidth = CGFloat(count) * width + CGFloat(max(count - 1, 0)) * spacing
-    let startX = max((size.width - rowWidth) / 2, 0)
-    let cornerRadius = min(width / 4, 3)
+    // Track = the edge-parallel axis the bars are distributed along; growth =
+    // the perpendicular axis a bar extends along with its level.
+    let horizontal = isHorizontal(placement)
+    let trackLength = horizontal ? size.height : size.width
+    let growthExtent = horizontal ? size.width : size.height
+    let rowLength = CGFloat(count) * thickness + CGFloat(max(count - 1, 0)) * spacing
+    let start = max((trackLength - rowLength) / 2, 0)
+    let cornerRadius = min(thickness / 4, 3)
     return heights.enumerated().compactMap { bar in
         let level = min(max(bar.element, 0), 1)
-        let height = size.height * CGFloat(level)
-        guard height > 0.5 else { return nil }
-        let rect = CGRect(
-            x: startX + CGFloat(bar.offset) * (width + spacing),
-            y: placement == .top ? 0 : size.height - height,
-            width: width,
-            height: height
-        )
+        let growth = growthExtent * CGFloat(level)
+        guard growth > 0.5 else { return nil }
+        let track = start + CGFloat(bar.offset) * (thickness + spacing)
+        let rect = barRect(
+            placement: placement, track: track, thickness: thickness, growth: growth, in: size)
         return SpectrumBar(rect: rect, cornerRadius: cornerRadius, level: level)
+    }
+}
+
+/// One bar's rect, anchored to its placement's edge and grown inward by
+/// `growth` from a track offset.
+private func barRect(
+    placement: SpectrumPlacement, track: CGFloat, thickness: CGFloat, growth: CGFloat,
+    in size: CGSize
+) -> CGRect {
+    switch placement {
+    case .bottom, .underlay:
+        return CGRect(x: track, y: size.height - growth, width: thickness, height: growth)
+    case .top:
+        return CGRect(x: track, y: 0, width: thickness, height: growth)
+    case .left:
+        return CGRect(x: 0, y: track, width: growth, height: thickness)
+    case .right:
+        return CGRect(x: size.width - growth, y: track, width: growth, height: thickness)
     }
 }
 

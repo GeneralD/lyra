@@ -59,6 +59,35 @@ struct SpectrumBarRectsTests {
         #expect(abs(bars[0].rect.minY) < 0.01)
     }
 
+    @Test("left placement grows horizontal bars rightward from the left edge")
+    func leftAnchors() {
+        let bars = spectrumBarRects(
+            in: size, heights: [0.5], barWidth: 10, barSpacing: 2, placement: .left)
+        // The bar rotates: thickness becomes its height, the level drives width.
+        #expect(abs(bars[0].rect.minX) < 0.01)
+        #expect(abs(bars[0].rect.width - 50) < 0.01)  // 0.5 * width(100)
+        #expect(abs(bars[0].rect.height - 10) < 0.01)  // barWidth = thickness
+    }
+
+    @Test("right placement grows horizontal bars leftward from the right edge")
+    func rightAnchors() {
+        let bars = spectrumBarRects(
+            in: size, heights: [0.5], barWidth: 10, barSpacing: 2, placement: .right)
+        #expect(abs(bars[0].rect.maxX - 100) < 0.01)  // flush to the right edge
+        #expect(abs(bars[0].rect.width - 50) < 0.01)
+    }
+
+    @Test("horizontal placements distribute bars down the height, centered")
+    func horizontalTrackIsVertical() {
+        // Two 10 pt-thick bars + one 2 pt gap = 22 pt column on the 200 pt
+        // height → (200 - 22) / 2 = 89 pt top margin, bars one slot (12) apart.
+        let bars = spectrumBarRects(
+            in: size, heights: [1, 1], barWidth: 10, barSpacing: 2, placement: .left)
+        #expect(bars.count == 2)
+        #expect(abs(bars[0].rect.minY - 89) < 0.01)
+        #expect(abs(bars[1].rect.minY - bars[0].rect.minY - 12) < 0.01)
+    }
+
     @Test("empty heights or zero size yields no bars")
     func emptyInputs() {
         #expect(
