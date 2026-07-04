@@ -1,24 +1,46 @@
 import Accelerate
 
 /// Pure PCM-window → per-bar magnitude conversion for the spectrum analyzer
-/// (#23): Hann window → real FFT → power spectrum → dB → 0…1 normalization →
-/// linear grouping into `barCount` bars. Stateless between calls, so the same
-/// input always yields the same output — smoothing (decay) is the Presenter's
-/// display concern, not this module's.
+/// (#23): Hann window → real FFT → power spectrum → per-bin scaling →
+/// log-frequency grouping into `barCount` bars. A value of 1 marks the
+/// full-scale reference, so the caller can auto-gain against the running
+/// peak (#297). Two scales (#297):
+///
+/// - **linear** (cava's look): height tracks amplitude, weighted by
+///   frequency so music's natural ~1/f rolloff doesn't bury the mids and
+///   treble (cava's eq). Quiet bands stay near zero, loud ones tower.
+/// - **db**: decibels map linearly into height — flat, carpet-like, but
+///   readable for wide-dynamic material.
+///
+/// Stateless between calls, so the same input always yields the same
+/// output — smoothing (decay) is the Presenter's display concern, not this
+/// module's.
 public struct FrequencyAnalyzer {
     private let fftSize: Int
     private let barCount: Int
     private let minDb: Float
     private let maxDb: Float
+    private let linearScale: Bool
     private let fft: vDSP.FFT<DSPSplitComplex>?
     private let window: [Float]
+    private let bands: [Range<Int>]
+    private let binWeights: [Float]
 
     /// - Parameters:
     ///   - fftSize: window length in samples; rounded down to a power of two.
     ///   - barCount: number of output bars.
-    ///   - minDb: power level mapped to bar height 0.
-    ///   - maxDb: power level mapped to bar height 1.
-    public init(fftSize: Int, barCount: Int, minDb: Double, maxDb: Double) {
+    ///   - minDb: power level mapped to magnitude 0 (db scale only).
+    ///   - maxDb: power level mapped to magnitude 1 (db scale only; louder
+    ///     exceeds 1).
+    ///   - linearScale: amplitude-proportional heights with frequency
+    ///     weighting instead of the db mapping.
+    ///   - minFrequency: lowest frequency shown (Hz); bins below are dropped.
+    ///   - maxFrequency: highest frequency shown (Hz); bins above are dropped.
+    ///   - sampleRate: the tap's sample rate (Hz); maps Hz to FFT bins.
+    public init(
+        fftSize: Int, barCount: Int, minDb: Double, maxDb: Double, linearScale: Bool,
+        minFrequency: Double, maxFrequency: Double, sampleRate: Double = 48000
+    ) {
         let clampedSize = max(64, fftSize)
         let log2n = vDSP_Length(63 - UInt64(clampedSize).leadingZeroBitCount)
         self.fftSize = 1 << log2n
@@ -30,23 +52,56 @@ public struct FrequencyAnalyzer {
             ofType: Float.self, usingSequence: .hanningDenormalized,
             count: 1 << log2n, isHalfWindow: false
         )
+        self.linearScale = linearScale
+        let binCount = max(1, (1 << log2n) / 2 - 1)
+        self.bands = Self.logBands(
+            barCount: self.barCount, binCount: binCount,
+            lowBin: Self.bin(for: minFrequency, fftSize: self.fftSize, sampleRate: sampleRate),
+            highBin: Self.bin(for: maxFrequency, fftSize: self.fftSize, sampleRate: sampleRate))
+        // Frequency weighting for the linear scale (cava's eq), anchored at
+        // the LOWEST bin (weight 1) and rising with frequency: bass keeps
+        // its raw amplitude while mids and treble are boosted to counter
+        // music's ~1/f rolloff. Anchoring at the top instead would crush
+        // every musical value and pin the bars near zero.
+        self.binWeights = (0..<binCount).map { bin in
+            pow(Float(bin + 1), Self.trebleExponent)
+        }
     }
 
-    /// Normalized (0…1) magnitudes of one PCM window, one value per bar.
-    /// Returns all-zero bars when fewer than `fftSize` samples are supplied.
+    /// Zero-floored magnitudes of one PCM window, one value per bar; 1 marks
+    /// the `maxDb` reference and louder signals exceed it. Returns all-zero
+    /// bars when fewer than `fftSize` samples are supplied.
     public func magnitudes(of samples: [Float]) -> [Float] {
         let silence = [Float](repeating: 0, count: barCount)
         guard let fft, samples.count >= fftSize else { return silence }
 
         let windowed = vDSP.multiply(samples[(samples.count - fftSize)...], window)
         let power = powerSpectrum(of: windowed, using: fft)
-        let range = maxDb - minDb
-        let normalized = power.map { value in
-            let db = 10 * log10(max(value, .leastNormalMagnitude))
-            return min(max((db - minDb) / range, 0), 1)
-        }
-        return bars(grouping: normalized)
+        return bars(grouping: linearScale ? linearValues(power) : dbValues(power))
     }
+
+    /// Amplitude-proportional per-bin values: 1 = a full-scale sine at the
+    /// lowest band; higher bands are boosted by the frequency tilt so the
+    /// linear scale doesn't show bass only.
+    private func linearValues(_ power: [Float]) -> [Float] {
+        let fullScale = Float(fftSize) / 2
+        return zip(power, binWeights).map { value, weight in
+            sqrt(value) / fullScale * weight
+        }
+    }
+
+    /// Decibels mapped linearly into 0…, zero-floored at `minDb`, 1 at the
+    /// `maxDb` reference with louder signals exceeding it.
+    private func dbValues(_ power: [Float]) -> [Float] {
+        let range = maxDb - minDb
+        return power.map { value in
+            let db = 10 * log10(max(value, .leastNormalMagnitude))
+            return max((db - minDb) / range, 0)
+        }
+    }
+
+    /// Exponent of the linear scale's frequency weighting — cava's eq tilt.
+    private static let trebleExponent: Float = 0.6
 
     /// Half-spectrum power values (DC bin dropped) of a windowed sample block.
     private func powerSpectrum(of windowed: [Float], using fft: vDSP.FFT<DSPSplitComplex>) -> [Float] {
@@ -82,15 +137,38 @@ public struct FrequencyAnalyzer {
         return Array(power.dropFirst())
     }
 
-    /// Groups the half-spectrum linearly into `barCount` bars, taking each
-    /// group's maximum so narrow peaks stay visible.
+    /// Groups the half-spectrum into the precomputed log bands, taking each
+    /// band's maximum so narrow peaks stay visible.
     private func bars(grouping values: [Float]) -> [Float] {
-        let groupSize = max(1, values.count / barCount)
-        return (0..<barCount).map { bar in
-            let start = bar * groupSize
-            guard start < values.count else { return 0 }
-            let end = min(start + groupSize, values.count)
-            return values[start..<end].max() ?? 0
+        bands.map { band in values[band].max() ?? 0 }
+    }
+
+    /// Power-array index (DC dropped, so index `i` is FFT bin `i + 1`) whose
+    /// frequency is closest to `frequency` Hz, clamped into range.
+    private static func bin(for frequency: Double, fftSize: Int, sampleRate: Double) -> Int {
+        let binCount = fftSize / 2 - 1
+        let index = Int((frequency * Double(fftSize) / sampleRate).rounded()) - 1
+        return min(max(index, 0), max(0, binCount - 1))
+    }
+
+    /// Log-spaced power-array bands, one per bar, over `[lowBin, highBin]`
+    /// (cava's `low_cut_off` / `high_cut_off`): every bar spans an equal
+    /// RATIO of frequency, the way hearing does. Linear grouping made every
+    /// song render the same silhouette — nearly all musical energy landed in
+    /// the first few bars while the rest showed the near-static treble
+    /// floor. Each band is at least one bin wide, so the lowest bars resolve
+    /// single FFT bins; bands left without bins (absurdly high `barCount`)
+    /// come out empty and render zero.
+    private static func logBands(
+        barCount: Int, binCount: Int, lowBin: Int, highBin: Int
+    ) -> [Range<Int>] {
+        let low = max(1, lowBin)
+        let high = Double(min(binCount, max(low + barCount, highBin)))
+        return (0..<barCount).reduce(into: [Range<Int>]()) { bands, bar in
+            let start = bands.last?.upperBound ?? low
+            let ratio = Double(bar + 1) / Double(barCount)
+            let edge = Int((Double(low) * pow(high / Double(low), ratio)).rounded())
+            bands.append(start..<min(max(edge, start + 1), min(Int(high) + 1, binCount)))
         }
     }
 }

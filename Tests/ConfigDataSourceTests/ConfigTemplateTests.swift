@@ -70,16 +70,21 @@ radius = 60.0
 type = 'circle'
 
 [spectrum]
-bar_color = [ '#1E3A5F', '#4A9EFF' ]
-bar_count = 64.0
-bar_width_ratio = 0.7
-decay_rate = 0.85
+bar_color = [ '#060912B3', '#20407FB3', '#3E86F0B3', '#9C6CEEB3', '#F4F1FFB3' ]
+bar_spacing = 4.0
+bar_width = 6.0
 enabled = false
 fft_size = 1024.0
+gradient_direction = 'level'
 height_ratio = 0.25
 max_db = 0.0
-min_db = -80.0
+max_freq = 14000.0
+min_db = -60.0
+min_freq = 40.0
+noise_reduction = 77.0
 placement = 'bottom'
+scale = 'linear'
+stereo = true
 
 [text.artist]
 color = '#FFFFFFD9'
@@ -180,18 +185,26 @@ spacing = 6.0
   "screen_debounce" : 5,
   "spectrum" : {
     "bar_color" : [
-      "#1E3A5F",
-      "#4A9EFF"
+      "#060912B3",
+      "#20407FB3",
+      "#3E86F0B3",
+      "#9C6CEEB3",
+      "#F4F1FFB3"
     ],
-    "bar_count" : 64,
-    "bar_width_ratio" : 0.7,
-    "decay_rate" : 0.85,
+    "bar_spacing" : 4,
+    "bar_width" : 6,
     "enabled" : false,
     "fft_size" : 1024,
+    "gradient_direction" : "level",
     "height_ratio" : 0.25,
     "max_db" : 0,
-    "min_db" : -80,
-    "placement" : "bottom"
+    "max_freq" : 14000,
+    "min_db" : -60,
+    "min_freq" : 40,
+    "noise_reduction" : 77,
+    "placement" : "bottom",
+    "scale" : "linear",
+    "stereo" : true
   },
   "text" : {
     "artist" : {

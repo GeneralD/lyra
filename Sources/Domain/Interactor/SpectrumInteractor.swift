@@ -13,9 +13,10 @@ public protocol SpectrumInteractor: Sendable {
     func start()
     /// Tears down the subscription and any active tap.
     func stop()
-    /// Normalized magnitudes (0…1) of the newest PCM window, one per bar.
-    /// Empty while nothing is being captured.
-    func magnitudes() -> [Float]
+    /// Un-gained magnitudes of the newest PCM window, `barCount` bars wide
+    /// (derived by the Presenter from the overlay width, cava style). Empty
+    /// while nothing is being captured.
+    func magnitudes(barCount: Int) -> [Float]
 }
 
 public enum SpectrumInteractorKey: TestDependencyKey {
@@ -34,5 +35,5 @@ private struct UnimplementedSpectrumInteractor: SpectrumInteractor {
     var isCapturing: AnyPublisher<Bool, Never> { Empty().eraseToAnyPublisher() }
     func start() {}
     func stop() {}
-    func magnitudes() -> [Float] { [] }
+    func magnitudes(barCount: Int) -> [Float] { [] }
 }

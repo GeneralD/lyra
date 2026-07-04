@@ -39,9 +39,10 @@ struct ConfigRepositoryTests {
             }
         }
 
-        @Test("clamps spectrum bar_count and fft_size to sane floors")
+        @Test("clamps spectrum bar_width, bar_spacing, and fft_size to sane floors")
         func spectrumClamped() {
-            let config = makeAppConfig(spectrum: ["bar_count": -3, "fft_size": 8])
+            let config = makeAppConfig(
+                spectrum: ["bar_width": 0, "bar_spacing": -2, "fft_size": 8])
             let result = ConfigLoadResult(config: config, configDir: "/tmp")
 
             withDependencies {
@@ -49,8 +50,42 @@ struct ConfigRepositoryTests {
             } operation: {
                 let repo = ConfigRepositoryImpl()
                 let style = repo.loadAppStyle()
-                #expect(style.spectrum.barCount == 1)
+                #expect(style.spectrum.barWidth == 1)
+                #expect(style.spectrum.barSpacing == 0)
                 #expect(style.spectrum.fftSize == 64)
+            }
+        }
+
+        @Test("orders the spectrum band so min_freq stays below max_freq")
+        func spectrumFreqOrdered() {
+            // An inverted range (min above max) is reordered into a valid
+            // ascending band for the analyzer.
+            let config = makeAppConfig(spectrum: ["min_freq": 5000, "max_freq": 200])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.spectrum.minFreq < style.spectrum.maxFreq)
+                #expect(style.spectrum.minFreq == 200)
+            }
+        }
+
+        @Test("floors a non-positive spectrum band to a valid ascending range")
+        func spectrumFreqNonPositive() {
+            // Pathological input (min ≥ max, non-positive) must still yield an
+            // ascending band so the analyzer never sees min ≥ max.
+            let config = makeAppConfig(spectrum: ["min_freq": -3, "max_freq": 0])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.spectrum.minFreq >= 1)
+                #expect(style.spectrum.minFreq < style.spectrum.maxFreq)
             }
         }
 

@@ -25,12 +25,12 @@ struct AudioCaptureRepositoryImplTests {
         #expect(harness.dataSource.stopCount == 1)
     }
 
-    @Test("latestSamples forwards the requested count")
+    @Test("latestSamples forwards the requested count per channel")
     func latestSamplesForwards() {
-        let harness = Harness(samples: [1, 2, 3, 4])
+        let harness = Harness(samples: StereoSamples(left: [1, 2, 3, 4], right: [5, 6, 7, 8]))
         let samples = harness.repository.latestSamples(count: 2)
 
-        #expect(samples == [3, 4])
+        #expect(samples == StereoSamples(left: [3, 4], right: [7, 8]))
     }
 }
 
@@ -40,7 +40,7 @@ private struct Harness {
     let dataSource = FakeAudioTapDataSource()
     let repository: AudioCaptureRepositoryImpl
 
-    init(samples: [Float] = []) {
+    init(samples: StereoSamples = StereoSamples()) {
         dataSource.samples = samples
         repository = withDependencies { [dataSource] in
             $0.audioTapDataSource = dataSource
@@ -52,7 +52,7 @@ private struct Harness {
 
 private final class FakeAudioTapDataSource: AudioTapDataSource, @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(initialState: (started: [Int](), stops: 0))
-    var samples: [Float] = []
+    var samples = StereoSamples()
 
     var startedPids: [Int] { state.withLock { $0.started } }
     var stopCount: Int { state.withLock { $0.stops } }
@@ -66,7 +66,11 @@ private final class FakeAudioTapDataSource: AudioTapDataSource, @unchecked Senda
         state.withLock { $0.stops += 1 }
     }
 
-    func latestSamples(count: Int) -> [Float] {
-        samples.count >= count ? Array(samples.suffix(count)) : []
+    func latestSamples(count: Int) -> StereoSamples {
+        samples.left.count >= count
+            ? StereoSamples(
+                left: Array(samples.left.suffix(count)),
+                right: Array(samples.right.suffix(count)))
+            : StereoSamples()
     }
 }

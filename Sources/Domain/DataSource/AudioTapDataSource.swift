@@ -9,9 +9,10 @@ public protocol AudioTapDataSource: Sendable {
     func startTap(pid: Int) async -> Bool
     /// Tears down the active tap, if any. Safe to call repeatedly.
     func stopTap() async
-    /// The newest `count` captured mono samples, oldest first. Empty while no
-    /// tap is active or before the capture buffer has filled once.
-    func latestSamples(count: Int) -> [Float]
+    /// The newest `count` captured samples per channel, oldest first. Both
+    /// channels are empty while no tap is active or before the capture
+    /// buffer has filled once.
+    func latestSamples(count: Int) -> StereoSamples
 }
 
 public enum AudioTapDataSourceKey: TestDependencyKey {
@@ -28,5 +29,5 @@ extension DependencyValues {
 private struct UnimplementedAudioTapDataSource: AudioTapDataSource {
     func startTap(pid: Int) async -> Bool { false }
     func stopTap() async {}
-    func latestSamples(count: Int) -> [Float] { [] }
+    func latestSamples(count: Int) -> StereoSamples { StereoSamples() }
 }

@@ -27,8 +27,9 @@ struct SpectrumUseCaseImplTests {
 
     @Test("magnitudes converts the captured window into one value per bar")
     func magnitudesShape() {
-        let harness = Harness(samples: [Float](repeating: 0.5, count: 1024))
-        let bins = harness.useCase.magnitudes(style: SpectrumStyle(barCount: 16, fftSize: 1024))
+        let harness = Harness(left: [Float](repeating: 0.5, count: 1024))
+        let bins = harness.useCase.magnitudes(
+            style: SpectrumStyle(fftSize: 1024), barCount: 16)
 
         #expect(bins.count == 16)
     }
@@ -37,8 +38,92 @@ struct SpectrumUseCaseImplTests {
     func magnitudesEmptyWithoutSamples() {
         let harness = Harness()
 
-        #expect(harness.useCase.magnitudes(style: SpectrumStyle()).isEmpty)
+        #expect(harness.useCase.magnitudes(style: SpectrumStyle(), barCount: 16).isEmpty)
     }
+
+    @Test("magnitudes is empty when the derived bar count is zero")
+    func magnitudesEmptyForZeroBars() {
+        let harness = Harness(left: [Float](repeating: 0.5, count: 1024))
+
+        #expect(harness.useCase.magnitudes(style: SpectrumStyle(fftSize: 1024), barCount: 0).isEmpty)
+    }
+
+    @Test("the analyzer follows the bar count as the width changes")
+    func magnitudesFollowsBarCount() {
+        let harness = Harness(left: [Float](repeating: 0.5, count: 1024))
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+
+        #expect(harness.useCase.magnitudes(style: style, barCount: 24).count == 24)
+        // A resize asks for a different count; the analyzer rebuilds for it.
+        #expect(harness.useCase.magnitudes(style: style, barCount: 40).count == 40)
+    }
+
+    // MARK: - stereo (#297)
+
+    @Test("stereo mirrors the left channel and appends the right, bass in the center")
+    func stereoMirrorsAroundCenter() throws {
+        let style = SpectrumStyle(fftSize: 1024)
+        let leftOnly = Harness(left: sine(amplitude: 0.5), right: silence())
+        let bins = leftOnly.useCase.magnitudes(style: style, barCount: 16)
+
+        // A left-only signal lights the left half and leaves the right dark…
+        #expect(bins.count == 16)
+        let leftPeak = try #require(bins.indices.max { bins[$0] < bins[$1] })
+        #expect(leftPeak < 8)
+        #expect(bins[leftPeak] > 0)
+        #expect(bins[8...].allSatisfy { $0 < 0.001 })
+
+        // …and swapping the channels lands the peak on the mirrored bar.
+        let rightOnly = Harness(left: silence(), right: sine(amplitude: 0.5))
+        let mirrored = rightOnly.useCase.magnitudes(style: style, barCount: 16)
+        let rightPeak = try #require(mirrored.indices.max { mirrored[$0] < mirrored[$1] })
+        #expect(rightPeak == 15 - leftPeak)
+        #expect(mirrored[..<8].allSatisfy { $0 < 0.001 })
+    }
+
+    @Test("mono averages both channels into one full-width row")
+    func monoAveragesChannels() {
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let bins = Harness(left: sine(amplitude: 0.5), right: silence())
+            .useCase.magnitudes(style: style, barCount: 16)
+
+        #expect(bins.count == 16)
+        #expect((bins.max() ?? 0) > 0)
+
+        // The average is channel-agnostic: swapping the channels yields the
+        // identical row, unlike the stereo mirror.
+        let swapped = Harness(left: silence(), right: sine(amplitude: 0.5))
+            .useCase.magnitudes(style: style, barCount: 16)
+        #expect(bins == swapped)
+    }
+
+    // MARK: - un-gained output (#297)
+
+    @Test("magnitudes are un-gained — halving the amplitude halves the bars")
+    func magnitudesAreUngained() throws {
+        // The gain (cava's autosens) lives in the Presenter now, so the
+        // UseCase must preserve amplitude ratios rather than pin the peak:
+        // the linear scale halves the bar when the input halves.
+        let style = SpectrumStyle(fftSize: 1024)
+        let loud = try #require(
+            Harness(left: sine(amplitude: 0.8))
+                .useCase.magnitudes(style: style, barCount: 16).max())
+        let quiet = try #require(
+            Harness(left: sine(amplitude: 0.4))
+                .useCase.magnitudes(style: style, barCount: 16).max())
+
+        #expect(quiet > 0)
+        #expect(abs(quiet / loud - 0.5) < 0.05)
+    }
+}
+
+/// A sine on FFT bin 8 of a 1024-sample window, at the given amplitude.
+private func sine(amplitude: Float, count: Int = 1024) -> [Float] {
+    (0..<count).map { amplitude * sin(2 * .pi * 8 * Float($0) / 1024) }
+}
+
+private func silence(count: Int = 1024) -> [Float] {
+    [Float](repeating: 0, count: count)
 }
 
 // MARK: - Harness
@@ -47,8 +132,9 @@ private struct Harness {
     let repository = FakeAudioCaptureRepository()
     let useCase: SpectrumUseCaseImpl
 
-    init(samples: [Float] = []) {
-        repository.samples = samples
+    /// Omitting `right` mirrors `left` into both channels.
+    init(left: [Float] = [], right: [Float]? = nil) {
+        repository.samples = StereoSamples(left: left, right: right ?? left)
         useCase = withDependencies { [repository] in
             $0.audioCaptureRepository = repository
         } operation: {
@@ -59,7 +145,7 @@ private struct Harness {
 
 private final class FakeAudioCaptureRepository: AudioCaptureRepository, @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(initialState: (started: [Int](), stops: 0))
-    var samples: [Float] = []
+    var samples = StereoSamples()
 
     var startedPids: [Int] { state.withLock { $0.started } }
     var stopCount: Int { state.withLock { $0.stops } }
@@ -73,7 +159,11 @@ private final class FakeAudioCaptureRepository: AudioCaptureRepository, @uncheck
         state.withLock { $0.stops += 1 }
     }
 
-    func latestSamples(count: Int) -> [Float] {
-        samples.count >= count ? Array(samples.suffix(count)) : []
+    func latestSamples(count: Int) -> StereoSamples {
+        samples.left.count >= count
+            ? StereoSamples(
+                left: Array(samples.left.suffix(count)),
+                right: Array(samples.right.suffix(count)))
+            : StereoSamples()
     }
 }

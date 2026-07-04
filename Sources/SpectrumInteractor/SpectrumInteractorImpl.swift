@@ -125,7 +125,7 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
         }
     }
 
-    public func magnitudes() -> [Float] {
-        spectrumService.magnitudes(style: spectrumStyle)
+    public func magnitudes(barCount: Int) -> [Float] {
+        spectrumService.magnitudes(style: spectrumStyle, barCount: barCount)
     }
 }

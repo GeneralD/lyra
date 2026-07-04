@@ -3,44 +3,84 @@
 /// Presenter, and View.
 public struct SpectrumStyle {
     public let enabled: Bool
-    public let barCount: Int
+    /// Splits the bar row into the two capture channels, cava-style: the
+    /// left channel mirrored on the left half, the right channel on the
+    /// right half, lowest frequencies meeting in the center. `false`
+    /// averages both channels into one mono row.
+    public let stereo: Bool
     public let barColor: ColorStyle
+    /// Axis a multi-color `barColor` gradient runs along; ignored for solid.
+    public let gradientDirection: SpectrumGradientDirection
     public let backgroundColor: ColorConfig?
-    /// Bar width as a fraction of one bar slot (bar + gap), 0–1.
-    public let barWidthRatio: Double
+    /// Bar thickness in points, fixed cava-style; the bar count is derived
+    /// from the overlay width, not configured.
+    public let barWidth: Double
+    /// Gap between bars in points, fixed.
+    public let barSpacing: Double
+    /// Lowest / highest frequency shown, in Hz (cava's cut-offs).
+    public let minFreq: Double
+    public let maxFreq: Double
     public let minDb: Double
     public let maxDb: Double
-    /// Per-frame exponential falloff applied to bar heights, 0–1.
-    public let decayRate: Double
+    /// Height scale of the bars: `linear` (cava's look) or `db` (flatter).
+    public let scale: SpectrumScale
+    /// Motion smoothing 0–1 (resolved from the 0–100 config scale): the
+    /// leaky-integral memory of the bar filter and the gravity scaling of
+    /// the release.
+    public let noiseReduction: Double
     public let fftSize: Int
     public let placement: SpectrumPlacement
-    /// Fraction of the overlay height the bars may occupy, 0–1.
+    /// Fraction of the overlay the bars may occupy along their growth axis,
+    /// 0–1: the overlay height for `bottom`/`top`, the width for `left`/`right`.
     public let heightRatio: Double
+    /// Optional absolute clamp (points) on the growth-axis extent, applied
+    /// after `heightRatio` (CSS `min-height`/`max-height` semantics; min wins
+    /// on conflict). `nil` disables that bound. Lets a ratio-based bar keep a
+    /// sane length across wildly different displays — e.g. an ultrawide, where
+    /// a pure ratio would stretch a horizontal placement across the screen.
+    public let minHeight: Double?
+    public let maxHeight: Double?
 
     public init(
         enabled: Bool = false,
-        barCount: Int = 64,
-        barColor: ColorStyle = .gradient(["#1E3A5F", "#4A9EFF"]),
+        stereo: Bool = true,
+        barColor: ColorStyle = .gradient([
+            "#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3",
+        ]),
+        gradientDirection: SpectrumGradientDirection = .level,
         backgroundColor: ColorConfig? = nil,
-        barWidthRatio: Double = 0.7,
-        minDb: Double = -80,
+        barWidth: Double = 6,
+        barSpacing: Double = 4,
+        minFreq: Double = 40,
+        maxFreq: Double = 14000,
+        minDb: Double = -60,
         maxDb: Double = 0,
-        decayRate: Double = 0.85,
+        scale: SpectrumScale = .linear,
+        noiseReduction: Double = 0.77,
         fftSize: Int = 1024,
         placement: SpectrumPlacement = .bottom,
-        heightRatio: Double = 0.25
+        heightRatio: Double = 0.25,
+        minHeight: Double? = nil,
+        maxHeight: Double? = nil
     ) {
         self.enabled = enabled
-        self.barCount = barCount
+        self.stereo = stereo
         self.barColor = barColor
+        self.gradientDirection = gradientDirection
         self.backgroundColor = backgroundColor
-        self.barWidthRatio = barWidthRatio
+        self.barWidth = barWidth
+        self.barSpacing = barSpacing
+        self.minFreq = minFreq
+        self.maxFreq = maxFreq
         self.minDb = minDb
         self.maxDb = maxDb
-        self.decayRate = decayRate
+        self.scale = scale
+        self.noiseReduction = noiseReduction
         self.fftSize = fftSize
         self.placement = placement
         self.heightRatio = heightRatio
+        self.minHeight = minHeight
+        self.maxHeight = maxHeight
     }
 }
 

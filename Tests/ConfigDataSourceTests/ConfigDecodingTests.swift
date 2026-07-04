@@ -664,16 +664,38 @@ struct SpectrumTomlDecodingTests {
     func noSection() throws {
         let config = try decode("")
         #expect(config.spectrum.enabled == false)
-        #expect(config.spectrum.barCount.value == 64)
-        #expect(config.spectrum.barColor == .gradient(["#1E3A5F", "#4A9EFF"]))
+        #expect(config.spectrum.stereo == true)
+        #expect(
+            config.spectrum.barColor
+                == .gradient(["#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3"]))
+        #expect(config.spectrum.gradientDirection == .level)
         #expect(config.spectrum.backgroundColor == nil)
-        #expect(config.spectrum.barWidthRatio.value == 0.7)
-        #expect(config.spectrum.minDb.value == -80)
+        #expect(config.spectrum.barWidth.value == 6)
+        #expect(config.spectrum.barSpacing.value == 4)
+        #expect(config.spectrum.minFreq.value == 40)
+        #expect(config.spectrum.maxFreq.value == 14000)
+        #expect(config.spectrum.minDb.value == -60)
         #expect(config.spectrum.maxDb.value == 0)
-        #expect(config.spectrum.decayRate.value == 0.85)
+        #expect(config.spectrum.scale == .linear)
+        #expect(config.spectrum.noiseReduction.value == 77)
         #expect(config.spectrum.fftSize.value == 1024)
         #expect(config.spectrum.placement == .bottom)
         #expect(config.spectrum.heightRatio.value == 0.25)
+        // The absolute clamp is unset by default (pure ratio).
+        #expect(config.spectrum.minHeight == nil)
+        #expect(config.spectrum.maxHeight == nil)
+    }
+
+    @Test("min_height / max_height decode into the optional clamp")
+    func heightClampDecodes() throws {
+        let config = try decode(
+            """
+            [spectrum]
+            min_height = 24
+            max_height = 320
+            """)
+        #expect(config.spectrum.minHeight?.value == 24)
+        #expect(config.spectrum.maxHeight?.value == 320)
     }
 
     @Test("full [spectrum] section decodes every field")
@@ -682,25 +704,35 @@ struct SpectrumTomlDecodingTests {
             """
             [spectrum]
             enabled = true
-            bar_count = 32
+            stereo = false
+            bar_width = 12
+            bar_spacing = 6
             bar_color = "#FF8800"
+            gradient_direction = "level"
             background_color = "#00000080"
-            bar_width_ratio = 0.5
+            min_freq = 60
+            max_freq = 12000
             min_db = -60
             max_db = -10
-            decay_rate = 0.9
+            scale = "db"
+            noise_reduction = 85
             fft_size = 2048
             placement = "underlay"
             height_ratio = 0.5
             """)
         #expect(config.spectrum.enabled == true)
-        #expect(config.spectrum.barCount.value == 32)
+        #expect(config.spectrum.stereo == false)
+        #expect(config.spectrum.barWidth.value == 12)
+        #expect(config.spectrum.barSpacing.value == 6)
         #expect(config.spectrum.barColor == .solid("#FF8800"))
+        #expect(config.spectrum.gradientDirection == .level)
         #expect(config.spectrum.backgroundColor == ColorConfig(hex: "#00000080"))
-        #expect(config.spectrum.barWidthRatio.value == 0.5)
+        #expect(config.spectrum.minFreq.value == 60)
+        #expect(config.spectrum.maxFreq.value == 12000)
         #expect(config.spectrum.minDb.value == -60)
         #expect(config.spectrum.maxDb.value == -10)
-        #expect(config.spectrum.decayRate.value == 0.9)
+        #expect(config.spectrum.scale == .db)
+        #expect(config.spectrum.noiseReduction.value == 85)
         #expect(config.spectrum.fftSize.value == 2048)
         #expect(config.spectrum.placement == .underlay)
         #expect(config.spectrum.heightRatio.value == 0.5)
@@ -724,7 +756,7 @@ struct SpectrumTomlDecodingTests {
             enabled = true
             """)
         #expect(config.spectrum.enabled == true)
-        #expect(config.spectrum.barCount.value == 64)
+        #expect(config.spectrum.barWidth.value == 6)
         #expect(config.spectrum.placement == .bottom)
         #expect(config.spectrum.fftSize.value == 1024)
     }

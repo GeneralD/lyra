@@ -8,9 +8,10 @@ public protocol AudioCaptureRepository: Sendable {
     func startCapture(pid: Int) async -> Bool
     /// Tears down the active capture, if any. Safe to call repeatedly.
     func stopCapture() async
-    /// The newest `count` captured mono samples, oldest first. Empty while
-    /// no capture is active or before the buffer has filled once.
-    func latestSamples(count: Int) -> [Float]
+    /// The newest `count` captured samples per channel, oldest first. Both
+    /// channels are empty while no capture is active or before the buffer
+    /// has filled once.
+    func latestSamples(count: Int) -> StereoSamples
 }
 
 public enum AudioCaptureRepositoryKey: TestDependencyKey {
@@ -27,5 +28,5 @@ extension DependencyValues {
 private struct UnimplementedAudioCaptureRepository: AudioCaptureRepository {
     func startCapture(pid: Int) async -> Bool { false }
     func stopCapture() async {}
-    func latestSamples(count: Int) -> [Float] { [] }
+    func latestSamples(count: Int) -> StereoSamples { StereoSamples() }
 }

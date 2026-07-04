@@ -101,6 +101,56 @@ struct SwiftUIResolverTests {
         _ = resolver.shapeStyle(from: .gradient(["#FF0000"]))
     }
 
+    // MARK: - color(from:at:)
+
+    @MainActor
+    @Test("sampling a two-color gradient at the ends returns the endpoints")
+    func sampledColorEndpoints() {
+        let style = ColorStyle.gradient(["#FF0000", "#0000FF"])
+        let low = rgb(NSColor(resolver.color(from: style, at: 0)))
+        let high = rgb(NSColor(resolver.color(from: style, at: 1)))
+        #expect(abs(low.r - 1.0) < 0.01)
+        #expect(abs(low.b - 0.0) < 0.01)
+        #expect(abs(high.b - 1.0) < 0.01)
+        #expect(abs(high.r - 0.0) < 0.01)
+    }
+
+    @MainActor
+    @Test("sampling the midpoint blends the two colors")
+    func sampledColorMidpoint() {
+        let c = rgb(NSColor(resolver.color(from: .gradient(["#000000", "#FFFFFF"]), at: 0.5)))
+        #expect(abs(c.r - 0.5) < 0.02)
+        #expect(abs(c.g - 0.5) < 0.02)
+        #expect(abs(c.b - 0.5) < 0.02)
+    }
+
+    @MainActor
+    @Test("sampling a solid style ignores the fraction")
+    func sampledColorSolid() {
+        let c = rgb(NSColor(resolver.color(from: .solid("#00FF00"), at: 0.3)))
+        #expect(abs(c.g - 1.0) < 0.01)
+    }
+
+    @MainActor
+    @Test("sampling clamps out-of-range fractions")
+    func sampledColorClamps() {
+        let style = ColorStyle.gradient(["#FF0000", "#0000FF"])
+        let below = rgb(NSColor(resolver.color(from: style, at: -1)))
+        let above = rgb(NSColor(resolver.color(from: style, at: 2)))
+        #expect(abs(below.r - 1.0) < 0.01)
+        #expect(abs(above.b - 1.0) < 0.01)
+    }
+
+    // MARK: - gradient(from:)
+
+    @MainActor
+    @Test("gradient(from:) does not crash for solid, single, and multi-color styles")
+    func gradientBuilds() {
+        _ = resolver.gradient(from: .solid("#FF0000"))
+        _ = resolver.gradient(from: .gradient(["#FF0000"]))
+        _ = resolver.gradient(from: .gradient(["#FF0000", "#00FF00", "#0000FF"]))
+    }
+
     // MARK: - font(from:)
 
     @MainActor

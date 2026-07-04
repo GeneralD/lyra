@@ -199,19 +199,28 @@ angle = 15
 
 Real-time spectrum analyzer bars driven by the now-playing app's audio, rendered on the overlay. Disabled by default. Requires **macOS 14.4+** (CoreAudio process tap); on the first run macOS asks for the *System Audio Recording* permission.
 
+The defaults are tuned to look good out of the box (cava-inspired), so `enabled = true` alone gives a usable analyzer; every knob below is optional.
+
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | boolean | `false` | Set to `true` to show the analyzer |
-| `bar_count` | number | `64` | Number of bars |
-| `bar_color` | string / array | `["#1E3A5F", "#4A9EFF"]` | Solid hex or gradient array |
+| `stereo` | boolean | `true` | Split into two channels (left mirrored on the left half, right on the right, bass meeting in the center); `false` shows one mono row |
+| `bar_color` | string / array | `["#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3"]` | Solid hex or gradient array (default: deep-navy → blue → violet → white, at ~70% alpha) |
+| `gradient_direction` | string | `"level"` | Axis a gradient `bar_color` runs along: `"frequency"` (across bands), `"amplitude"` (base→tip, VU-style), or `"level"` (each bar flat-colored by its height). Ignored for a solid color |
 | `background_color` | string | — | Optional backdrop behind the bars |
-| `bar_width_ratio` | number | `0.7` | Bar width as a fraction of one bar slot (0–1) |
-| `min_db` | number | `-80` | Loudness floor mapped to bar height 0 |
+| `bar_width` | number | `6` | Bar thickness in points (fixed; the bar count is derived from the overlay size, cava-style) |
+| `bar_spacing` | number | `4` | Gap between bars in points |
+| `min_freq` | number | `40` | Lowest frequency shown, in Hz |
+| `max_freq` | number | `14000` | Highest frequency shown, in Hz |
+| `min_db` | number | `-60` | Loudness floor mapped to bar height 0 |
 | `max_db` | number | `0` | Loudness ceiling mapped to bar height 1 |
-| `decay_rate` | number | `0.85` | Per-frame falloff of bar peaks (0–1) |
+| `scale` | string | `"linear"` | `"linear"` (cava's amplitude look) or `"db"` (flatter, decibel-mapped) |
+| `noise_reduction` | number | `77` | Motion smoothing, 0–100 (cava's leaky-integral memory + gravity release); higher is smoother/slower |
 | `fft_size` | number | `1024` | FFT window size (rounded down to a power of two) |
-| `placement` | string | `"bottom"` | `"bottom"`, `"top"`, or `"underlay"` (bars span the whole overlay behind the lyrics) |
-| `height_ratio` | number | `0.25` | Fraction of the overlay height the bars may occupy (ignored for `underlay`) |
+| `placement` | string | `"bottom"` | `"bottom"`, `"top"`, `"left"`, `"right"`, or `"underlay"` (bars span the whole overlay behind the lyrics). `left`/`right` rotate the bars into horizontal columns growing inward from that edge |
+| `height_ratio` | number | `0.25` | Fraction of the overlay the bars may occupy along their growth axis — the height for `bottom`/`top`, the width for `left`/`right` (ignored for `underlay`) |
+| `min_height` | number | — | Optional absolute floor (points) on the growth-axis extent, applied on top of `height_ratio` (like CSS `min-height`) |
+| `max_height` | number | — | Optional absolute ceiling (points) on the growth-axis extent (like CSS `max-height`). Handy on an ultrawide display, where a `left`/`right` placement would otherwise stretch far across the screen — cap it here |
 
 > **Known limitation:** the audio is tapped per *process tree* (browsers emit audio from helper subprocesses, so the whole tree must be covered). When the now-playing app is a browser, the tap captures the browser's entire audio output — every tab, not just the one playing music.
 

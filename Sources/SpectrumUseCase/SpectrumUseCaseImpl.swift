@@ -4,7 +4,11 @@ import FrequencyAnalyzer
 
 /// Business logic for the spectrum analyzer (#23): forwards the capture
 /// lifecycle to the repository and converts the newest PCM window into
-/// per-bar magnitudes via the pure `FrequencyAnalyzer`.
+/// per-bar magnitudes via the pure `FrequencyAnalyzer` (#297). The heights
+/// are un-gained here — cava's autosens and smoothing live in the Presenter,
+/// which scales and clamps them per frame. In stereo the two channels are
+/// analyzed separately and mirrored around the center, cava-style — lowest
+/// bands meet in the middle; mono averages them first.
 ///
 /// `@unchecked` only because of the memoized `analyzer`, which is touched
 /// solely from the main-thread DisplayLink tick via `magnitudes(style:)`.
@@ -13,7 +17,10 @@ public final class SpectrumUseCaseImpl: @unchecked Sendable {
     // built inside `withDependencies` keep their fakes when methods run
     // outside that scope.
     @Dependency(\.audioCaptureRepository) private var repository
-    private var analyzer: FrequencyAnalyzer?
+    /// Memoized analyzer plus the per-channel bar count it was built for.
+    /// The displayed bar count is derived from the overlay width (cava
+    /// style), so it changes on resize — rebuild when it does.
+    private var analyzer: (bars: Int, engine: FrequencyAnalyzer)?
 
     public init() {}
 }
@@ -27,27 +34,45 @@ extension SpectrumUseCaseImpl: SpectrumUseCase {
         await repository.stopCapture()
     }
 
-    public func magnitudes(style: SpectrumStyle) -> [Float] {
-        let samples = repository.latestSamples(count: style.fftSize)
-        guard !samples.isEmpty else { return [] }
-        return resolvedAnalyzer(for: style).magnitudes(of: samples)
+    public func magnitudes(style: SpectrumStyle, barCount: Int) -> [Float] {
+        rawMagnitudes(style: style, barCount: barCount)
     }
 }
 
 extension SpectrumUseCaseImpl {
-    /// Config is launch-static, so the first style builds the one analyzer
-    /// used for the rest of the process lifetime.
-    private func resolvedAnalyzer(for style: SpectrumStyle) -> FrequencyAnalyzer {
-        guard let analyzer else {
-            let built = FrequencyAnalyzer(
-                fftSize: style.fftSize,
-                barCount: style.barCount,
-                minDb: style.minDb,
-                maxDb: style.maxDb
-            )
-            self.analyzer = built
-            return built
+    /// Un-gained per-bar magnitudes of the newest window, `barCount` bars
+    /// wide (derived from the overlay width). Stereo mirrors the left channel
+    /// onto the left half and appends the right channel, so the lowest bands
+    /// of both meet in the center (cava's stereo layout); mono averages the
+    /// channels into one full-width row.
+    private func rawMagnitudes(style: SpectrumStyle, barCount: Int) -> [Float] {
+        guard barCount > 0 else { return [] }
+        let window = repository.latestSamples(count: style.fftSize)
+        guard !window.left.isEmpty else { return [] }
+        // Stereo gives each channel half of the displayed bars.
+        let perChannel = style.stereo ? max(1, barCount / 2) : barCount
+        let analyzer = resolvedAnalyzer(for: style, bars: perChannel)
+        guard style.stereo else {
+            return analyzer.magnitudes(of: zip(window.left, window.right).map { ($0 + $1) / 2 })
         }
-        return analyzer
+        return analyzer.magnitudes(of: window.left).reversed()
+            + analyzer.magnitudes(of: window.right)
+    }
+
+    /// The analyzer for the current per-channel bar count, rebuilt only when
+    /// that count changes (a window resize); everything else is launch-static.
+    private func resolvedAnalyzer(for style: SpectrumStyle, bars: Int) -> FrequencyAnalyzer {
+        if let analyzer, analyzer.bars == bars { return analyzer.engine }
+        let engine = FrequencyAnalyzer(
+            fftSize: style.fftSize,
+            barCount: bars,
+            minDb: style.minDb,
+            maxDb: style.maxDb,
+            linearScale: style.scale == .linear,
+            minFrequency: style.minFreq,
+            maxFrequency: style.maxFreq
+        )
+        analyzer = (bars, engine)
+        return engine
     }
 }

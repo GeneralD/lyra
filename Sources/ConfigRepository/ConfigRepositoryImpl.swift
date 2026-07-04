@@ -13,6 +13,8 @@ extension ConfigRepositoryImpl: ConfigRepository {
         guard let result = dataSource.load() else { return .init() }
 
         let config = result.config
+        let spectrumBand = orderedBand(
+            config.spectrum.minFreq.value, config.spectrum.maxFreq.value)
 
         return AppStyle(
             text: TextLayout(
@@ -37,18 +39,31 @@ extension ConfigRepositoryImpl: ConfigRepository {
             ),
             spectrum: SpectrumStyle(
                 enabled: config.spectrum.enabled,
-                // Clamped here so downstream consumers (Presenter bar merge,
-                // ring-buffer reads) never see a zero/negative count.
-                barCount: max(1, Int(config.spectrum.barCount.value)),
+                stereo: config.spectrum.stereo,
                 barColor: config.spectrum.barColor,
+                gradientDirection: config.spectrum.gradientDirection,
                 backgroundColor: config.spectrum.backgroundColor,
-                barWidthRatio: config.spectrum.barWidthRatio.value,
+                // Floored to a visible thickness / non-negative gap; the bar
+                // count is derived from the overlay width at render time.
+                barWidth: max(1, config.spectrum.barWidth.value),
+                barSpacing: max(0, config.spectrum.barSpacing.value),
+                // Ordered and floored so the analyzer always gets a valid
+                // ascending band range even for inverted or non-positive input.
+                minFreq: spectrumBand.min,
+                maxFreq: spectrumBand.max,
                 minDb: config.spectrum.minDb.value,
                 maxDb: config.spectrum.maxDb.value,
-                decayRate: config.spectrum.decayRate.value,
+                scale: config.spectrum.scale,
+                // Config uses cava's familiar 0–100 scale; the style stores
+                // the 0…1 fraction, capped below 1 so the integral converges.
+                noiseReduction: min(max(config.spectrum.noiseReduction.value / 100, 0), 0.97),
                 fftSize: max(64, Int(config.spectrum.fftSize.value)),
                 placement: config.spectrum.placement,
-                heightRatio: config.spectrum.heightRatio.value
+                heightRatio: config.spectrum.heightRatio.value,
+                // Optional absolute clamp on the growth extent; floored at 0,
+                // otherwise passed straight through (nil = unclamped).
+                minHeight: config.spectrum.minHeight.map { max(0, $0.value) },
+                maxHeight: config.spectrum.maxHeight.map { max(0, $0.value) }
             ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,
@@ -107,6 +122,15 @@ extension ConfigRepositoryImpl: HealthCheckable {
             return HealthCheckResult(status: .fail, detail: "decode error in \(path): \(error)")
         }
     }
+}
+
+/// Orders an arbitrary Hz pair into a valid ascending band: the smaller
+/// floored to ≥ 1, the larger at least 1 Hz above it. A genuinely inverted
+/// range is swapped, while non-positive or equal input collapses to a
+/// minimal valid band — so the analyzer never receives `min ≥ max`.
+private func orderedBand(_ a: Double, _ b: Double) -> (min: Double, max: Double) {
+    let low = max(1, min(a, b))
+    return (low, max(max(a, b), low + 1))
 }
 
 extension TextAppearanceConfig {

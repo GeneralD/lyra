@@ -15,6 +15,24 @@ extension ColorStyle {
         case .gradient(let configs): configs.first ?? .white
         }
     }
+
+    fileprivate var configs: [ColorConfig] {
+        switch self {
+        case .solid(let config): [config]
+        case .gradient(let configs): configs.isEmpty ? [.white] : configs
+        }
+    }
+}
+
+extension ColorConfig {
+    /// Component-wise linear blend toward `other` by `t` (0…1).
+    fileprivate func blended(to other: ColorConfig, _ t: Double) -> ColorConfig {
+        ColorConfig(
+            red: red + (other.red - red) * t,
+            green: green + (other.green - green) * t,
+            blue: blue + (other.blue - blue) * t,
+            alpha: alpha + (other.alpha - alpha) * t)
+    }
 }
 
 // MARK: - Live Implementation
@@ -60,6 +78,23 @@ public struct SwiftUIResolverImpl: SwiftUIResolver {
             }
             return .init(LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing))
         }
+    }
+
+    @MainActor public func gradient(from style: ColorStyle) -> Gradient {
+        let colors = style.configs.map(\.color)
+        guard colors.count > 1 else { return Gradient(colors: [colors.first ?? .white]) }
+        return Gradient(
+            stops: colors.enumerated().map { i, c in
+                Gradient.Stop(color: c, location: CGFloat(i) / CGFloat(colors.count - 1))
+            })
+    }
+
+    @MainActor public func color(from style: ColorStyle, at fraction: Double) -> Color {
+        let configs = style.configs
+        guard configs.count > 1 else { return (configs.first ?? .white).color }
+        let position = min(max(fraction, 0), 1) * Double(configs.count - 1)
+        let lower = min(Int(position), configs.count - 2)
+        return configs[lower].blended(to: configs[lower + 1], position - Double(lower)).color
     }
 
     @MainActor public func color(
