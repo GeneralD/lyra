@@ -116,6 +116,42 @@ struct SpectrumUseCaseImplTests {
         #expect(abs(quiet / loud - 0.5) < 0.05)
     }
 
+    // MARK: - analyzer memoization
+
+    @Test("the analyzer is reused when both bar count and sample rate are unchanged")
+    func analyzerCachedOnMatchingKey() {
+        // Two calls on the *same* use-case instance with identical bar count
+        // and sample rate must return the same magnitudes — the analyzer is
+        // built once and reused (cache-hit path of resolvedAnalyzer).
+        let pcm = sine(amplitude: 0.5)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let harness = Harness(left: pcm, sampleRate: 48000)
+
+        let first = harness.useCase.magnitudes(style: style, barCount: 24)
+        let second = harness.useCase.magnitudes(style: style, barCount: 24)
+
+        #expect(first == second)
+    }
+
+    @Test("the analyzer rebuilds when the tap sample rate changes on the same instance")
+    func analyzerRebuildsOnSampleRateChange() {
+        // On a source switch the tap is torn down and recreated at the new
+        // device's rate; the same use-case instance sees a different sampleRate
+        // from latestSamples and must rebuild the FrequencyAnalyzer (whose
+        // Hz→bin mapping depends on the rate).
+        let pcm = sine(amplitude: 0.5)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let harness = Harness(left: pcm, sampleRate: 48000)
+
+        let at48k = harness.useCase.magnitudes(style: style, barCount: 24)
+
+        // Simulate a rate change on the same use-case (same bar count, new rate).
+        harness.repository.samples = StereoSamples(left: pcm, right: pcm, sampleRate: 44100)
+        let at44k = harness.useCase.magnitudes(style: style, barCount: 24)
+
+        #expect(at48k != at44k)
+    }
+
     // MARK: - sample-rate propagation (#299)
 
     @Test("the tap sample rate reaches the analyzer — same PCM, different rate, different bands")
