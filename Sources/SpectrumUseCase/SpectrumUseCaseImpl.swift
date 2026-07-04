@@ -17,7 +17,10 @@ public final class SpectrumUseCaseImpl: @unchecked Sendable {
     // built inside `withDependencies` keep their fakes when methods run
     // outside that scope.
     @Dependency(\.audioCaptureRepository) private var repository
-    private var analyzer: FrequencyAnalyzer?
+    /// Memoized analyzer plus the per-channel bar count it was built for.
+    /// The displayed bar count is derived from the overlay width (cava
+    /// style), so it changes on resize — rebuild when it does.
+    private var analyzer: (bars: Int, engine: FrequencyAnalyzer)?
 
     public init() {}
 }
@@ -31,20 +34,24 @@ extension SpectrumUseCaseImpl: SpectrumUseCase {
         await repository.stopCapture()
     }
 
-    public func magnitudes(style: SpectrumStyle) -> [Float] {
-        rawMagnitudes(style: style)
+    public func magnitudes(style: SpectrumStyle, barCount: Int) -> [Float] {
+        rawMagnitudes(style: style, barCount: barCount)
     }
 }
 
 extension SpectrumUseCaseImpl {
-    /// Un-gained per-bar magnitudes of the newest window. Stereo mirrors the
-    /// left channel onto the left half and appends the right channel, so the
-    /// lowest bands of both meet in the center (cava's stereo layout); mono
-    /// averages the channels into one full-width row.
-    private func rawMagnitudes(style: SpectrumStyle) -> [Float] {
+    /// Un-gained per-bar magnitudes of the newest window, `barCount` bars
+    /// wide (derived from the overlay width). Stereo mirrors the left channel
+    /// onto the left half and appends the right channel, so the lowest bands
+    /// of both meet in the center (cava's stereo layout); mono averages the
+    /// channels into one full-width row.
+    private func rawMagnitudes(style: SpectrumStyle, barCount: Int) -> [Float] {
+        guard barCount > 0 else { return [] }
         let window = repository.latestSamples(count: style.fftSize)
         guard !window.left.isEmpty else { return [] }
-        let analyzer = resolvedAnalyzer(for: style)
+        // Stereo gives each channel half of the displayed bars.
+        let perChannel = style.stereo ? max(1, barCount / 2) : barCount
+        let analyzer = resolvedAnalyzer(for: style, bars: perChannel)
         guard style.stereo else {
             return analyzer.magnitudes(of: zip(window.left, window.right).map { ($0 + $1) / 2 })
         }
@@ -52,21 +59,20 @@ extension SpectrumUseCaseImpl {
             + analyzer.magnitudes(of: window.right)
     }
 
-    /// Config is launch-static, so the first style builds the one analyzer
-    /// used for the rest of the process lifetime. Stereo gives each channel
-    /// half of the displayed bars.
-    private func resolvedAnalyzer(for style: SpectrumStyle) -> FrequencyAnalyzer {
-        guard let analyzer else {
-            let built = FrequencyAnalyzer(
-                fftSize: style.fftSize,
-                barCount: style.stereo ? max(1, style.barCount / 2) : style.barCount,
-                minDb: style.minDb,
-                maxDb: style.maxDb,
-                linearScale: style.scale == .linear
-            )
-            self.analyzer = built
-            return built
-        }
-        return analyzer
+    /// The analyzer for the current per-channel bar count, rebuilt only when
+    /// that count changes (a window resize); everything else is launch-static.
+    private func resolvedAnalyzer(for style: SpectrumStyle, bars: Int) -> FrequencyAnalyzer {
+        if let analyzer, analyzer.bars == bars { return analyzer.engine }
+        let engine = FrequencyAnalyzer(
+            fftSize: style.fftSize,
+            barCount: bars,
+            minDb: style.minDb,
+            maxDb: style.maxDb,
+            linearScale: style.scale == .linear,
+            minFrequency: style.minFreq,
+            maxFrequency: style.maxFreq
+        )
+        analyzer = (bars, engine)
+        return engine
     }
 }

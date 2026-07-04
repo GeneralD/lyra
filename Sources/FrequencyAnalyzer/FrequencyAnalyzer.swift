@@ -34,7 +34,13 @@ public struct FrequencyAnalyzer {
     ///     exceeds 1).
     ///   - linearScale: amplitude-proportional heights with frequency
     ///     weighting instead of the db mapping.
-    public init(fftSize: Int, barCount: Int, minDb: Double, maxDb: Double, linearScale: Bool) {
+    ///   - minFrequency: lowest frequency shown (Hz); bins below are dropped.
+    ///   - maxFrequency: highest frequency shown (Hz); bins above are dropped.
+    ///   - sampleRate: the tap's sample rate (Hz); maps Hz to FFT bins.
+    public init(
+        fftSize: Int, barCount: Int, minDb: Double, maxDb: Double, linearScale: Bool,
+        minFrequency: Double, maxFrequency: Double, sampleRate: Double = 48000
+    ) {
         let clampedSize = max(64, fftSize)
         let log2n = vDSP_Length(63 - UInt64(clampedSize).leadingZeroBitCount)
         self.fftSize = 1 << log2n
@@ -48,7 +54,10 @@ public struct FrequencyAnalyzer {
         )
         self.linearScale = linearScale
         let binCount = max(1, (1 << log2n) / 2 - 1)
-        self.bands = Self.logBands(barCount: self.barCount, binCount: binCount)
+        self.bands = Self.logBands(
+            barCount: self.barCount, binCount: binCount,
+            lowBin: Self.bin(for: minFrequency, fftSize: self.fftSize, sampleRate: sampleRate),
+            highBin: Self.bin(for: maxFrequency, fftSize: self.fftSize, sampleRate: sampleRate))
         // Frequency weighting for the linear scale (cava's eq), anchored at
         // the LOWEST bin (weight 1) and rising with frequency: bass keeps
         // its raw amplitude while mids and treble are boosted to counter
@@ -134,24 +143,32 @@ public struct FrequencyAnalyzer {
         bands.map { band in values[band].max() ?? 0 }
     }
 
-    /// Upper edge of the analyzed range as a fraction of Nyquist — ≈16 kHz
-    /// at the typical 48 kHz tap rate. Music carries almost nothing above
-    /// it, so bars there would sit permanently near zero.
-    private static let upperBandRatio = 2.0 / 3.0
+    /// Power-array index (DC dropped, so index `i` is FFT bin `i + 1`) whose
+    /// frequency is closest to `frequency` Hz, clamped into range.
+    private static func bin(for frequency: Double, fftSize: Int, sampleRate: Double) -> Int {
+        let binCount = fftSize / 2 - 1
+        let index = Int((frequency * Double(fftSize) / sampleRate).rounded()) - 1
+        return min(max(index, 0), max(0, binCount - 1))
+    }
 
-    /// Log-spaced power-array bands, one per bar: every bar spans an equal
-    /// RATIO of frequency, the way hearing does (and cava). Linear grouping
-    /// is what made every song render the same silhouette — nearly all
-    /// musical energy landed in the first few bars while the rest showed
-    /// the near-static treble floor. Each band is at least one bin wide, so
-    /// the lowest bars resolve single FFT bins; bands left without bins
-    /// (absurdly high `barCount`) come out empty and render zero.
-    private static func logBands(barCount: Int, binCount: Int) -> [Range<Int>] {
-        let top = Double(max(barCount, Int((Double(binCount) * upperBandRatio).rounded())))
+    /// Log-spaced power-array bands, one per bar, over `[lowBin, highBin]`
+    /// (cava's `low_cut_off` / `high_cut_off`): every bar spans an equal
+    /// RATIO of frequency, the way hearing does. Linear grouping made every
+    /// song render the same silhouette — nearly all musical energy landed in
+    /// the first few bars while the rest showed the near-static treble
+    /// floor. Each band is at least one bin wide, so the lowest bars resolve
+    /// single FFT bins; bands left without bins (absurdly high `barCount`)
+    /// come out empty and render zero.
+    private static func logBands(
+        barCount: Int, binCount: Int, lowBin: Int, highBin: Int
+    ) -> [Range<Int>] {
+        let low = max(1, lowBin)
+        let high = Double(min(binCount, max(low + barCount, highBin)))
         return (0..<barCount).reduce(into: [Range<Int>]()) { bands, bar in
-            let start = bands.last?.upperBound ?? 0
-            let edge = Int(pow(top, Double(bar + 1) / Double(barCount)).rounded())
-            bands.append(start..<min(max(edge, start + 1), max(start, binCount)))
+            let start = bands.last?.upperBound ?? low
+            let ratio = Double(bar + 1) / Double(barCount)
+            let edge = Int((Double(low) * pow(high / Double(low), ratio)).rounded())
+            bands.append(start..<min(max(edge, start + 1), min(Int(high) + 1, binCount)))
         }
     }
 }

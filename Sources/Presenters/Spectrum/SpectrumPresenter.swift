@@ -37,6 +37,10 @@ public final class SpectrumPresenter: ObservableObject {
     private var motion: [BarMotion] = []
     private var capturing = false
     private var cancellable: AnyCancellable?
+    /// Bar-area width the View last reported, in points. The bar count is
+    /// derived from it cava-style (fixed bar + gap, count fills the width),
+    /// so it is 0 until the View lays out.
+    private var renderWidth: Double = 0
     /// cava's autosens gain applied to the incoming magnitudes: raised
     /// ~0.1% per active frame, cut ~2% the moment any bar overshoots full
     /// height, so sustained peaks ride the top of the range. Kept across
@@ -65,14 +69,21 @@ public final class SpectrumPresenter: ObservableObject {
         capturing = false
     }
 
+    /// The View reports its bar-area width so the bar count can be derived
+    /// cava-style (fixed bar + gap, the count fills the width).
+    public func updateRenderWidth(_ width: Double) {
+        renderWidth = width
+    }
+
     /// DisplayLink frame tick: advances every bar one filter step toward the
     /// newest magnitudes and updates the animation flag.
     public func tick() {
         guard capturing || !motion.isEmpty else { return }
         let style = interactor.spectrumStyle
-        let fresh = capturing ? interactor.magnitudes() : []
+        let barCount = targetBarCount(style: style)
+        let fresh = capturing ? interactor.magnitudes(barCount: barCount) : []
         let reduction = min(max(Float(style.noiseReduction), 0), 0.97)
-        motion = (0..<style.barCount).map { bar in
+        motion = (0..<barCount).map { bar in
             stepped(
                 bar < motion.count ? motion[bar] : BarMotion(),
                 target: (bar < fresh.count ? fresh[bar] : 0) * sens,
@@ -94,6 +105,22 @@ public final class SpectrumPresenter: ObservableObject {
     /// Bar heights (0…1) for the current frame. Read-only — safe to call from
     /// inside a Canvas draw closure.
     public func binHeights() -> [Float] { motion.map { min($0.mem, 1) } }
+
+    /// cava's bar count: as many fixed-width bars (plus gaps) as fit the
+    /// reported width, so bars keep the same thickness at any window size.
+    /// Stereo rounds down to even so the two channels split it exactly.
+    /// Capped so a tiny `bar_width` can't ask for more bars than the FFT
+    /// resolves or than is worth drawing.
+    private func targetBarCount(style: SpectrumStyle) -> Int {
+        let slot = style.barWidth + style.barSpacing
+        guard renderWidth > 0, slot > 0 else { return 0 }
+        let fit = min(Int((renderWidth + style.barSpacing) / slot), Self.maxBars)
+        return style.stereo ? fit / 2 * 2 : max(fit, 0)
+    }
+
+    /// Upper bound on the derived bar count (both a draw-cost guard and a
+    /// ceiling near the FFT's usable bin count).
+    private static let maxBars = 512
 
     /// Bars below this are treated as fully fallen (~1/4 pixel at 256 pt).
     private static let silenceThreshold: Float = 0.001

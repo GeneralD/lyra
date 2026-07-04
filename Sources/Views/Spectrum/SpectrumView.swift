@@ -34,6 +34,11 @@ public struct SpectrumView: View {
                     maxWidth: .infinity, maxHeight: .infinity,
                     alignment: Self.alignment(for: style.placement)
                 )
+                // The bar count is derived from this width (cava style), so
+                // keep the Presenter in sync as the overlay resizes.
+                .onChange(of: proxy.size.width, initial: true) { _, width in
+                    presenter.updateRenderWidth(width)
+                }
             }
             .allowsHitTesting(false)
             .accessibilityIdentifier("spectrum-view")
@@ -53,7 +58,7 @@ public struct SpectrumView: View {
         }
         let bars = spectrumBarRects(
             in: size, heights: presenter.binHeights(),
-            barWidthRatio: style.barWidthRatio, placement: style.placement
+            barWidth: style.barWidth, barSpacing: style.barSpacing, placement: style.placement
         )
         guard !bars.isEmpty else { return }
         fillBars(&context, bars: bars, size: size, style: style, resolver: resolver)
@@ -136,24 +141,28 @@ struct SpectrumBar: Equatable {
 }
 
 /// The visible bars of the current frame — those tall enough to draw — laid
-/// out across the width. Bars below half a point are dropped so the path
-/// carries no invisible slivers.
+/// out at a fixed `barWidth` and `barSpacing` (cava style) and centered in
+/// the width. Bars below half a point are dropped so the path carries no
+/// invisible slivers.
 func spectrumBarRects(
-    in size: CGSize, heights: [Float], barWidthRatio: Double, placement: SpectrumPlacement
+    in size: CGSize, heights: [Float], barWidth: Double, barSpacing: Double,
+    placement: SpectrumPlacement
 ) -> [SpectrumBar] {
     guard !heights.isEmpty, size.width > 0, size.height > 0 else { return [] }
-    let slotWidth = size.width / CGFloat(heights.count)
-    let barWidth = slotWidth * min(max(barWidthRatio, 0.05), 1)
-    let inset = (slotWidth - barWidth) / 2
-    let cornerRadius = min(barWidth / 4, 3)
+    let width = CGFloat(max(barWidth, 0.5))
+    let spacing = CGFloat(max(barSpacing, 0))
+    let count = heights.count
+    let rowWidth = CGFloat(count) * width + CGFloat(max(count - 1, 0)) * spacing
+    let startX = max((size.width - rowWidth) / 2, 0)
+    let cornerRadius = min(width / 4, 3)
     return heights.enumerated().compactMap { bar in
         let level = min(max(bar.element, 0), 1)
         let height = size.height * CGFloat(level)
         guard height > 0.5 else { return nil }
         let rect = CGRect(
-            x: slotWidth * CGFloat(bar.offset) + inset,
+            x: startX + CGFloat(bar.offset) * (width + spacing),
             y: placement == .top ? 0 : size.height - height,
-            width: barWidth,
+            width: width,
             height: height
         )
         return SpectrumBar(rect: rect, cornerRadius: cornerRadius, level: level)

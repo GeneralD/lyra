@@ -10,10 +10,11 @@ public protocol SpectrumUseCase: Sendable {
     func startCapture(pid: Int) async -> Bool
     /// Tears down the active capture, if any. Safe to call repeatedly.
     func stopCapture() async
-    /// Un-gained per-bar magnitudes of the newest PCM window, one per bar.
-    /// Empty while nothing is being captured. The Presenter applies cava's
-    /// autosens scaling and clamps to 0…1 (#297).
-    func magnitudes(style: SpectrumStyle) -> [Float]
+    /// Un-gained per-bar magnitudes of the newest PCM window, `barCount` bars
+    /// wide (derived from the overlay width, cava style). Empty while nothing
+    /// is captured or `barCount` is 0. The Presenter applies cava's autosens
+    /// scaling and clamps to 0…1 (#297).
+    func magnitudes(style: SpectrumStyle, barCount: Int) -> [Float]
 }
 
 public enum SpectrumUseCaseKey: TestDependencyKey {
@@ -30,5 +31,5 @@ extension DependencyValues {
 private struct UnimplementedSpectrumUseCase: SpectrumUseCase {
     func startCapture(pid: Int) async -> Bool { false }
     func stopCapture() async {}
-    func magnitudes(style: SpectrumStyle) -> [Float] { [] }
+    func magnitudes(style: SpectrumStyle, barCount: Int) -> [Float] { [] }
 }

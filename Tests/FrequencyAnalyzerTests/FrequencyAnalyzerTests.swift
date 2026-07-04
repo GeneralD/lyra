@@ -10,16 +10,21 @@ struct FrequencyAnalyzerTests {
 
     /// db scale keeps the historical exact-zero and exceeds-1 semantics the
     /// suite's assertions rely on; linear-scale behavior has its own tests.
+    /// A band range wide enough (≈ lowest bin … ⅔ Nyquist at 48 kHz) that the
+    /// bin positions these tests probe all fall inside the shown spectrum.
+    private static let minFreq = 20.0
+    private static let maxFreq = 16000.0
+
     private var analyzer: FrequencyAnalyzer {
         FrequencyAnalyzer(
             fftSize: Self.fftSize, barCount: Self.barCount, minDb: -80, maxDb: 0,
-            linearScale: false)
+            linearScale: false, minFrequency: Self.minFreq, maxFrequency: Self.maxFreq)
     }
 
     private var linearAnalyzer: FrequencyAnalyzer {
         FrequencyAnalyzer(
             fftSize: Self.fftSize, barCount: Self.barCount, minDb: -80, maxDb: 0,
-            linearScale: true)
+            linearScale: true, minFrequency: Self.minFreq, maxFrequency: Self.maxFreq)
     }
 
     /// A full-scale sine whose frequency lands exactly on FFT bin `bin`.
@@ -85,7 +90,8 @@ struct FrequencyAnalyzerTests {
     @Test("non-power-of-two fft size is rounded down to a power of two")
     func fftSizeRounding() {
         let rounded = FrequencyAnalyzer(
-            fftSize: 1500, barCount: 8, minDb: -80, maxDb: 0, linearScale: false)
+            fftSize: 1500, barCount: 8, minDb: -80, maxDb: 0, linearScale: false,
+            minFrequency: Self.minFreq, maxFrequency: Self.maxFreq)
         // Rounded to 1024: a 1024-sample input must be accepted (non-zero output).
         let bars = rounded.magnitudes(of: sine(bin: 64))
         #expect(bars.contains { $0 > 0 })

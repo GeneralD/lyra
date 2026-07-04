@@ -38,17 +38,17 @@ extension ConfigRepositoryImpl: ConfigRepository {
             spectrum: SpectrumStyle(
                 enabled: config.spectrum.enabled,
                 stereo: config.spectrum.stereo,
-                // Clamped here so downstream consumers (Presenter bar merge,
-                // ring-buffer reads) never see a zero/negative count. Stereo
-                // splits the row into two half-channels, so it forces an
-                // even count.
-                barCount: config.spectrum.stereo
-                    ? max(2, Int(config.spectrum.barCount.value) / 2 * 2)
-                    : max(1, Int(config.spectrum.barCount.value)),
                 barColor: config.spectrum.barColor,
                 gradientDirection: config.spectrum.gradientDirection,
                 backgroundColor: config.spectrum.backgroundColor,
-                barWidthRatio: config.spectrum.barWidthRatio.value,
+                // Floored to a visible thickness / non-negative gap; the bar
+                // count is derived from the overlay width at render time.
+                barWidth: max(1, config.spectrum.barWidth.value),
+                barSpacing: max(0, config.spectrum.barSpacing.value),
+                // Ordered and floored so the analyzer always gets a valid
+                // ascending band range.
+                minFreq: max(1, min(config.spectrum.minFreq.value, config.spectrum.maxFreq.value)),
+                maxFreq: max(config.spectrum.minFreq.value + 1, config.spectrum.maxFreq.value),
                 minDb: config.spectrum.minDb.value,
                 maxDb: config.spectrum.maxDb.value,
                 scale: config.spectrum.scale,

@@ -28,7 +28,8 @@ struct SpectrumUseCaseImplTests {
     @Test("magnitudes converts the captured window into one value per bar")
     func magnitudesShape() {
         let harness = Harness(left: [Float](repeating: 0.5, count: 1024))
-        let bins = harness.useCase.magnitudes(style: SpectrumStyle(barCount: 16, fftSize: 1024))
+        let bins = harness.useCase.magnitudes(
+            style: SpectrumStyle(fftSize: 1024), barCount: 16)
 
         #expect(bins.count == 16)
     }
@@ -37,16 +38,33 @@ struct SpectrumUseCaseImplTests {
     func magnitudesEmptyWithoutSamples() {
         let harness = Harness()
 
-        #expect(harness.useCase.magnitudes(style: SpectrumStyle()).isEmpty)
+        #expect(harness.useCase.magnitudes(style: SpectrumStyle(), barCount: 16).isEmpty)
+    }
+
+    @Test("magnitudes is empty when the derived bar count is zero")
+    func magnitudesEmptyForZeroBars() {
+        let harness = Harness(left: [Float](repeating: 0.5, count: 1024))
+
+        #expect(harness.useCase.magnitudes(style: SpectrumStyle(fftSize: 1024), barCount: 0).isEmpty)
+    }
+
+    @Test("the analyzer follows the bar count as the width changes")
+    func magnitudesFollowsBarCount() {
+        let harness = Harness(left: [Float](repeating: 0.5, count: 1024))
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+
+        #expect(harness.useCase.magnitudes(style: style, barCount: 24).count == 24)
+        // A resize asks for a different count; the analyzer rebuilds for it.
+        #expect(harness.useCase.magnitudes(style: style, barCount: 40).count == 40)
     }
 
     // MARK: - stereo (#297)
 
     @Test("stereo mirrors the left channel and appends the right, bass in the center")
     func stereoMirrorsAroundCenter() throws {
-        let style = SpectrumStyle(barCount: 16, fftSize: 1024)
+        let style = SpectrumStyle(fftSize: 1024)
         let leftOnly = Harness(left: sine(amplitude: 0.5), right: silence())
-        let bins = leftOnly.useCase.magnitudes(style: style)
+        let bins = leftOnly.useCase.magnitudes(style: style, barCount: 16)
 
         // A left-only signal lights the left half and leaves the right dark…
         #expect(bins.count == 16)
@@ -57,7 +75,7 @@ struct SpectrumUseCaseImplTests {
 
         // …and swapping the channels lands the peak on the mirrored bar.
         let rightOnly = Harness(left: silence(), right: sine(amplitude: 0.5))
-        let mirrored = rightOnly.useCase.magnitudes(style: style)
+        let mirrored = rightOnly.useCase.magnitudes(style: style, barCount: 16)
         let rightPeak = try #require(mirrored.indices.max { mirrored[$0] < mirrored[$1] })
         #expect(rightPeak == 15 - leftPeak)
         #expect(mirrored[..<8].allSatisfy { $0 < 0.001 })
@@ -65,9 +83,9 @@ struct SpectrumUseCaseImplTests {
 
     @Test("mono averages both channels into one full-width row")
     func monoAveragesChannels() {
-        let style = SpectrumStyle(stereo: false, barCount: 16, fftSize: 1024)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
         let bins = Harness(left: sine(amplitude: 0.5), right: silence())
-            .useCase.magnitudes(style: style)
+            .useCase.magnitudes(style: style, barCount: 16)
 
         #expect(bins.count == 16)
         #expect((bins.max() ?? 0) > 0)
@@ -75,7 +93,7 @@ struct SpectrumUseCaseImplTests {
         // The average is channel-agnostic: swapping the channels yields the
         // identical row, unlike the stereo mirror.
         let swapped = Harness(left: silence(), right: sine(amplitude: 0.5))
-            .useCase.magnitudes(style: style)
+            .useCase.magnitudes(style: style, barCount: 16)
         #expect(bins == swapped)
     }
 
@@ -86,13 +104,13 @@ struct SpectrumUseCaseImplTests {
         // The gain (cava's autosens) lives in the Presenter now, so the
         // UseCase must preserve amplitude ratios rather than pin the peak:
         // the linear scale halves the bar when the input halves.
-        let style = SpectrumStyle(barCount: 16, fftSize: 1024)
+        let style = SpectrumStyle(fftSize: 1024)
         let loud = try #require(
             Harness(left: sine(amplitude: 0.8))
-                .useCase.magnitudes(style: style).max())
+                .useCase.magnitudes(style: style, barCount: 16).max())
         let quiet = try #require(
             Harness(left: sine(amplitude: 0.4))
-                .useCase.magnitudes(style: style).max())
+                .useCase.magnitudes(style: style, barCount: 16).max())
 
         #expect(quiet > 0)
         #expect(abs(quiet / loud - 0.5) < 0.05)

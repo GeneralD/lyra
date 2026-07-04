@@ -8,14 +8,20 @@ public struct SpectrumConfig {
     /// right half, lowest frequencies meeting in the center. `false`
     /// averages both channels into one mono row.
     public let stereo: Bool
-    public let barCount: FlexibleDouble
     public let barColor: ColorStyle
     /// Axis a multi-color `bar_color` gradient runs along (`frequency` /
     /// `amplitude` / `level`); ignored for a solid color.
     public let gradientDirection: SpectrumGradientDirection
     public let backgroundColor: ColorConfig?
-    /// Bar width as a fraction of one bar slot (bar + gap), 0–1.
-    public let barWidthRatio: FlexibleDouble
+    /// Bar thickness in points, fixed (cava-style). The number of bars is
+    /// derived from the overlay width, not configured.
+    public let barWidth: FlexibleDouble
+    /// Gap between bars in points, fixed.
+    public let barSpacing: FlexibleDouble
+    /// Lowest frequency shown, in Hz (cava's `low_cut_off`).
+    public let minFreq: FlexibleDouble
+    /// Highest frequency shown, in Hz (cava's `high_cut_off`).
+    public let maxFreq: FlexibleDouble
     public let minDb: FlexibleDouble
     public let maxDb: FlexibleDouble
     /// Height scale of the bars: `linear` (cava's look — quiet bands stay
@@ -37,11 +43,13 @@ extension SpectrumConfig {
     static let defaults = SpectrumConfig(
         enabled: false,
         stereo: true,
-        barCount: 64,
         barColor: .gradient(["#1E3A5F", "#4A9EFF"]),
         gradientDirection: .amplitude,
         backgroundColor: nil,
-        barWidthRatio: 0.7,
+        barWidth: 8,
+        barSpacing: 4,
+        minFreq: 40,
+        maxFreq: 14000,
         minDb: -60,
         maxDb: 0,
         scale: .linear,
@@ -56,11 +64,13 @@ extension SpectrumConfig: Codable {
     enum CodingKeys: String, CodingKey {
         case enabled
         case stereo
-        case barCount = "bar_count"
         case barColor = "bar_color"
         case gradientDirection = "gradient_direction"
         case backgroundColor = "background_color"
-        case barWidthRatio = "bar_width_ratio"
+        case barWidth = "bar_width"
+        case barSpacing = "bar_spacing"
+        case minFreq = "min_freq"
+        case maxFreq = "max_freq"
         case minDb = "min_db"
         case maxDb = "max_db"
         case scale
@@ -74,11 +84,13 @@ extension SpectrumConfig: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? Self.defaults.enabled
         stereo = try c.decodeIfPresent(Bool.self, forKey: .stereo) ?? Self.defaults.stereo
-        barCount = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barCount) ?? Self.defaults.barCount
         barColor = try c.decodeIfPresent(ColorStyle.self, forKey: .barColor) ?? Self.defaults.barColor
         gradientDirection = try c.decodeIfPresent(SpectrumGradientDirection.self, forKey: .gradientDirection) ?? Self.defaults.gradientDirection
         backgroundColor = try c.decodeIfPresent(ColorConfig.self, forKey: .backgroundColor) ?? Self.defaults.backgroundColor
-        barWidthRatio = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barWidthRatio) ?? Self.defaults.barWidthRatio
+        barWidth = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barWidth) ?? Self.defaults.barWidth
+        barSpacing = try c.decodeIfPresent(FlexibleDouble.self, forKey: .barSpacing) ?? Self.defaults.barSpacing
+        minFreq = try c.decodeIfPresent(FlexibleDouble.self, forKey: .minFreq) ?? Self.defaults.minFreq
+        maxFreq = try c.decodeIfPresent(FlexibleDouble.self, forKey: .maxFreq) ?? Self.defaults.maxFreq
         minDb = try c.decodeIfPresent(FlexibleDouble.self, forKey: .minDb) ?? Self.defaults.minDb
         maxDb = try c.decodeIfPresent(FlexibleDouble.self, forKey: .maxDb) ?? Self.defaults.maxDb
         scale = try c.decodeIfPresent(SpectrumScale.self, forKey: .scale) ?? Self.defaults.scale

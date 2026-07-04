@@ -149,19 +149,20 @@ struct SpectrumInteractorImplTests {
         #expect(harness.capturing.value == true)
     }
 
-    @Test("magnitudes forwards the configured style to the use case")
+    @Test("magnitudes forwards the configured style and bar count to the use case")
     func magnitudesForwards() {
         let harness = Harness()
         harness.spectrum.magnitudesResult = [0.25, 0.5]
 
-        #expect(harness.interactor.magnitudes() == [0.25, 0.5])
-        #expect(harness.spectrum.lastStyle?.barCount == 16)
+        #expect(harness.interactor.magnitudes(barCount: 16) == [0.25, 0.5])
+        #expect(harness.spectrum.lastStyle?.fftSize == 1024)
+        #expect(harness.spectrum.lastBarCount == 16)
     }
 
     @Test("magnitudes is empty while nothing is captured")
     func magnitudesEmptyWithoutCapture() {
         let harness = Harness()
-        #expect(harness.interactor.magnitudes().isEmpty)
+        #expect(harness.interactor.magnitudes(barCount: 16).isEmpty)
     }
 }
 
@@ -180,7 +181,7 @@ private struct Harness {
     private let cancellable: AnyCancellable
 
     init(enabled: Bool = true) {
-        let style = SpectrumStyle(enabled: enabled, barCount: 16, fftSize: 1024)
+        let style = SpectrumStyle(enabled: enabled, fftSize: 1024)
         self.style = style
         let interactor = withDependencies { [spectrum, playback] in
             $0.configUseCase = StubConfigUseCase(appStyle: AppStyle(spectrum: style))
@@ -222,12 +223,13 @@ private final class CurrentValueBox: @unchecked Sendable {
 
 private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(
-        initialState: (started: [Int](), stops: 0, style: SpectrumStyle?.none))
+        initialState: (started: [Int](), stops: 0, style: SpectrumStyle?.none, bars: Int?.none))
     var magnitudesResult: [Float] = []
 
     var startedPids: [Int] { state.withLock { $0.started } }
     var stopCount: Int { state.withLock { $0.stops } }
     var lastStyle: SpectrumStyle? { state.withLock { $0.style } }
+    var lastBarCount: Int? { state.withLock { $0.bars } }
 
     func startCapture(pid: Int) async -> Bool {
         state.withLock { $0.started.append(pid) }
@@ -238,8 +240,11 @@ private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
         state.withLock { $0.stops += 1 }
     }
 
-    func magnitudes(style: SpectrumStyle) -> [Float] {
-        state.withLock { $0.style = style }
+    func magnitudes(style: SpectrumStyle, barCount: Int) -> [Float] {
+        state.withLock {
+            $0.style = style
+            $0.bars = barCount
+        }
         return magnitudesResult
     }
 }

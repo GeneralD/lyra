@@ -8,15 +8,18 @@ public struct SpectrumStyle {
     /// right half, lowest frequencies meeting in the center. `false`
     /// averages both channels into one mono row.
     public let stereo: Bool
-    /// Total displayed bars. Forced even by `ConfigRepository` when
-    /// `stereo`, so each channel owns exactly half.
-    public let barCount: Int
     public let barColor: ColorStyle
     /// Axis a multi-color `barColor` gradient runs along; ignored for solid.
     public let gradientDirection: SpectrumGradientDirection
     public let backgroundColor: ColorConfig?
-    /// Bar width as a fraction of one bar slot (bar + gap), 0–1.
-    public let barWidthRatio: Double
+    /// Bar thickness in points, fixed cava-style; the bar count is derived
+    /// from the overlay width, not configured.
+    public let barWidth: Double
+    /// Gap between bars in points, fixed.
+    public let barSpacing: Double
+    /// Lowest / highest frequency shown, in Hz (cava's cut-offs).
+    public let minFreq: Double
+    public let maxFreq: Double
     public let minDb: Double
     public let maxDb: Double
     /// Height scale of the bars: `linear` (cava's look) or `db` (flatter).
@@ -33,11 +36,13 @@ public struct SpectrumStyle {
     public init(
         enabled: Bool = false,
         stereo: Bool = true,
-        barCount: Int = 64,
         barColor: ColorStyle = .gradient(["#1E3A5F", "#4A9EFF"]),
         gradientDirection: SpectrumGradientDirection = .amplitude,
         backgroundColor: ColorConfig? = nil,
-        barWidthRatio: Double = 0.7,
+        barWidth: Double = 8,
+        barSpacing: Double = 4,
+        minFreq: Double = 40,
+        maxFreq: Double = 14000,
         minDb: Double = -60,
         maxDb: Double = 0,
         scale: SpectrumScale = .linear,
@@ -48,11 +53,13 @@ public struct SpectrumStyle {
     ) {
         self.enabled = enabled
         self.stereo = stereo
-        self.barCount = barCount
         self.barColor = barColor
         self.gradientDirection = gradientDirection
         self.backgroundColor = backgroundColor
-        self.barWidthRatio = barWidthRatio
+        self.barWidth = barWidth
+        self.barSpacing = barSpacing
+        self.minFreq = minFreq
+        self.maxFreq = maxFreq
         self.minDb = minDb
         self.maxDb = maxDb
         self.scale = scale
