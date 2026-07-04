@@ -162,10 +162,9 @@ final class ProcessTapEngine {
         )
         var format = AudioStreamBasicDescription()
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-        guard AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &format) == noErr,
-            format.mSampleRate > 0
+        guard AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &format) == noErr
         else { return nil }
-        return format.mSampleRate
+        return tapSampleRate(from: format)
     }
 
     /// The owning pid of a CoreAudio process object, or `nil` when unreadable.
@@ -239,6 +238,13 @@ func deinterleaveStereo(
     }
     leftRing.write(scratch, count: frames)
     rightRing.write(scratch + scratchCapacity, count: frames)
+}
+
+/// Extracts the sample rate from an `AudioStreamBasicDescription`, returning
+/// it when positive and `nil` otherwise. Pulling this decision out of the
+/// CoreAudio call site makes it unit-testable without a live tap object.
+func tapSampleRate(from format: AudioStreamBasicDescription) -> Double? {
+    format.mSampleRate > 0 ? format.mSampleRate : nil
 }
 
 /// Whether `pid` equals `root` or has `root` among its ancestors, walking the

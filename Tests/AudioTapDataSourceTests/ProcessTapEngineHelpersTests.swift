@@ -1,7 +1,37 @@
+import CoreAudio
 import Foundation
 import Testing
 
 @testable import AudioTapDataSource
+
+@Suite("tapSampleRate")
+struct TapSampleRateTests {
+    private func format(rate: Double) -> AudioStreamBasicDescription {
+        var f = AudioStreamBasicDescription()
+        f.mSampleRate = rate
+        return f
+    }
+
+    @Test("positive rate is returned as-is — 44.1 kHz")
+    func rate44100() {
+        #expect(tapSampleRate(from: format(rate: 44100)) == 44100)
+    }
+
+    @Test("positive rate is returned as-is — 48 kHz")
+    func rate48000() {
+        #expect(tapSampleRate(from: format(rate: 48000)) == 48000)
+    }
+
+    @Test("zero rate yields nil — no audio stream")
+    func zeroYieldsNil() {
+        #expect(tapSampleRate(from: format(rate: 0)) == nil)
+    }
+
+    @Test("negative rate yields nil — malformed descriptor")
+    func negativeYieldsNil() {
+        #expect(tapSampleRate(from: format(rate: -1)) == nil)
+    }
+}
 
 @Suite("deinterleaveStereo")
 struct DeinterleaveStereoTests {
