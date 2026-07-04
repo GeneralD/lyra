@@ -19,8 +19,10 @@ public final class SpectrumUseCaseImpl: @unchecked Sendable {
     @Dependency(\.audioCaptureRepository) private var repository
     /// Memoized analyzer plus the per-channel bar count and tap sample rate it
     /// was built for. The displayed bar count is derived from the overlay width
-    /// (cava style), so it changes on resize, and the sample rate follows the
-    /// output device (#299) — rebuild when either changes.
+    /// (cava style), so it changes on resize. The sample rate is read from the
+    /// tap at construction (#299) and fixed for the tap's lifetime; a tap
+    /// recreation (play/pause, source change) picks up any new device rate and
+    /// triggers a rebuild via the changed `window.sampleRate`.
     private var analyzer: (bars: Int, sampleRate: Double, engine: FrequencyAnalyzer)?
 
     public init() {}
