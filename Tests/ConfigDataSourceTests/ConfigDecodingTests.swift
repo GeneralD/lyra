@@ -681,6 +681,21 @@ struct SpectrumTomlDecodingTests {
         #expect(config.spectrum.fftSize.value == 1024)
         #expect(config.spectrum.placement == .bottom)
         #expect(config.spectrum.heightRatio.value == 0.25)
+        // The absolute clamp is unset by default (pure ratio).
+        #expect(config.spectrum.minHeight == nil)
+        #expect(config.spectrum.maxHeight == nil)
+    }
+
+    @Test("min_height / max_height decode into the optional clamp")
+    func heightClampDecodes() throws {
+        let config = try decode(
+            """
+            [spectrum]
+            min_height = 24
+            max_height = 320
+            """)
+        #expect(config.spectrum.minHeight?.value == 24)
+        #expect(config.spectrum.maxHeight?.value == 320)
     }
 
     @Test("full [spectrum] section decodes every field")

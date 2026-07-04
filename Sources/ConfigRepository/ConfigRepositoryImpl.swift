@@ -57,7 +57,11 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 noiseReduction: min(max(config.spectrum.noiseReduction.value / 100, 0), 0.97),
                 fftSize: max(64, Int(config.spectrum.fftSize.value)),
                 placement: config.spectrum.placement,
-                heightRatio: config.spectrum.heightRatio.value
+                heightRatio: config.spectrum.heightRatio.value,
+                // Optional absolute clamp on the growth extent; floored at 0,
+                // otherwise passed straight through (nil = unclamped).
+                minHeight: config.spectrum.minHeight.map { max(0, $0.value) },
+                maxHeight: config.spectrum.maxHeight.map { max(0, $0.value) }
             ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,

@@ -33,6 +33,13 @@ public struct SpectrumStyle {
     /// Fraction of the overlay the bars may occupy along their growth axis,
     /// 0–1: the overlay height for `bottom`/`top`, the width for `left`/`right`.
     public let heightRatio: Double
+    /// Optional absolute clamp (points) on the growth-axis extent, applied
+    /// after `heightRatio` (CSS `min-height`/`max-height` semantics; min wins
+    /// on conflict). `nil` disables that bound. Lets a ratio-based bar keep a
+    /// sane length across wildly different displays — e.g. an ultrawide, where
+    /// a pure ratio would stretch a horizontal placement across the screen.
+    public let minHeight: Double?
+    public let maxHeight: Double?
 
     public init(
         enabled: Bool = false,
@@ -50,7 +57,9 @@ public struct SpectrumStyle {
         noiseReduction: Double = 0.77,
         fftSize: Int = 1024,
         placement: SpectrumPlacement = .bottom,
-        heightRatio: Double = 0.25
+        heightRatio: Double = 0.25,
+        minHeight: Double? = nil,
+        maxHeight: Double? = nil
     ) {
         self.enabled = enabled
         self.stereo = stereo
@@ -68,6 +77,8 @@ public struct SpectrumStyle {
         self.fftSize = fftSize
         self.placement = placement
         self.heightRatio = heightRatio
+        self.minHeight = minHeight
+        self.maxHeight = maxHeight
     }
 }
 

@@ -33,8 +33,15 @@ public struct SpectrumConfig {
     public let noiseReduction: FlexibleDouble
     public let fftSize: FlexibleDouble
     public let placement: SpectrumPlacement
-    /// Fraction of the overlay height the bars may occupy, 0–1.
+    /// Fraction of the overlay the bars may occupy along their growth axis, 0–1.
     public let heightRatio: FlexibleDouble
+    /// Optional absolute clamp (points) on the growth-axis extent, applied on
+    /// top of `heightRatio` (like CSS `min-height`/`max-height`). Omitting a
+    /// bound leaves it unclamped. Useful to cap a ratio-based length on a very
+    /// wide display (e.g. an ultrawide, where a horizontal placement would
+    /// otherwise stretch across the screen).
+    public let minHeight: FlexibleDouble?
+    public let maxHeight: FlexibleDouble?
 }
 
 extension SpectrumConfig: Sendable {}
@@ -56,7 +63,9 @@ extension SpectrumConfig {
         noiseReduction: 77,
         fftSize: 1024,
         placement: .bottom,
-        heightRatio: 0.25
+        heightRatio: 0.25,
+        minHeight: nil,
+        maxHeight: nil
     )
 }
 
@@ -78,6 +87,8 @@ extension SpectrumConfig: Codable {
         case fftSize = "fft_size"
         case placement
         case heightRatio = "height_ratio"
+        case minHeight = "min_height"
+        case maxHeight = "max_height"
     }
 
     public init(from decoder: Decoder) throws {
@@ -98,5 +109,7 @@ extension SpectrumConfig: Codable {
         fftSize = try c.decodeIfPresent(FlexibleDouble.self, forKey: .fftSize) ?? Self.defaults.fftSize
         placement = try c.decodeIfPresent(SpectrumPlacement.self, forKey: .placement) ?? Self.defaults.placement
         heightRatio = try c.decodeIfPresent(FlexibleDouble.self, forKey: .heightRatio) ?? Self.defaults.heightRatio
+        minHeight = try c.decodeIfPresent(FlexibleDouble.self, forKey: .minHeight)
+        maxHeight = try c.decodeIfPresent(FlexibleDouble.self, forKey: .maxHeight)
     }
 }

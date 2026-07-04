@@ -219,6 +219,8 @@ The defaults are tuned to look good out of the box (cava-inspired), so `enabled 
 | `fft_size` | number | `1024` | FFT window size (rounded down to a power of two) |
 | `placement` | string | `"bottom"` | `"bottom"`, `"top"`, `"left"`, `"right"`, or `"underlay"` (bars span the whole overlay behind the lyrics). `left`/`right` rotate the bars into horizontal columns growing inward from that edge |
 | `height_ratio` | number | `0.25` | Fraction of the overlay the bars may occupy along their growth axis — the height for `bottom`/`top`, the width for `left`/`right` (ignored for `underlay`) |
+| `min_height` | number | — | Optional absolute floor (points) on the growth-axis extent, applied on top of `height_ratio` (like CSS `min-height`) |
+| `max_height` | number | — | Optional absolute ceiling (points) on the growth-axis extent (like CSS `max-height`). Handy on an ultrawide display, where a `left`/`right` placement would otherwise stretch far across the screen — cap it here |
 
 > **Known limitation:** the audio is tapped per *process tree* (browsers emit audio from helper subprocesses, so the whole tree must be covered). When the now-playing app is a browser, the tap captures the browser's entire audio output — every tab, not just the one playing music.
 

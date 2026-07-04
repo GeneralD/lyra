@@ -100,3 +100,59 @@ struct SpectrumBarRectsTests {
             ).isEmpty)
     }
 }
+
+@Suite("spectrumBarStripDepth")
+struct SpectrumBarStripDepthTests {
+    private let size = CGSize(width: 100, height: 200)
+
+    @Test("vertical placement takes the ratio of the height")
+    func verticalUsesHeight() {
+        let depth = spectrumBarStripDepth(
+            in: size, placement: .bottom, heightRatio: 0.25, minHeight: nil, maxHeight: nil)
+        #expect(abs(depth - 50) < 0.01)  // 0.25 * 200
+    }
+
+    @Test("horizontal placement takes the ratio of the width")
+    func horizontalUsesWidth() {
+        let depth = spectrumBarStripDepth(
+            in: size, placement: .right, heightRatio: 0.25, minHeight: nil, maxHeight: nil)
+        #expect(abs(depth - 25) < 0.01)  // 0.25 * 100
+    }
+
+    @Test("max_height caps the ratio-derived extent (ultrawide guard)")
+    func maxCaps() {
+        // A wide axis where a pure ratio would overshoot; the cap pins it.
+        let wide = CGSize(width: 4000, height: 200)
+        let depth = spectrumBarStripDepth(
+            in: wide, placement: .right, heightRatio: 0.25, minHeight: nil, maxHeight: 300)
+        #expect(abs(depth - 300) < 0.01)  // min(0.25 * 4000, 300)
+    }
+
+    @Test("min_height floors a tiny ratio")
+    func minFloors() {
+        let depth = spectrumBarStripDepth(
+            in: size, placement: .bottom, heightRatio: 0.01, minHeight: 40, maxHeight: nil)
+        #expect(abs(depth - 40) < 0.01)  // max(0.01 * 200, 40)
+    }
+
+    @Test("min wins over max on conflict (CSS semantics)")
+    func minWinsOverMax() {
+        let depth = spectrumBarStripDepth(
+            in: size, placement: .bottom, heightRatio: 0.5, minHeight: 80, maxHeight: 40)
+        #expect(abs(depth - 80) < 0.01)  // cap to 40, then floor to 80
+    }
+
+    @Test("the clamp never pushes past the axis length")
+    func neverExceedsAxis() {
+        let depth = spectrumBarStripDepth(
+            in: size, placement: .bottom, heightRatio: 1, minHeight: 5000, maxHeight: nil)
+        #expect(abs(depth - 200) < 0.01)  // floored to 5000, then capped at the 200 axis
+    }
+
+    @Test("underlay fills the full height and ignores the clamp")
+    func underlayIgnoresClamp() {
+        let depth = spectrumBarStripDepth(
+            in: size, placement: .underlay, heightRatio: 0.25, minHeight: 10, maxHeight: 30)
+        #expect(abs(depth - 200) < 0.01)
+    }
+}

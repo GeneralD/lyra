@@ -142,16 +142,10 @@ public struct SpectrumView: View {
         }
     }
 
-    /// Extent of the bar strip along its growth axis: the full overlay for
-    /// `underlay`, otherwise `heightRatio` of the height (vertical placements)
-    /// or of the width (horizontal ones).
     private func barStripDepth(in available: CGSize, style: SpectrumStyle) -> CGFloat {
-        let ratio = min(max(style.heightRatio, 0), 1)
-        switch style.placement {
-        case .underlay: return available.height
-        case .bottom, .top: return available.height * ratio
-        case .left, .right: return available.width * ratio
-        }
+        spectrumBarStripDepth(
+            in: available, placement: style.placement, heightRatio: style.heightRatio,
+            minHeight: style.minHeight, maxHeight: style.maxHeight)
     }
 
     /// Length of the track the bars distribute along — width for vertical
@@ -178,6 +172,26 @@ func isHorizontal(_ placement: SpectrumPlacement) -> Bool {
     case .left, .right: true
     case .bottom, .top, .underlay: false
     }
+}
+
+/// Growth-axis extent of the bar strip: `heightRatio` of the axis (the overlay
+/// height for vertical placements, the width for horizontal), then clamped
+/// into the optional `[minHeight, maxHeight]` point range (CSS
+/// `min-height`/`max-height` semantics — min wins on conflict) and never
+/// beyond the axis itself. `underlay` fills the full height and ignores the
+/// clamp (it's a backdrop). The clamp keeps a ratio-based length sane across
+/// very different displays — e.g. capping a horizontal placement on an
+/// ultrawide, where a pure ratio would stretch it across the screen.
+func spectrumBarStripDepth(
+    in available: CGSize, placement: SpectrumPlacement, heightRatio: Double,
+    minHeight: Double?, maxHeight: Double?
+) -> CGFloat {
+    guard placement != .underlay else { return available.height }
+    let axis = isHorizontal(placement) ? available.width : available.height
+    let preferred = axis * CGFloat(min(max(heightRatio, 0), 1))
+    let capped = maxHeight.map { min(preferred, CGFloat($0)) } ?? preferred
+    let floored = minHeight.map { max(capped, CGFloat($0)) } ?? capped
+    return min(max(floored, 0), axis)
 }
 
 /// One visible bar: its rounded rect and its 0…1 height, used to pick the
