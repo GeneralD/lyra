@@ -208,7 +208,7 @@ The defaults are tuned to look good out of the box (cava-inspired), so `enabled 
 | `bar_color` | string / array | `["#060912B3", "#20407FB3", "#3E86F0B3", "#9C6CEEB3", "#F4F1FFB3"]` | Solid hex or gradient array (default: deep-navy → blue → violet → white, at ~70% alpha) |
 | `gradient_direction` | string | `"level"` | Axis a gradient `bar_color` runs along: `"frequency"` (across bands), `"amplitude"` (base→tip, VU-style), or `"level"` (each bar flat-colored by its height). Ignored for a solid color |
 | `background_color` | string | — | Optional backdrop behind the bars |
-| `bar_opacity` | number | `1` | Master opacity of the whole bar layer, 0–1, multiplied on top of `bar_color`'s own alpha (independent of `background_color`). Pair an opaque `bar_color` with this knob to keep color and transparency separate |
+| `bar_opacity` | number | `1` | One-knob master dimmer for the bar layer (0–1). Scales every gradient stop's opacity proportionally — fade the spectrum in or out without recalculating per-stop alpha by hand. Multiplied on top of each stop's own alpha; independent of `background_color` |
 | `bar_width` | number | `6` | Bar thickness in points (fixed; the bar count is derived from the overlay size, cava-style) |
 | `bar_spacing` | number | `4` | Gap between bars in points |
 | `bar_corner_radius` | number | — | Bar corner radius in points; omit to derive it from `bar_width` (`min(bar_width / 4, 3)`), `0` for square corners (capped per-bar at half the thickness) |

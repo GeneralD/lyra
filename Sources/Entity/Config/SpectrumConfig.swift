@@ -42,10 +42,10 @@ public struct SpectrumConfig {
     /// otherwise stretch across the screen).
     public let minHeight: FlexibleDouble?
     public let maxHeight: FlexibleDouble?
-    /// Master opacity of the whole bar layer, 0–1, multiplied on top of
-    /// `bar_color`'s own alpha. Setting an opaque `bar_color` and driving
-    /// transparency here separates colour from opacity; the two also compose.
-    /// Independent of `background_color`.
+    /// One-knob master dimmer for the entire bar layer (0–1). Scales every
+    /// gradient stop's opacity proportionally, so you can fade the spectrum
+    /// in or out without recalculating each stop's alpha by hand. Multiplied
+    /// with each stop's own alpha value; independent of `background_color`.
     public let barOpacity: FlexibleDouble
     /// Corner radius of the bars, in points. `nil` derives it from `bar_width`
     /// (cava-style `min(bar_width / 4, 3)`); an explicit value overrides that,
