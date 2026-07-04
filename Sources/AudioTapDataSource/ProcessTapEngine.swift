@@ -155,24 +155,24 @@ final class ProcessTapEngine {
         return pid
     }
 
-    /// Whether `pid` equals `root` or has `root` among its ancestors.
+    /// Whether `pid` is in `root`'s process subtree. The subtree walk is the
+    /// pure `isInProcessSubtree`; only the ppid lookup is the OS boundary.
     private static func isInSubtree(_ pid: pid_t?, root: pid_t) -> Bool {
-        guard var current = pid else { return false }
-        while current > 1 {
-            guard current != root else { return true }
-            var info = proc_bsdinfo()
-            let read = proc_pidinfo(
-                current, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
-            guard read == Int32(MemoryLayout<proc_bsdinfo>.size) else { return false }
-            current = pid_t(info.pbi_ppid)
-        }
-        return false
+        isInProcessSubtree(pid, root: root, parent: parentPid)
     }
 
-    /// Real-time-safe deinterleave of the first (interleaved) input buffer
-    /// into the two channel rings. The scratch holds the left frames in its
-    /// first half and the right frames in its second. A mono source feeds
-    /// both rings the same samples.
+    /// The parent pid of `pid` via `proc_pidinfo`, or `nil` when unreadable.
+    private static func parentPid(of pid: pid_t) -> pid_t? {
+        var info = proc_bsdinfo()
+        let read = proc_pidinfo(
+            pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
+        guard read == Int32(MemoryLayout<proc_bsdinfo>.size) else { return nil }
+        return pid_t(info.pbi_ppid)
+    }
+
+    /// Unwraps the first (interleaved) CoreAudio input buffer and hands its
+    /// frames to the pure `deinterleaveStereo`. The AudioBufferList decoding is
+    /// the boundary; the frame math and ring writes are the testable core.
     private static func deinterleave(
         _ inputData: UnsafePointer<AudioBufferList>,
         into scratch: UnsafeMutablePointer<Float>,
@@ -182,16 +182,46 @@ final class ProcessTapEngine {
         let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
         guard let first = buffers.first, let data = first.mData else { return }
         let channels = max(Int(first.mNumberChannels), 1)
-        let sampleCount = Int(first.mDataByteSize) / MemoryLayout<Float>.size
-        let frames = min(sampleCount / channels, scratchCapacity)
-        guard frames > 0 else { return }
-        let samples = data.assumingMemoryBound(to: Float.self)
-        for frame in 0..<frames {
-            let base = frame * channels
-            scratch[frame] = samples[base]
-            scratch[scratchCapacity + frame] = samples[base + min(channels - 1, 1)]
-        }
-        leftRing.write(scratch, count: frames)
-        rightRing.write(scratch + scratchCapacity, count: frames)
+        let frameCount = Int(first.mDataByteSize) / MemoryLayout<Float>.size / channels
+        deinterleaveStereo(
+            samples: data.assumingMemoryBound(to: Float.self),
+            frameCount: frameCount, channels: channels,
+            into: scratch, scratchCapacity: scratchCapacity,
+            leftRing: leftRing, rightRing: rightRing)
     }
+}
+
+/// Real-time-safe deinterleave of `frameCount` interleaved frames into the two
+/// channel rings. The scratch (≥ 2×`scratchCapacity`) holds the left frames in
+/// its first half and the right in its second; a mono source (1 channel) feeds
+/// both rings the same samples. Pure pointer arithmetic — no allocation — so it
+/// stays safe on the real-time audio thread.
+func deinterleaveStereo(
+    samples: UnsafePointer<Float>, frameCount: Int, channels: Int,
+    into scratch: UnsafeMutablePointer<Float>, scratchCapacity: Int,
+    leftRing: SampleRingBuffer, rightRing: SampleRingBuffer
+) {
+    let channels = max(channels, 1)
+    let frames = min(max(frameCount, 0), scratchCapacity)
+    guard frames > 0 else { return }
+    for frame in 0..<frames {
+        let base = frame * channels
+        scratch[frame] = samples[base]
+        scratch[scratchCapacity + frame] = samples[base + min(channels - 1, 1)]
+    }
+    leftRing.write(scratch, count: frames)
+    rightRing.write(scratch + scratchCapacity, count: frames)
+}
+
+/// Whether `pid` equals `root` or has `root` among its ancestors, walking the
+/// parent chain via `parent`. Pure given the ancestry lookup — the live caller
+/// backs `parent` with `proc_pidinfo`.
+func isInProcessSubtree(_ pid: pid_t?, root: pid_t, parent: (pid_t) -> pid_t?) -> Bool {
+    guard var current = pid else { return false }
+    while current > 1 {
+        guard current != root else { return true }
+        guard let up = parent(current) else { return false }
+        current = up
+    }
+    return false
 }

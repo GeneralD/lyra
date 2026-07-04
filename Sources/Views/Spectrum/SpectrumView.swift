@@ -40,7 +40,7 @@ public struct SpectrumView: View {
                 )
                 .frame(
                     maxWidth: .infinity, maxHeight: .infinity,
-                    alignment: Self.alignment(for: style.placement)
+                    alignment: spectrumAlignment(for: style.placement)
                 )
                 // The bar count is derived from the track length (cava style),
                 // so keep the Presenter in sync as the overlay resizes.
@@ -107,61 +107,65 @@ public struct SpectrumView: View {
         }
     }
 
-    /// Endpoints of the strip-spanning gradient. `frequency` runs along the
-    /// track (edge-parallel) axis, `amplitude` along the growth axis from the
-    /// bars' base to their tips, so the high colors always land at the growing
-    /// edge whichever edge the strip anchors to.
-    private func gradientEnds(
-        for direction: SpectrumGradientDirection, size: CGSize, placement: SpectrumPlacement
-    ) -> (CGPoint, CGPoint) {
-        switch direction {
-        case .frequency:
-            return isHorizontal(placement)
-                ? (CGPoint(x: size.width / 2, y: 0), CGPoint(x: size.width / 2, y: size.height))
-                : (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
-        case .amplitude:
-            return amplitudeGradientEnds(placement: placement, size: size)
-        case .level:
-            return (.zero, .zero)
-        }
-    }
+}
 
-    /// Base → tip of the growth axis for the `amplitude` gradient, per edge.
-    private func amplitudeGradientEnds(
-        placement: SpectrumPlacement, size: CGSize
-    ) -> (CGPoint, CGPoint) {
-        switch placement {
-        case .bottom, .underlay:
-            return (CGPoint(x: size.width / 2, y: size.height), CGPoint(x: size.width / 2, y: 0))
-        case .top:
-            return (CGPoint(x: size.width / 2, y: 0), CGPoint(x: size.width / 2, y: size.height))
-        case .left:
-            return (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
-        case .right:
-            return (CGPoint(x: size.width, y: size.height / 2), CGPoint(x: 0, y: size.height / 2))
-        }
+/// Endpoints of the strip-spanning gradient. `frequency` runs along the
+/// track (edge-parallel) axis, `amplitude` along the growth axis from the
+/// bars' base to their tips, so the high colors always land at the growing
+/// edge whichever edge the strip anchors to.
+func gradientEnds(
+    for direction: SpectrumGradientDirection, size: CGSize, placement: SpectrumPlacement
+) -> (CGPoint, CGPoint) {
+    switch direction {
+    case .frequency:
+        return isHorizontal(placement)
+            ? (CGPoint(x: size.width / 2, y: 0), CGPoint(x: size.width / 2, y: size.height))
+            : (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
+    case .amplitude:
+        return amplitudeGradientEnds(placement: placement, size: size)
+    case .level:
+        return (.zero, .zero)
     }
+}
 
-    private func barStripDepth(in available: CGSize, style: SpectrumStyle) -> CGFloat {
-        spectrumBarStripDepth(
-            in: available, placement: style.placement, heightRatio: style.heightRatio,
-            minHeight: style.minHeight, maxHeight: style.maxHeight)
+/// Base → tip of the growth axis for the `amplitude` gradient, per edge.
+func amplitudeGradientEnds(
+    placement: SpectrumPlacement, size: CGSize
+) -> (CGPoint, CGPoint) {
+    switch placement {
+    case .bottom, .underlay:
+        return (CGPoint(x: size.width / 2, y: size.height), CGPoint(x: size.width / 2, y: 0))
+    case .top:
+        return (CGPoint(x: size.width / 2, y: 0), CGPoint(x: size.width / 2, y: size.height))
+    case .left:
+        return (CGPoint(x: 0, y: size.height / 2), CGPoint(x: size.width, y: size.height / 2))
+    case .right:
+        return (CGPoint(x: size.width, y: size.height / 2), CGPoint(x: 0, y: size.height / 2))
     }
+}
 
-    /// Length of the track the bars distribute along — width for vertical
-    /// placements, height for the horizontal ones — reported to the Presenter
-    /// so it can derive the bar count.
-    private func trackExtent(of size: CGSize, placement: SpectrumPlacement) -> Double {
-        isHorizontal(placement) ? size.height : size.width
-    }
+/// Growth-axis depth of the strip resolved from the placement's `SpectrumStyle`
+/// fields (a thin adapter over `spectrumBarStripDepth`).
+func barStripDepth(in available: CGSize, style: SpectrumStyle) -> CGFloat {
+    spectrumBarStripDepth(
+        in: available, placement: style.placement, heightRatio: style.heightRatio,
+        minHeight: style.minHeight, maxHeight: style.maxHeight)
+}
 
-    static func alignment(for placement: SpectrumPlacement) -> Alignment {
-        switch placement {
-        case .bottom, .underlay: .bottom
-        case .top: .top
-        case .left: .leading
-        case .right: .trailing
-        }
+/// Length of the track the bars distribute along — width for vertical
+/// placements, height for the horizontal ones — reported to the Presenter
+/// so it can derive the bar count.
+func trackExtent(of size: CGSize, placement: SpectrumPlacement) -> Double {
+    isHorizontal(placement) ? size.height : size.width
+}
+
+/// SwiftUI alignment that pins the strip against its anchoring edge.
+func spectrumAlignment(for placement: SpectrumPlacement) -> Alignment {
+    switch placement {
+    case .bottom, .underlay: .bottom
+    case .top: .top
+    case .left: .leading
+    case .right: .trailing
     }
 }
 

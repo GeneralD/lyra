@@ -1,4 +1,6 @@
+import Entity
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Views
@@ -154,5 +156,84 @@ struct SpectrumBarStripDepthTests {
         let depth = spectrumBarStripDepth(
             in: size, placement: .underlay, heightRatio: 0.25, minHeight: 10, maxHeight: 30)
         #expect(abs(depth - 200) < 0.01)
+    }
+}
+
+@Suite("gradientEnds")
+struct SpectrumGradientEndsTests {
+    private let size = CGSize(width: 100, height: 200)
+
+    @Test("frequency runs along the track (edge-parallel) axis for vertical placements")
+    func frequencyVertical() {
+        let (start, end) = gradientEnds(for: .frequency, size: size, placement: .bottom)
+        #expect(start == CGPoint(x: 0, y: 100))
+        #expect(end == CGPoint(x: 100, y: 100))
+    }
+
+    @Test("frequency runs across the track for horizontal placements")
+    func frequencyHorizontal() {
+        let (start, end) = gradientEnds(for: .frequency, size: size, placement: .right)
+        #expect(start == CGPoint(x: 50, y: 0))
+        #expect(end == CGPoint(x: 50, y: 200))
+    }
+
+    @Test("level collapses to a zero-length gradient (unused for per-bar fills)")
+    func levelIsZero() {
+        let (start, end) = gradientEnds(for: .level, size: size, placement: .bottom)
+        #expect(start == .zero)
+        #expect(end == .zero)
+    }
+
+    @Test("amplitude delegates to the per-edge growth axis")
+    func amplitudeDelegates() {
+        #expect(
+            gradientEnds(for: .amplitude, size: size, placement: .bottom)
+                == amplitudeGradientEnds(placement: .bottom, size: size))
+    }
+
+    @Test("amplitude runs base→tip of the growth axis, per anchoring edge")
+    func amplitudePerEdge() {
+        #expect(
+            amplitudeGradientEnds(placement: .bottom, size: size)
+                == (CGPoint(x: 50, y: 200), CGPoint(x: 50, y: 0)))
+        #expect(
+            amplitudeGradientEnds(placement: .top, size: size)
+                == (CGPoint(x: 50, y: 0), CGPoint(x: 50, y: 200)))
+        #expect(
+            amplitudeGradientEnds(placement: .left, size: size)
+                == (CGPoint(x: 0, y: 100), CGPoint(x: 100, y: 100)))
+        #expect(
+            amplitudeGradientEnds(placement: .right, size: size)
+                == (CGPoint(x: 100, y: 100), CGPoint(x: 0, y: 100)))
+    }
+}
+
+@Suite("spectrum geometry helpers")
+struct SpectrumGeometryHelpersTests {
+    private let size = CGSize(width: 100, height: 200)
+
+    @Test("trackExtent is the width for vertical placements, the height for horizontal")
+    func trackExtentAxis() {
+        #expect(trackExtent(of: size, placement: .bottom) == 100)
+        #expect(trackExtent(of: size, placement: .top) == 100)
+        #expect(trackExtent(of: size, placement: .underlay) == 100)
+        #expect(trackExtent(of: size, placement: .left) == 200)
+        #expect(trackExtent(of: size, placement: .right) == 200)
+    }
+
+    @Test("spectrumAlignment pins the strip against its anchoring edge")
+    func alignmentPerEdge() {
+        #expect(spectrumAlignment(for: .bottom) == .bottom)
+        #expect(spectrumAlignment(for: .underlay) == .bottom)
+        #expect(spectrumAlignment(for: .top) == .top)
+        #expect(spectrumAlignment(for: .left) == .leading)
+        #expect(spectrumAlignment(for: .right) == .trailing)
+    }
+
+    @Test("barStripDepth adapts the SpectrumStyle fields onto spectrumBarStripDepth")
+    func barStripDepthAdapter() {
+        // Defaults: placement .bottom, heightRatio 0.25, no min/max clamp.
+        let style = SpectrumStyle()
+        #expect(abs(barStripDepth(in: size, style: style) - 50) < 0.01)  // 0.25 * 200
     }
 }
