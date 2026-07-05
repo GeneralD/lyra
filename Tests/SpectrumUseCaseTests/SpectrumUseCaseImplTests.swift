@@ -115,6 +115,57 @@ struct SpectrumUseCaseImplTests {
         #expect(quiet > 0)
         #expect(abs(quiet / loud - 0.5) < 0.05)
     }
+
+    // MARK: - analyzer memoization
+
+    @Test("the analyzer is reused when both bar count and sample rate are unchanged")
+    func analyzerCachedOnMatchingKey() {
+        // Two calls on the *same* use-case instance with identical bar count
+        // and sample rate must return the same magnitudes — the analyzer is
+        // built once and reused (cache-hit path of resolvedAnalyzer).
+        let pcm = sine(amplitude: 0.5)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let harness = Harness(left: pcm, sampleRate: 48000)
+
+        let first = harness.useCase.magnitudes(style: style, barCount: 24)
+        let second = harness.useCase.magnitudes(style: style, barCount: 24)
+
+        #expect(first == second)
+    }
+
+    @Test("the analyzer rebuilds when the tap sample rate changes on the same instance")
+    func analyzerRebuildsOnSampleRateChange() {
+        // On a source switch the tap is torn down and recreated at the new
+        // device's rate; the same use-case instance sees a different sampleRate
+        // from latestSamples and must rebuild the FrequencyAnalyzer (whose
+        // Hz→bin mapping depends on the rate).
+        let pcm = sine(amplitude: 0.5)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let harness = Harness(left: pcm, sampleRate: 48000)
+
+        let at48k = harness.useCase.magnitudes(style: style, barCount: 24)
+
+        // Simulate a rate change on the same use-case (same bar count, new rate).
+        harness.repository.samples = StereoSamples(left: pcm, right: pcm, sampleRate: 44100)
+        let at44k = harness.useCase.magnitudes(style: style, barCount: 24)
+
+        #expect(at48k != at44k)
+    }
+
+    // MARK: - sample-rate propagation (#299)
+
+    @Test("the tap sample rate reaches the analyzer — same PCM, different rate, different bands")
+    func magnitudesFollowSampleRate() {
+        // The band cutoffs are Hz→bin mapped with the tap rate, so the same
+        // captured window grouped for 48 kHz vs 96 kHz yields different bars.
+        // A hardcoded rate would make these identical.
+        let pcm = sine(amplitude: 0.5)
+        let style = SpectrumStyle(stereo: false, fftSize: 1024)
+        let at48k = Harness(left: pcm, sampleRate: 48000).useCase.magnitudes(style: style, barCount: 24)
+        let at96k = Harness(left: pcm, sampleRate: 96000).useCase.magnitudes(style: style, barCount: 24)
+
+        #expect(at48k != at96k)
+    }
 }
 
 /// A sine on FFT bin 8 of a 1024-sample window, at the given amplitude.
@@ -132,9 +183,10 @@ private struct Harness {
     let repository = FakeAudioCaptureRepository()
     let useCase: SpectrumUseCaseImpl
 
-    /// Omitting `right` mirrors `left` into both channels.
-    init(left: [Float] = [], right: [Float]? = nil) {
-        repository.samples = StereoSamples(left: left, right: right ?? left)
+    /// Omitting `right` mirrors `left` into both channels. `sampleRate` is the
+    /// tap rate the fake tags its window with (#299).
+    init(left: [Float] = [], right: [Float]? = nil, sampleRate: Double = 48000) {
+        repository.samples = StereoSamples(left: left, right: right ?? left, sampleRate: sampleRate)
         useCase = withDependencies { [repository] in
             $0.audioCaptureRepository = repository
         } operation: {
@@ -163,7 +215,8 @@ private final class FakeAudioCaptureRepository: AudioCaptureRepository, @uncheck
         samples.left.count >= count
             ? StereoSamples(
                 left: Array(samples.left.suffix(count)),
-                right: Array(samples.right.suffix(count)))
+                right: Array(samples.right.suffix(count)),
+                sampleRate: samples.sampleRate)
             : StereoSamples()
     }
 }
