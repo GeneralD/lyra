@@ -3,11 +3,15 @@ import SwiftUI
 
 /// Bar-graph rendering of the spectrum analyzer (#23). Pure rendering: bar
 /// heights, decay, and capture state all live in `SpectrumPresenter`; the bar
-/// geometry lives in `SpectrumGeometry.swift` and the Canvas drawing in
-/// `SpectrumRendering.swift`. This file keeps only the SwiftUI view struct.
+/// geometry lives in `SpectrumGeometry` and the Canvas drawing in
+/// `SpectrumRenderer`, each held here as an instance. This file keeps only the
+/// SwiftUI view struct — `body` delegates layout to `geometry` and drawing to
+/// `renderer`.
 @MainActor
 public struct SpectrumView: View {
     @ObservedObject var presenter: SpectrumPresenter
+    private let geometry = SpectrumGeometry()
+    private let renderer = SpectrumRenderer()
 
     public init(presenter: SpectrumPresenter) {
         self.presenter = presenter
@@ -26,7 +30,7 @@ public struct SpectrumView: View {
                         // frame schedule; the bar data itself advances on the
                         // DisplayLink tick in the Presenter.
                         let _ = timeline.date
-                        drawSpectrumBars(
+                        renderer.draw(
                             &context, size: size, heights: presenter.binHeights(), style: style)
                     }
                 }
@@ -34,18 +38,21 @@ public struct SpectrumView: View {
                 // anchors to — height for vertical placements, width for the
                 // horizontal ones — then pin it against that edge.
                 .frame(
-                    width: isHorizontal(style.placement)
-                        ? barStripDepth(in: proxy.size, style: style) : nil,
-                    height: isHorizontal(style.placement)
-                        ? nil : barStripDepth(in: proxy.size, style: style)
+                    width: geometry.isHorizontal(style.placement)
+                        ? geometry.stripDepth(in: proxy.size, style: style) : nil,
+                    height: geometry.isHorizontal(style.placement)
+                        ? nil : geometry.stripDepth(in: proxy.size, style: style)
                 )
                 .frame(
                     maxWidth: .infinity, maxHeight: .infinity,
-                    alignment: spectrumAlignment(for: style.placement)
+                    alignment: geometry.alignment(for: style.placement)
                 )
                 // The bar count is derived from the track length (cava style),
                 // so keep the Presenter in sync as the overlay resizes.
-                .onChange(of: trackExtent(of: proxy.size, placement: style.placement), initial: true) { _, length in
+                .onChange(
+                    of: geometry.trackExtent(of: proxy.size, placement: style.placement),
+                    initial: true
+                ) { _, length in
                     presenter.updateBarTrackLength(length)
                 }
             }
