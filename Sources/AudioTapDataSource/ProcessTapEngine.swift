@@ -13,6 +13,12 @@ import Foundation
 final class ProcessTapEngine {
     private static let scratchCapacity = 4096
 
+    /// The tap's actual sample rate in Hz, read from its stream format (#299).
+    /// The process-tap mixdown follows the current output device, so this is
+    /// 44.1 kHz, 48 kHz, or whatever the hardware runs at — the analyzer needs
+    /// it to place Hz on the right FFT bins rather than assume 48 kHz.
+    let sampleRate: Double
+
     private let leftRing: SampleRingBuffer
     private let rightRing: SampleRingBuffer
     private var tapID = AudioObjectID(kAudioObjectUnknown)
@@ -35,6 +41,11 @@ final class ProcessTapEngine {
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr,
             tapID != AudioObjectID(kAudioObjectUnknown)
         else { return nil }
+
+        // The tap's stream format is valid the moment the tap exists and
+        // reflects the mixdown's rate (the output device's); the pure
+        // `resolvedTapSampleRate` falls back to 48 kHz when it is unreadable.
+        self.sampleRate = resolvedTapSampleRate(from: Self.liveTapFormat(of: tapID))
 
         // A tap only produces audio when read through an aggregate device that
         // lists it. The aggregate is private and auto-starts the tap.
@@ -140,6 +151,25 @@ final class ProcessTapEngine {
         return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
     }
 
+    /// The tap's output stream format read live via `kAudioTapPropertyFormat`,
+    /// or `nil` when the read fails (e.g. an unknown object id). The single
+    /// irreducible CoreAudio syscall is isolated here so the rate-resolution
+    /// decision around it (`resolvedTapSampleRate`) stays a pure, tested free
+    /// function. Internal rather than private so a test can drive the read
+    /// against a bogus id and exercise the failure path.
+    static func liveTapFormat(of tapID: AudioObjectID) -> AudioStreamBasicDescription? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var format = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        guard AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &format) == noErr
+        else { return nil }
+        return format
+    }
+
     /// The owning pid of a CoreAudio process object, or `nil` when unreadable.
     private static func processPid(of object: AudioObjectID) -> pid_t? {
         var address = AudioObjectPropertyAddress(
@@ -191,6 +221,9 @@ final class ProcessTapEngine {
     }
 }
 
+@available(macOS 14.4, *)
+extension ProcessTapEngine: AudioTapEngine {}
+
 /// Real-time-safe deinterleave of `frameCount` interleaved frames into the two
 /// channel rings. The scratch (≥ 2×`scratchCapacity`) holds the left frames in
 /// its first half and the right in its second; a mono source (1 channel) feeds
@@ -211,6 +244,21 @@ func deinterleaveStereo(
     }
     leftRing.write(scratch, count: frames)
     rightRing.write(scratch + scratchCapacity, count: frames)
+}
+
+/// Extracts the sample rate from an `AudioStreamBasicDescription`, returning
+/// it when positive and `nil` otherwise. Pulling this decision out of the
+/// CoreAudio call site makes it unit-testable without a live tap object.
+func tapSampleRate(from format: AudioStreamBasicDescription) -> Double? {
+    format.mSampleRate > 0 ? format.mSampleRate : nil
+}
+
+/// The sample rate to run the analyzer at, given the tap's freshly-read format:
+/// its positive rate, or the 48 kHz mixdown default when the format is missing
+/// (unreadable read) or malformed (non-positive rate). Pure — the live read is
+/// the caller's job — so the fallback decision is tested without a live tap.
+func resolvedTapSampleRate(from format: AudioStreamBasicDescription?) -> Double {
+    format.flatMap(tapSampleRate(from:)) ?? 48000
 }
 
 /// Whether `pid` equals `root` or has `root` among its ancestors, walking the

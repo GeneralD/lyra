@@ -63,7 +63,12 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 // Optional absolute clamp on the growth extent; floored at 0,
                 // otherwise passed straight through (nil = unclamped).
                 minHeight: config.spectrum.minHeight.map { max(0, $0.value) },
-                maxHeight: config.spectrum.maxHeight.map { max(0, $0.value) }
+                maxHeight: config.spectrum.maxHeight.map { max(0, $0.value) },
+                // Master bar opacity clamped to 0…1; the per-bar corner radius
+                // is floored at 0 (nil = derive from thickness), its per-bar
+                // upper cap lives in `spectrumBarRects`.
+                barOpacity: min(max(config.spectrum.barOpacity.value, 0), 1),
+                barCornerRadius: config.spectrum.barCornerRadius.map { max(0, $0.value) }
             ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,
