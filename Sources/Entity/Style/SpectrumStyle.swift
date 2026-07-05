@@ -40,6 +40,13 @@ public struct SpectrumStyle {
     /// a pure ratio would stretch a horizontal placement across the screen.
     public let minHeight: Double?
     public let maxHeight: Double?
+    /// Master opacity of the whole bar layer, 0…1, multiplied on top of
+    /// `barColor`'s own alpha (see `SpectrumConfig.barOpacity`).
+    public let barOpacity: Double
+    /// Explicit bar corner radius in points, or `nil` to derive it from the
+    /// bar thickness (`autoCornerRadius`). Per-bar it is capped at half the
+    /// thickness at render time.
+    public let barCornerRadius: Double?
 
     public init(
         enabled: Bool = false,
@@ -61,7 +68,9 @@ public struct SpectrumStyle {
         placement: SpectrumPlacement = .bottom,
         heightRatio: Double = 0.25,
         minHeight: Double? = nil,
-        maxHeight: Double? = nil
+        maxHeight: Double? = nil,
+        barOpacity: Double = 1,
+        barCornerRadius: Double? = nil
     ) {
         self.enabled = enabled
         self.stereo = stereo
@@ -81,6 +90,8 @@ public struct SpectrumStyle {
         self.heightRatio = heightRatio
         self.minHeight = minHeight
         self.maxHeight = maxHeight
+        self.barOpacity = barOpacity
+        self.barCornerRadius = barCornerRadius
     }
 }
 

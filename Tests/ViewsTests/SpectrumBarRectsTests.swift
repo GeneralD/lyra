@@ -237,3 +237,50 @@ struct SpectrumGeometryHelpersTests {
         #expect(abs(barStripDepth(in: size, style: style) - 50) < 0.01)  // 0.25 * 200
     }
 }
+
+@Suite("autoCornerRadius")
+struct AutoCornerRadiusTests {
+    @Test("is a quarter of the thickness, capped at 3 pt")
+    func quarterCappedAtThree() {
+        #expect(autoCornerRadius(thickness: 4) == 1)  // 4/4 = 1
+        #expect(autoCornerRadius(thickness: 8) == 2)  // 8/4 = 2
+        #expect(autoCornerRadius(thickness: 20) == 3)  // 20/4 = 5, capped to 3
+    }
+}
+
+@Suite("spectrumBarRects corner radius")
+struct SpectrumBarCornerRadiusTests {
+    private let size = CGSize(width: 100, height: 200)
+
+    private func firstBar(barWidth: Double, cornerRadius: Double?) -> SpectrumBar? {
+        spectrumBarRects(
+            in: size, heights: [1], barWidth: barWidth, barSpacing: 2, placement: .bottom,
+            cornerRadius: cornerRadius
+        ).first
+    }
+
+    @Test("nil corner radius derives the cava-style default from the thickness")
+    func nilDerivesAuto() {
+        #expect(firstBar(barWidth: 8, cornerRadius: nil)?.cornerRadius == autoCornerRadius(thickness: 8))
+    }
+
+    @Test("an explicit corner radius overrides the default")
+    func explicitOverrides() {
+        #expect(firstBar(barWidth: 8, cornerRadius: 1)?.cornerRadius == 1)
+    }
+
+    @Test("zero corner radius yields square corners")
+    func zeroIsSquare() {
+        #expect(firstBar(barWidth: 8, cornerRadius: 0)?.cornerRadius == 0)
+    }
+
+    @Test("a corner radius past half the thickness is capped there")
+    func cappedAtHalfThickness() {
+        #expect(firstBar(barWidth: 6, cornerRadius: 100)?.cornerRadius == 3)  // thickness / 2
+    }
+
+    @Test("a negative corner radius is floored at 0")
+    func negativeFloored() {
+        #expect(firstBar(barWidth: 8, cornerRadius: -5)?.cornerRadius == 0)
+    }
+}
