@@ -43,9 +43,9 @@ final class ProcessTapEngine {
         else { return nil }
 
         // The tap's stream format is valid the moment the tap exists and
-        // reflects the mixdown's rate (the output device's); fall back to
-        // 48 kHz only if the format is unreadable.
-        self.sampleRate = Self.streamSampleRate(of: tapID) ?? 48000
+        // reflects the mixdown's rate (the output device's); the pure
+        // `resolvedTapSampleRate` falls back to 48 kHz when it is unreadable.
+        self.sampleRate = resolvedTapSampleRate(from: Self.liveTapFormat(of: tapID))
 
         // A tap only produces audio when read through an aggregate device that
         // lists it. The aggregate is private and auto-starts the tap.
@@ -151,10 +151,13 @@ final class ProcessTapEngine {
         return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
     }
 
-    /// The sample rate of the tap's output stream format in Hz, or `nil` when
-    /// the format is unreadable. `kAudioTapPropertyFormat` is valid once the
-    /// tap exists and carries the mixdown's rate (the output device's rate).
-    private static func streamSampleRate(of tapID: AudioObjectID) -> Double? {
+    /// The tap's output stream format read live via `kAudioTapPropertyFormat`,
+    /// or `nil` when the read fails (e.g. an unknown object id). The single
+    /// irreducible CoreAudio syscall is isolated here so the rate-resolution
+    /// decision around it (`resolvedTapSampleRate`) stays a pure, tested free
+    /// function. Internal rather than private so a test can drive the read
+    /// against a bogus id and exercise the failure path.
+    static func liveTapFormat(of tapID: AudioObjectID) -> AudioStreamBasicDescription? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioTapPropertyFormat,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -164,7 +167,7 @@ final class ProcessTapEngine {
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
         guard AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &format) == noErr
         else { return nil }
-        return tapSampleRate(from: format)
+        return format
     }
 
     /// The owning pid of a CoreAudio process object, or `nil` when unreadable.
@@ -248,6 +251,14 @@ func deinterleaveStereo(
 /// CoreAudio call site makes it unit-testable without a live tap object.
 func tapSampleRate(from format: AudioStreamBasicDescription) -> Double? {
     format.mSampleRate > 0 ? format.mSampleRate : nil
+}
+
+/// The sample rate to run the analyzer at, given the tap's freshly-read format:
+/// its positive rate, or the 48 kHz mixdown default when the format is missing
+/// (unreadable read) or malformed (non-positive rate). Pure — the live read is
+/// the caller's job — so the fallback decision is tested without a live tap.
+func resolvedTapSampleRate(from format: AudioStreamBasicDescription?) -> Double {
+    format.flatMap(tapSampleRate(from:)) ?? 48000
 }
 
 /// Whether `pid` equals `root` or has `root` among its ancestors, walking the

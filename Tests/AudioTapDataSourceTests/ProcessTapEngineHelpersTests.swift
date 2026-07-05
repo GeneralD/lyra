@@ -33,6 +33,44 @@ struct TapSampleRateTests {
     }
 }
 
+@Suite("resolvedTapSampleRate")
+struct ResolvedTapSampleRateTests {
+    private func format(rate: Double) -> AudioStreamBasicDescription {
+        var f = AudioStreamBasicDescription()
+        f.mSampleRate = rate
+        return f
+    }
+
+    @Test("a readable positive rate is used as-is")
+    func usesPositiveRate() {
+        #expect(resolvedTapSampleRate(from: format(rate: 44100)) == 44100)
+    }
+
+    @Test("an unreadable format falls back to the 48 kHz mixdown default")
+    func unreadableFallsBackTo48k() {
+        #expect(resolvedTapSampleRate(from: nil) == 48000)
+    }
+
+    @Test("a malformed (non-positive) rate falls back to 48 kHz")
+    func malformedFallsBackTo48k() {
+        #expect(resolvedTapSampleRate(from: format(rate: 0)) == 48000)
+        #expect(resolvedTapSampleRate(from: format(rate: -1)) == 48000)
+    }
+}
+
+@Suite("liveTapFormat")
+struct LiveTapFormatTests {
+    @Test("an unknown object id yields no format")
+    func unknownObjectYieldsNil() {
+        // `liveTapFormat` lives on the 14.4+ tap type; the CI runner satisfies
+        // this, so the read against a non-existent tap object actually runs,
+        // fails, and the helper reports nil — the caller then falls back to the
+        // 48 kHz mixdown default.
+        guard #available(macOS 14.4, *) else { return }
+        #expect(ProcessTapEngine.liveTapFormat(of: AudioObjectID(kAudioObjectUnknown)) == nil)
+    }
+}
+
 @Suite("deinterleaveStereo")
 struct DeinterleaveStereoTests {
     private func makeScratch(_ capacity: Int) -> UnsafeMutablePointer<Float> {
