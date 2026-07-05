@@ -218,6 +218,9 @@ final class ProcessTapEngine {
     }
 }
 
+@available(macOS 14.4, *)
+extension ProcessTapEngine: AudioTapEngine {}
+
 /// Real-time-safe deinterleave of `frameCount` interleaved frames into the two
 /// channel rings. The scratch (≥ 2×`scratchCapacity`) holds the left frames in
 /// its first half and the right in its second; a mono source (1 channel) feeds
