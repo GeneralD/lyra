@@ -684,6 +684,9 @@ struct SpectrumTomlDecodingTests {
         // The absolute clamp is unset by default (pure ratio).
         #expect(config.spectrum.minHeight == nil)
         #expect(config.spectrum.maxHeight == nil)
+        // Fully opaque by default; corner radius derives from bar_width.
+        #expect(config.spectrum.barOpacity.value == 1)
+        #expect(config.spectrum.barCornerRadius == nil)
     }
 
     @Test("min_height / max_height decode into the optional clamp")
@@ -719,6 +722,8 @@ struct SpectrumTomlDecodingTests {
             fft_size = 2048
             placement = "underlay"
             height_ratio = 0.5
+            bar_opacity = 0.5
+            bar_corner_radius = 4
             """)
         #expect(config.spectrum.enabled == true)
         #expect(config.spectrum.stereo == false)
@@ -736,6 +741,8 @@ struct SpectrumTomlDecodingTests {
         #expect(config.spectrum.fftSize.value == 2048)
         #expect(config.spectrum.placement == .underlay)
         #expect(config.spectrum.heightRatio.value == 0.5)
+        #expect(config.spectrum.barOpacity.value == 0.5)
+        #expect(config.spectrum.barCornerRadius?.value == 4)
     }
 
     @Test("gradient bar_color decodes from an array")

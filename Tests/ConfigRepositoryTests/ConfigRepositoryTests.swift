@@ -89,6 +89,46 @@ struct ConfigRepositoryTests {
             }
         }
 
+        @Test("clamps spectrum bar_opacity above 1 and floors a negative bar_corner_radius")
+        func spectrumOpacityAndCornerClamped() {
+            let config = makeAppConfig(spectrum: ["bar_opacity": 1.5, "bar_corner_radius": -4])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.spectrum.barOpacity == 1)
+                #expect(style.spectrum.barCornerRadius == 0)
+            }
+        }
+
+        @Test("floors a negative spectrum bar_opacity to 0")
+        func spectrumOpacityFloored() {
+            let config = makeAppConfig(spectrum: ["bar_opacity": -0.5])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                #expect(ConfigRepositoryImpl().loadAppStyle().spectrum.barOpacity == 0)
+            }
+        }
+
+        @Test("passes valid spectrum bar_opacity and bar_corner_radius straight through")
+        func spectrumOpacityAndCornerPassthrough() {
+            let config = makeAppConfig(spectrum: ["bar_opacity": 0.4, "bar_corner_radius": 8])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.spectrum.barOpacity == 0.4)
+                #expect(style.spectrum.barCornerRadius == 8)
+            }
+        }
+
         @Test("passes wallpaper scale through")
         func wallpaperScale() {
             let config = makeAppConfig(wallpaper: ["location": "bg.mp4", "scale": 1.3])
