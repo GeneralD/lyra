@@ -284,3 +284,33 @@ struct SpectrumBarCornerRadiusTests {
         #expect(firstBar(barWidth: 8, cornerRadius: -5)?.cornerRadius == 0)
     }
 }
+
+@Suite("barsPath")
+struct SpectrumBarsPathTests {
+    @Test("no bars yield an empty path")
+    func emptyBars() {
+        #expect(barsPath([]).isEmpty)
+    }
+
+    @Test("one bar yields a non-empty path bounded by its rect")
+    func singleBar() {
+        let rect = CGRect(x: 5, y: 10, width: 10, height: 20)
+        let path = barsPath([SpectrumBar(rect: rect, cornerRadius: 0, level: 1)])
+        #expect(!path.isEmpty)
+        #expect(path.boundingRect == rect)
+    }
+
+    @Test("the path spans the union of every bar rect")
+    func spansUnion() {
+        let bars = [
+            SpectrumBar(rect: CGRect(x: 0, y: 0, width: 10, height: 20), cornerRadius: 0, level: 1),
+            SpectrumBar(rect: CGRect(x: 40, y: 10, width: 10, height: 30), cornerRadius: 0, level: 1),
+        ]
+        let bounds = barsPath(bars).boundingRect
+        // Union of (0,0,10,20) and (40,10,10,30) → (0,0,50,40).
+        #expect(abs(bounds.minX - 0) < 0.01)
+        #expect(abs(bounds.minY - 0) < 0.01)
+        #expect(abs(bounds.maxX - 50) < 0.01)
+        #expect(abs(bounds.maxY - 40) < 0.01)
+    }
+}
