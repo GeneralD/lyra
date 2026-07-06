@@ -97,6 +97,25 @@ struct FrequencyAnalyzerTests {
         #expect(bars.contains { $0 > 0 })
     }
 
+    @Test("a fixed frequency maps to the same bar across sample rates (#299)")
+    func frequencyIsSampleRateInvariant() throws {
+        // The bands are Hz→bin mapped with the sample rate, so a physical
+        // frequency lands on the same bar whether the tap runs at 44.1 or
+        // 48 kHz — the point of propagating the real rate. The bin carrying a
+        // given Hz differs per rate (bin = f·N/rate), so the two runs feed
+        // different FFT bins yet must peak on the same bar.
+        func peakBar(sampleRate: Double, hz: Double) throws -> Int {
+            let bin = Int((hz * Double(Self.fftSize) / sampleRate).rounded())
+            let analyzer = FrequencyAnalyzer(
+                fftSize: Self.fftSize, barCount: Self.barCount, minDb: -80, maxDb: 0,
+                linearScale: false, minFrequency: Self.minFreq, maxFrequency: Self.maxFreq,
+                sampleRate: sampleRate)
+            let bars = analyzer.magnitudes(of: sine(bin: bin))
+            return try #require(bars.indices.max { bars[$0] < bars[$1] })
+        }
+        #expect(try peakBar(sampleRate: 48000, hz: 2000) == peakBar(sampleRate: 44100, hz: 2000))
+    }
+
     @Test("the linear scale keeps amplitude ratios — the db scale flattens them")
     func linearScaleKeepsRatios() throws {
         // Halving the amplitude must halve the bar: this ratio preservation

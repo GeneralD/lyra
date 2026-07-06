@@ -44,16 +44,22 @@ struct SpectrumPresenterTests {
         }
     }
 
-    /// Ticks once per poll step until `condition` holds or the deadline hits —
-    /// the capturing flag arrives async via the main queue, so fixed sleeps
-    /// would be flaky on CI.
+    /// Ticks the presenter until `condition` holds, bounded by a generous
+    /// tick *budget* rather than a wall clock. The capturing flag arrives
+    /// async on the main queue, so a 1 ms sleep between ticks drains it — but
+    /// termination counts ticks, not seconds, so a loaded CI running the
+    /// physics slower simply takes longer instead of tripping a deadline and
+    /// flaking. The fall from cava's ~4× integrator overshoot down past full
+    /// height needs many frames, and that descent is exactly the case a
+    /// wall-clock deadline used to lose under load.
     @MainActor
-    private static func tickUntil(_ presenter: SpectrumPresenter, _ condition: () -> Bool) async {
-        let deadline = ContinuousClock.now + .seconds(3)
-        presenter.tick()
-        while !condition(), ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
+    private static func tickUntil(
+        _ presenter: SpectrumPresenter, within maxTicks: Int = 4000, _ condition: () -> Bool
+    ) async {
+        for _ in 0..<maxTicks {
             presenter.tick()
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(1))
         }
     }
 
