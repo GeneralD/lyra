@@ -4,9 +4,9 @@ import QuartzCore
 @MainActor
 public final class DisplayLinkDriver {
     private var displayLink: CADisplayLink?
-    private let onFrame: @MainActor () -> Void
+    private let onFrame: @MainActor (_ frameInterval: Double) -> Void
 
-    public init(onFrame: @escaping @MainActor () -> Void) {
+    public init(onFrame: @escaping @MainActor (_ frameInterval: Double) -> Void) {
         self.onFrame = onFrame
     }
 
@@ -22,6 +22,9 @@ public final class DisplayLinkDriver {
     }
 
     @objc func tick(_ link: CADisplayLink) {
-        onFrame()
+        // `targetTimestamp - timestamp` is the display's expected seconds per
+        // frame for this cycle — stable per display mode and correct for
+        // 120 Hz ProMotion / variable refresh, unlike a hardcoded 1/60 (#299).
+        onFrame(link.targetTimestamp - link.timestamp)
     }
 }

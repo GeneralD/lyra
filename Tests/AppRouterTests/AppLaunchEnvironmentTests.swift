@@ -75,6 +75,15 @@ private struct FixtureWallpaperInteractor: WallpaperInteractor {
     }
 }
 
+private struct FixtureSpectrumInteractor: SpectrumInteractor {
+    let spectrumStyle: SpectrumStyle
+
+    var isCapturing: AnyPublisher<Bool, Never> { Empty().eraseToAnyPublisher() }
+    func start() {}
+    func stop() {}
+    func magnitudes(barCount: Int) -> [Float] { Array(repeating: 0.5, count: barCount) }
+}
+
 private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
     let title: String
     let artist: String
@@ -282,7 +291,7 @@ struct AppRouterTests {
 
     @Test("default frame scheduler factory creates DisplayLinkDriver")
     func defaultFactoryCreatesDisplayLinkDriver() {
-        let frameScheduler = AppRouter.defaultFrameSchedulerFactory(onFrame: {})
+        let frameScheduler = AppRouter.defaultFrameSchedulerFactory(onFrame: { _ in })
 
         #expect(frameScheduler is DisplayLinkDriver)
     }
@@ -474,6 +483,40 @@ struct AppRouterTests {
         #expect(driver.startCallCount == 1)
     }
 
+    @Test("frame scheduler tick runs through spectrum-enabled callback branch (#304)")
+    func frameTickWithSpectrumEnabled() async {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = MutableScreenInteractor(
+                    layout: ScreenLayout(
+                        windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        screenOrigin: .zero))
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = FixtureWallpaperInteractor(wallpaperState: .init(items: []))
+                dependencies.spectrumInteractor = FixtureSpectrumInteractor(spectrumStyle: SpectrumStyle(enabled: true))
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+        router.start()
+        defer { router.stop() }
+
+        let spectrumPresenter: SpectrumPresenter? = value(named: "spectrumPresenter", from: router)
+        #expect(spectrumPresenter?.isEnabled == true)
+
+        driver.fire(frameInterval: 1.0 / 60.0)
+
+        #expect(driver.startCallCount == 1)
+    }
+
     final class SpyWindow: OverlayWindow {
         var showCallCount = 0
         var closeCallCount = 0
@@ -506,7 +549,7 @@ struct AppRouterTests {
         var startCallCount = 0
         var stopCallCount = 0
         var startedWindow: AnyObject?
-        var onFrame: (@MainActor () -> Void)?
+        var onFrame: (@MainActor (Double) -> Void)?
 
         func start(in window: any OverlayWindow) {
             startCallCount += 1
@@ -517,8 +560,8 @@ struct AppRouterTests {
             stopCallCount += 1
         }
 
-        func fire() {
-            onFrame?()
+        func fire(frameInterval: Double = 1.0 / 60.0) {
+            onFrame?(frameInterval)
         }
     }
 
