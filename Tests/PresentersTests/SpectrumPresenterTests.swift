@@ -329,4 +329,39 @@ struct SpectrumPresenterTests {
             #expect(abs(at240 - at60) < 1e-4)
         }
     }
+
+    @Test("the leaky integral's sustained steady state is wall-clock invariant across frame rates (#306 review)")
+    func sustainedInputIsWallClockInvariantAcrossFramerates() {
+        // Codex flagged that only the decay term was frame-rate-scaled: a
+        // SUSTAINED `value` added every frame with no scaling would compound
+        // to a higher steady state at higher fps even though the decay-only
+        // case was already exact (120 Hz would reach ~8x a single frame's
+        // height instead of cava's documented ~4x at reduction 0.77).
+        // Verifies the fix against the exact formula `stepped()` uses —
+        // `mem*integralDecay + value*integralInputScale` — bypassing the
+        // presenter (and its autosens, whose own frame-rate compensation is
+        // a separate, pre-existing approximation unrelated to this fix) so
+        // the integral itself is isolated.
+        func settledHeight(fps: Double, seconds: Double, reduction: Float, value: Float) -> Float {
+            let constants = spectrumFramerateConstants(frameInterval: 1 / fps)
+            let decay = pow(reduction, constants.integralExponent)
+            let inputScale = (1 - decay) / (1 - reduction)
+            return (0..<Int(fps * seconds)).reduce(Float(0)) { mem, _ in
+                mem * decay + value * inputScale
+            }
+        }
+        let reduction: Float = 0.77
+        for seconds in [0.5, 1.0, 2.0] {
+            let at60 = settledHeight(fps: 60, seconds: seconds, reduction: reduction, value: 0.2)
+            let at120 = settledHeight(fps: 120, seconds: seconds, reduction: reduction, value: 0.2)
+            let at240 = settledHeight(fps: 240, seconds: seconds, reduction: reduction, value: 0.2)
+            #expect(abs(at120 - at60) < 1e-4)
+            #expect(abs(at240 - at60) < 1e-4)
+        }
+        // The steady state itself should match cava's documented ~4.3x a
+        // single frame's height at reduction 0.77 (1 / (1 - 0.77) ≈ 4.35),
+        // not the ~8x a 120 Hz run would reach without input scaling.
+        let steadyState = settledHeight(fps: 120, seconds: 3, reduction: reduction, value: 0.2)
+        #expect(abs(steadyState - 0.2 / (1 - reduction)) < 1e-3)
+    }
 }

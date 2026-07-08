@@ -92,11 +92,20 @@ public final class SpectrumPresenter: ObservableObject {
         let barCount = targetBarCount(style: style)
         let fresh = capturing ? interactor.magnitudes(barCount: barCount) : []
         let reduction = min(max(Float(style.noiseReduction), 0), 0.97)
+        // Precomputed once per tick, not per bar (up to `maxBars` bars share
+        // the same `reduction`/`constants`): `pow` is a real per-frame cost,
+        // and `integralInputScale` makes a SUSTAINED signal's steady state
+        // wall-clock invariant too, not just the decay-only case (#306 PR
+        // review) — a constant `value` added every tick would otherwise
+        // overshoot more at higher fps even with the decay term already exact.
+        let integralDecay = pow(reduction, constants.integralExponent)
+        let integralInputScale = (1 - integralDecay) / (1 - reduction)
         motion = (0..<barCount).map { bar in
             stepped(
                 bar < motion.count ? motion[bar] : BarMotion(),
                 target: (bar < fresh.count ? fresh[bar] : 0) * sens,
-                reduction: reduction, constants: constants
+                reduction: reduction, constants: constants,
+                integralDecay: integralDecay, integralInputScale: integralInputScale
             )
         }
         adjustSens(silence: fresh.allSatisfy { $0 == 0 }, framerateMod: constants.framerateMod)
@@ -147,7 +156,8 @@ public final class SpectrumPresenter: ObservableObject {
     /// while one-frame spikes stay small — the beat-favoring dynamics the
     /// autosens then pins to full scale.
     private func stepped(
-        _ m: BarMotion, target: Float, reduction: Float, constants: SpectrumFramerateConstants
+        _ m: BarMotion, target: Float, reduction: Float, constants: SpectrumFramerateConstants,
+        integralDecay: Float, integralInputScale: Float
     ) -> BarMotion {
         let (value, peak, fall): (Float, Float, Float) =
             target < m.prev && reduction > 0.1
@@ -157,7 +167,7 @@ public final class SpectrumPresenter: ObservableObject {
             )
             : (target, target, 0)
         return BarMotion(
-            mem: m.mem * pow(reduction, constants.integralExponent) + value,
+            mem: m.mem * integralDecay + value * integralInputScale,
             prev: value, peak: peak, fall: fall)
     }
 
@@ -194,15 +204,18 @@ public final class SpectrumPresenter: ObservableObject {
 struct SpectrumFramerateConstants: Equatable {
     /// cava's `framerate_mod` = 66 / fps (1.1 at 60 fps, 0.55 at 120 fps).
     let framerateMod: Float
-    /// Leaky-integral per-frame decay exponent, `60 / fps` — applied as
-    /// `reduction ^ integralExponent` so the integral's per-second decay
-    /// (`reduction ^ integralExponent ^ fps == reduction ^ 60`) is exactly
-    /// invariant across frame rates, unlike cava's own `framerate_mod ^ 0.1`
-    /// approximation (#306: that curve under-compensates, so the integral —
-    /// lyra's own addition on top of cavacore — drained visibly faster in
-    /// wall-clock time at 120 Hz than at 60 Hz). 60, not 66, is the
-    /// reference so `fps == 60` reduces to exponent `1` — the exact
-    /// pre-#299 hardcoded-60fps decay (`reduction`, no divisor at all).
+    /// Leaky-integral per-frame decay exponent, `60 / fps` — applied once
+    /// per frame as `reduction ^ integralExponent`. Compounding that
+    /// per-frame factor over one second (`fps` frames) reproduces
+    /// `reduction ^ 60` exactly, i.e. `(reduction ^ integralExponent) ^ fps
+    /// == reduction ^ 60` for any fps — so the per-second decay rate is
+    /// exactly invariant across frame rates, unlike cava's own
+    /// `framerate_mod ^ 0.1` approximation (#306: that curve
+    /// under-compensates, so the integral — lyra's own addition on top of
+    /// cavacore — drained visibly faster in wall-clock time at 120 Hz than
+    /// at 60 Hz). 60, not 66, is the reference so `fps == 60` reduces to
+    /// exponent `1` — the exact pre-#299 hardcoded-60fps decay (`reduction`,
+    /// no divisor at all).
     let integralExponent: Float
     /// Gravity-release scale, `framerateMod ^ 2.5 * 2`.
     let gravityScale: Float
