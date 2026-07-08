@@ -224,7 +224,10 @@ struct SpectrumPresenterTests {
         // The old code hardcoded framerate_mod = 66/60; the default frame
         // preserves it exactly, so 60 Hz behavior is unchanged.
         #expect(abs(c.framerateMod - Float(66.0 / 60.0)) < 1e-5)
-        #expect(abs(c.integralMod - pow(c.framerateMod, 0.1)) < 1e-6)
+        // integralExponent = 60/fps reduces to exactly 1 at 60 fps, so the
+        // leaky integral decays by exactly `reduction` per frame — the
+        // pre-#299 hardcoded-60fps behavior, with no divisor at all (#306).
+        #expect(abs(c.integralExponent - 1) < 1e-6)
         #expect(abs(c.gravityScale - pow(c.framerateMod, 2.5) * 2) < 1e-6)
     }
 
@@ -289,5 +292,41 @@ struct SpectrumPresenterTests {
         let at120 = await framesToClear(frameInterval: 1.0 / 120)
         let at60 = await framesToClear(frameInterval: 1.0 / 60)
         #expect(at120 > at60)
+    }
+
+    @MainActor
+    @Test("the leaky integral decays to the same height in wall-clock time across frame rates (#306)")
+    func decayIsWallClockInvariantAcrossFramerates() async {
+        // integralExponent = 60/fps makes the leaky integral's per-second decay
+        // exactly invariant: reduction^(60/fps) compounded fps times per second
+        // always equals reduction^60, regardless of fps. Heights sampled at the
+        // same wall-clock instant should therefore agree across frame rates —
+        // unlike the pre-#306 `framerateMod^0.1` approximation, which drained
+        // the integral visibly faster at 120 Hz than at 60 Hz.
+        func fallenHeight(frameInterval: Double, frameCount: Int) async -> Float {
+            let style = SpectrumStyle(
+                enabled: true, stereo: false, barWidth: 1, barSpacing: 0, noiseReduction: 0.77)
+            let interactor = FakeSpectrumInteractor(style: style)
+            interactor.magnitudesValue = [1]
+            let presenter = Self.presenter(with: interactor)
+            presenter.start()
+            presenter.updateBarTrackLength(1)
+            interactor.capturingSubject.send(true)
+            await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+            interactor.capturingSubject.send(false)
+            await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 1 }
+
+            for _ in 0..<frameCount {
+                presenter.tick(frameInterval: frameInterval)
+            }
+            return presenter.binHeights().first ?? 0
+        }
+        for seconds in [0.1, 0.2, 0.3] {
+            let at60 = await fallenHeight(frameInterval: 1.0 / 60, frameCount: Int(60 * seconds))
+            let at120 = await fallenHeight(frameInterval: 1.0 / 120, frameCount: Int(120 * seconds))
+            let at240 = await fallenHeight(frameInterval: 1.0 / 240, frameCount: Int(240 * seconds))
+            #expect(abs(at120 - at60) < 1e-4)
+            #expect(abs(at240 - at60) < 1e-4)
+        }
     }
 }

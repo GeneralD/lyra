@@ -157,7 +157,7 @@ public final class SpectrumPresenter: ObservableObject {
             )
             : (target, target, 0)
         return BarMotion(
-            mem: m.mem * reduction / constants.integralMod + value,
+            mem: m.mem * pow(reduction, constants.integralExponent) + value,
             prev: value, peak: peak, fall: fall)
     }
 
@@ -194,8 +194,16 @@ public final class SpectrumPresenter: ObservableObject {
 struct SpectrumFramerateConstants: Equatable {
     /// cava's `framerate_mod` = 66 / fps (1.1 at 60 fps, 0.55 at 120 fps).
     let framerateMod: Float
-    /// Leaky-integral decay divisor, `framerateMod ^ 0.1`.
-    let integralMod: Float
+    /// Leaky-integral per-frame decay exponent, `60 / fps` — applied as
+    /// `reduction ^ integralExponent` so the integral's per-second decay
+    /// (`reduction ^ integralExponent ^ fps == reduction ^ 60`) is exactly
+    /// invariant across frame rates, unlike cava's own `framerate_mod ^ 0.1`
+    /// approximation (#306: that curve under-compensates, so the integral —
+    /// lyra's own addition on top of cavacore — drained visibly faster in
+    /// wall-clock time at 120 Hz than at 60 Hz). 60, not 66, is the
+    /// reference so `fps == 60` reduces to exponent `1` — the exact
+    /// pre-#299 hardcoded-60fps decay (`reduction`, no divisor at all).
+    let integralExponent: Float
     /// Gravity-release scale, `framerateMod ^ 2.5 * 2`.
     let gravityScale: Float
 }
@@ -210,5 +218,5 @@ func spectrumFramerateConstants(frameInterval: Double) -> SpectrumFramerateConst
     let fps = min(max(hz, 24), 240)
     let mod = Float(66 / fps)
     return SpectrumFramerateConstants(
-        framerateMod: mod, integralMod: pow(mod, 0.1), gravityScale: pow(mod, 2.5) * 2)
+        framerateMod: mod, integralExponent: Float(60 / fps), gravityScale: pow(mod, 2.5) * 2)
 }
