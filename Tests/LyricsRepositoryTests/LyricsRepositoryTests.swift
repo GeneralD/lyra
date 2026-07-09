@@ -333,6 +333,28 @@ struct LyricsRepositoryTests {
             }
         }
 
+        @Test("cache read checks every candidate, not just candidates.first — a hit on a later candidate is found without touching any DataSource")
+        func cacheReadChecksAllCandidates() async {
+            let cached = LyricsResult(
+                trackName: "Real Title", artistName: "Real Artist",
+                syncedLyrics: "[00:01.00] Cached under second candidate"
+            )
+
+            await withDependencies {
+                $0.lyricsCache = SingleKeyLyricsCache(
+                    matchTitle: "Real Title", matchArtist: "Real Artist", result: cached)
+                $0.lyricsDataSource = FailingLyricsDataSource()
+                $0.customScriptLyricsDataSource = FailingLyricsDataSource()
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                #expect(result?.syncedLyrics == "[00:01.00] Cached under second candidate")
+            }
+        }
+
         @Test("no cache write occurs when Tier A/B/C all fail")
         func noCacheWriteWhenAllTiersFail() async {
             let spy = KeyCapturingLyricsCache()
@@ -406,4 +428,26 @@ private struct QueryMatchingSearchDataSource: LyricsDataSource {
 
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { getResult }
     func search(query: String) async -> [LyricsResult]? { resultsByQuery[query] }
+}
+
+private struct SingleKeyLyricsCache: LyricsDataStore {
+    let matchTitle: String
+    let matchArtist: String
+    let result: LyricsResult
+
+    func read(title: String, artist: String) async -> LyricsResult? {
+        title == matchTitle && artist == matchArtist ? result : nil
+    }
+    func write(title: String, artist: String, result: LyricsResult) async throws {}
+}
+
+private struct FailingLyricsDataSource: LyricsDataSource {
+    func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        Issue.record("DataSource.get must not be called when a cache entry already satisfies the request")
+        return nil
+    }
+    func search(query: String) async -> [LyricsResult]? {
+        Issue.record("DataSource.search must not be called when a cache entry already satisfies the request")
+        return nil
+    }
 }

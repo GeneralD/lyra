@@ -34,10 +34,12 @@ extension LyricsRepositoryImpl: LyricsRepository {
     }
 
     public func fetchLyrics(candidates: [Track]) async -> LyricsResult? {
-        guard let first = candidates.first else { return nil }
+        guard !candidates.isEmpty else { return nil }
 
-        if let cached = await cache.read(title: first.title, artist: first.artist) {
-            return cached
+        for candidate in candidates {
+            if let cached = await cache.read(title: candidate.title, artist: candidate.artist) {
+                return cached
+            }
         }
 
         if let result = await tierAExactMatch(candidates: candidates) {
