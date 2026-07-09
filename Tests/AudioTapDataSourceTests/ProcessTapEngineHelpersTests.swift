@@ -58,30 +58,30 @@ struct ResolvedTapSampleRateTests {
     }
 }
 
-@Suite("processTapDescription")
+@Suite("CATapDescription(privateStereoMixdownOf:)")
 struct ProcessTapDescriptionTests {
     @Test("the descriptor is private and never mutes the tapped process")
     func isPrivateAndUnmuted() {
         guard #available(macOS 14.4, *) else { return }
-        let description = ProcessTapEngine.processTapDescription(processObjects: [42])
+        let description = CATapDescription(privateStereoMixdownOf: [42])
         #expect(description.isPrivate)
         #expect(description.muteBehavior == .unmuted)
     }
 }
 
-@Suite("aggregateDeviceDescription")
+@Suite("CATapDescription.aggregateDeviceDescription")
 struct AggregateDeviceDescriptionTests {
-    @Test("lists the given tap UID as its sole, drift-compensated sub-tap")
-    func listsTapUIDAsSubTap() {
+    @Test("lists itself as the sole, drift-compensated sub-tap")
+    func listsItselfAsSubTap() {
         guard #available(macOS 14.4, *) else { return }
-        let tapUID = "tap-uid-under-test"
-        let descriptor = ProcessTapEngine.aggregateDeviceDescription(tapUID: tapUID)
+        let description = CATapDescription(privateStereoMixdownOf: [42])
+        let descriptor = description.aggregateDeviceDescription
         #expect(descriptor[kAudioAggregateDeviceNameKey] as? String == "lyra-spectrum-tap")
         #expect(descriptor[kAudioAggregateDeviceIsPrivateKey] as? Bool == true)
         #expect(descriptor[kAudioAggregateDeviceTapAutoStartKey] as? Bool == true)
         let tapList = descriptor[kAudioAggregateDeviceTapListKey] as? [[String: Any]]
         #expect(tapList?.count == 1)
-        #expect(tapList?.first?[kAudioSubTapUIDKey] as? String == tapUID)
+        #expect(tapList?.first?[kAudioSubTapUIDKey] as? String == description.uuid.uuidString)
         #expect(tapList?.first?[kAudioSubTapDriftCompensationKey] as? Bool == true)
     }
 }
@@ -90,22 +90,40 @@ struct AggregateDeviceDescriptionTests {
 struct ParentPidTests {
     @Test("the current process's parent pid is readable and positive")
     func readsRealParentPid() {
-        guard #available(macOS 14.4, *) else { return }
-        let parent = ProcessTapEngine.parentPid(of: getpid())
+        let parent = parentPid(of: getpid())
         #expect((parent ?? 0) > 0)
     }
 }
 
-@Suite("liveTapFormat")
+@Suite("LifecycleState.liveTapFormat")
 struct LiveTapFormatTests {
-    @Test("an unknown object id yields no format")
-    func unknownObjectYieldsNil() {
-        // `liveTapFormat` lives on the 14.4+ tap type; the CI runner satisfies
-        // this, so the read against a non-existent tap object actually runs,
-        // fails, and the helper reports nil — the caller then falls back to the
-        // 48 kHz mixdown default.
+    @Test("no tap yet (.empty) yields no format")
+    func emptyYieldsNil() {
         guard #available(macOS 14.4, *) else { return }
-        #expect(ProcessTapEngine.liveTapFormat(of: AudioObjectID(kAudioObjectUnknown)) == nil)
+        #expect(LifecycleState.empty.liveTapFormat == nil)
+    }
+
+    @Test("an unknown tap object id yields no format")
+    func unknownObjectYieldsNil() {
+        // The CI runner satisfies macOS 14.4+, so the read against a
+        // non-existent tap object actually runs, fails, and the property
+        // reports nil — the caller then falls back to the 48 kHz mixdown
+        // default.
+        guard #available(macOS 14.4, *) else { return }
+        let state = LifecycleState.tapped(AudioObjectID(kAudioObjectUnknown))
+        #expect(state.liveTapFormat == nil)
+    }
+}
+
+@Suite("LifecycleState.rolledBack")
+struct LifecycleStateRolledBackTests {
+    @Test("rolling back .empty destroys nothing and stays .empty")
+    func emptyStaysEmpty() {
+        guard #available(macOS 14.4, *) else { return }
+        guard case .empty = LifecycleState.empty.rolledBack() else {
+            Issue.record("expected .empty")
+            return
+        }
     }
 }
 
@@ -190,31 +208,29 @@ struct DeinterleaveStereoTests {
     }
 }
 
-@Suite("deinterleave")
-struct DeinterleaveTests {
+@Suite("UnsafeMutableAudioBufferListPointer.deinterleavedStereo")
+struct DeinterleavedStereoWrapperTests {
     @Test("unwraps a hand-built AudioBufferList and delegates to deinterleaveStereo")
     func delegatesToDeinterleaveStereo() {
-        guard #available(macOS 14.4, *) else { return }
-        // Matches ProcessTapEngine's private `scratchCapacity` — the wrapper
-        // hardcodes it, so the scratch must be sized to match regardless of
-        // how few frames this test actually exercises.
-        let scratchCapacity = 4096
-        let scratch = UnsafeMutablePointer<Float>.allocate(capacity: scratchCapacity * 2)
-        scratch.initialize(repeating: 0, count: scratchCapacity * 2)
+        let cap = 8
+        let scratch = UnsafeMutablePointer<Float>.allocate(capacity: cap * 2)
+        scratch.initialize(repeating: 0, count: cap * 2)
         defer { scratch.deallocate() }
-        let left = SampleRingBuffer(capacity: 8)
-        let right = SampleRingBuffer(capacity: 8)
+        let left = SampleRingBuffer(capacity: cap)
+        let right = SampleRingBuffer(capacity: cap)
 
         var samples: [Float] = [1, -1, 2, -2]  // interleaved L R L R
         samples.withUnsafeMutableBufferPointer { buf in
-            let bufferList = AudioBufferList(
+            var bufferList = AudioBufferList(
                 mNumberBuffers: 1,
                 mBuffers: AudioBuffer(
                     mNumberChannels: 2,
                     mDataByteSize: UInt32(buf.count * MemoryLayout<Float>.size),
                     mData: UnsafeMutableRawPointer(buf.baseAddress)))
-            withUnsafePointer(to: bufferList) { ptr in
-                ProcessTapEngine.deinterleave(ptr, into: scratch, leftRing: left, rightRing: right)
+            withUnsafeMutablePointer(to: &bufferList) { ptr in
+                UnsafeMutableAudioBufferListPointer(ptr)
+                    .deinterleavedStereo(
+                        into: scratch, scratchCapacity: cap, leftRing: left, rightRing: right)
             }
         }
         #expect(left.latest(2) == [1, 2])

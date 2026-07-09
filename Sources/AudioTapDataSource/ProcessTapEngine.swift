@@ -21,42 +21,45 @@ final class ProcessTapEngine {
 
     private let leftRing: SampleRingBuffer
     private let rightRing: SampleRingBuffer
-    private var tapID = AudioObjectID(kAudioObjectUnknown)
-    private var aggregateID = AudioObjectID(kAudioObjectUnknown)
-    private var ioProcID: AudioDeviceIOProcID?
-    private var stopped = false
+    /// What CoreAudio objects this engine currently owns. A single value
+    /// instead of three independently-mutable handles (as it was before #310)
+    /// so a combination that should never occur — e.g. an aggregate device
+    /// without its tap — is unrepresentable rather than merely avoided by
+    /// `init?`'s call order.
+    private var state: LifecycleState = .empty
+    private var scratch: UnsafeMutablePointer<Float>?
 
     init?(pid: Int, leftRing: SampleRingBuffer, rightRing: SampleRingBuffer) {
         self.leftRing = leftRing
         self.rightRing = rightRing
 
-        let processObjects = Self.processObjects(forSubtreeOf: pid)
+        let processObjects = processObjects(forSubtreeOf: pid)
         guard !processObjects.isEmpty else { return nil }
 
-        // The tap is private (invisible in Audio MIDI Setup) and keeps the
-        // tapped app audible — the analyzer observes, never mutes.
-        let description = Self.processTapDescription(processObjects: processObjects)
+        let description = CATapDescription(privateStereoMixdownOf: processObjects)
+        var tapID = AudioObjectID(kAudioObjectUnknown)
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr,
             tapID != AudioObjectID(kAudioObjectUnknown)
         else { return nil }
+        state = .tapped(tapID)
 
         // The tap's stream format is valid the moment the tap exists and
         // reflects the mixdown's rate (the output device's); the pure
         // `resolvedTapSampleRate` falls back to 48 kHz when it is unreadable.
-        self.sampleRate = resolvedTapSampleRate(from: Self.liveTapFormat(of: tapID))
+        self.sampleRate = resolvedTapSampleRate(from: state.liveTapFormat)
 
         // A tap only produces audio when read through an aggregate device that
         // lists it. The aggregate is private and auto-starts the tap.
-        let aggregateDescription = Self.aggregateDeviceDescription(
-            tapUID: description.uuid.uuidString)
+        var aggregateID = AudioObjectID(kAudioObjectUnknown)
         guard
-            AudioHardwareCreateAggregateDevice(aggregateDescription as CFDictionary, &aggregateID)
-                == noErr,
+            AudioHardwareCreateAggregateDevice(
+                description.aggregateDeviceDescription as CFDictionary, &aggregateID) == noErr,
             aggregateID != AudioObjectID(kAudioObjectUnknown)
         else {
-            rollBack()
+            state = state.rolledBack()
             return nil
         }
+        state = .aggregated(tapID, aggregateID)
 
         // The IO block runs on a real-time audio thread: no allocation, no
         // locks, no Swift concurrency. It deinterleaves the first buffer into
@@ -69,19 +72,21 @@ final class ProcessTapEngine {
         self.scratch = scratch
         let capturedLeft = leftRing
         let capturedRight = rightRing
+        var ioProcID: AudioDeviceIOProcID?
         let status = AudioDeviceCreateIOProcIDWithBlock(&ioProcID, aggregateID, nil) {
             _, inInputData, _, _, _ in
-            Self.deinterleave(
-                inInputData, into: scratch, leftRing: capturedLeft, rightRing: capturedRight)
+            UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))
+                .deinterleavedStereo(
+                    into: scratch, scratchCapacity: Self.scratchCapacity,
+                    leftRing: capturedLeft, rightRing: capturedRight)
         }
         guard status == noErr, let ioProcID, AudioDeviceStart(aggregateID, ioProcID) == noErr
         else {
-            rollBack()
+            state = state.rolledBack()
             return nil
         }
+        state = .running(tapID, aggregateID, ioProcID)
     }
-
-    private var scratch: UnsafeMutablePointer<Float>?
 
     deinit {
         stop()
@@ -89,93 +94,41 @@ final class ProcessTapEngine {
     }
 
     /// Tears the capture chain down in reverse order of construction.
-    /// Idempotent — safe to call from both the owner and deinit.
+    /// Idempotent — safe to call from both the owner and deinit, since rolling
+    /// back an already-`.empty` state destroys nothing.
     func stop() {
-        guard !stopped else { return }
-        stopped = true
-        rollBack()
+        state = state.rolledBack()
     }
+}
 
-    private func rollBack() {
-        if let ioProcID, aggregateID != AudioObjectID(kAudioObjectUnknown) {
-            AudioDeviceStop(aggregateID, ioProcID)
-            AudioDeviceDestroyIOProcID(aggregateID, ioProcID)
+@available(macOS 14.4, *)
+extension ProcessTapEngine: AudioTapEngine {}
+
+/// What CoreAudio objects a `ProcessTapEngine` currently owns, in the order
+/// construction acquires them. Each case carries exactly the handles that
+/// exist at that point, so a state combination that should never occur (an
+/// aggregate device without its tap, an IOProc without its aggregate) has no
+/// representation to begin with.
+@available(macOS 14.4, *)
+enum LifecycleState {
+    case empty
+    case tapped(AudioObjectID)
+    case aggregated(AudioObjectID, AudioObjectID)
+    case running(AudioObjectID, AudioObjectID, AudioDeviceIOProcID)
+
+    private var tapID: AudioObjectID? {
+        switch self {
+        case .empty: return nil
+        case .tapped(let tapID), .aggregated(let tapID, _), .running(let tapID, _, _):
+            return tapID
         }
-        ioProcID = nil
-        if aggregateID != AudioObjectID(kAudioObjectUnknown) {
-            AudioHardwareDestroyAggregateDevice(aggregateID)
-            aggregateID = AudioObjectID(kAudioObjectUnknown)
-        }
-        if tapID != AudioObjectID(kAudioObjectUnknown) {
-            AudioHardwareDestroyProcessTap(tapID)
-            tapID = AudioObjectID(kAudioObjectUnknown)
-        }
-    }
-
-    /// CoreAudio process objects for `pid` and every descendant process.
-    /// The now-playing pid alone is not enough: browsers (Chromium-based)
-    /// emit audio from a helper subprocess, so a tap scoped to the main pid
-    /// captures silence. Covering the whole subtree taps whichever family
-    /// member actually owns the audio stream.
-    private static func processObjects(forSubtreeOf pid: Int) -> [AudioObjectID] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyProcessObjectList,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var size: UInt32 = 0
-        guard
-            AudioObjectGetPropertyDataSize(
-                AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr
-        else { return [] }
-        var objects = [AudioObjectID](
-            repeating: AudioObjectID(kAudioObjectUnknown),
-            count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard
-            AudioObjectGetPropertyData(
-                AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &objects)
-                == noErr
-        else { return [] }
-        return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
-    }
-
-    /// Builds the private, unmuted stereo-mixdown tap descriptor for
-    /// `processObjects`. Construction is plain data assembly — no hardware is
-    /// touched — kept internal (not private) so a test can assert the
-    /// resulting descriptor's properties directly.
-    static func processTapDescription(processObjects: [AudioObjectID]) -> CATapDescription {
-        let description = CATapDescription(stereoMixdownOfProcesses: processObjects)
-        description.isPrivate = true
-        description.muteBehavior = .unmuted
-        return description
-    }
-
-    /// Builds the private, auto-starting aggregate-device descriptor listing
-    /// `tapUID` as its sole sub-tap. Pure dictionary construction — no
-    /// hardware touched — kept internal (not private) so a test can assert
-    /// its contents.
-    static func aggregateDeviceDescription(tapUID: String) -> [String: Any] {
-        [
-            kAudioAggregateDeviceNameKey: "lyra-spectrum-tap",
-            kAudioAggregateDeviceUIDKey: UUID().uuidString,
-            kAudioAggregateDeviceIsPrivateKey: true,
-            kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceTapListKey: [
-                [
-                    kAudioSubTapUIDKey: tapUID,
-                    kAudioSubTapDriftCompensationKey: true,
-                ]
-            ],
-        ]
     }
 
     /// The tap's output stream format read live via `kAudioTapPropertyFormat`,
-    /// or `nil` when the read fails (e.g. an unknown object id). The single
-    /// irreducible CoreAudio syscall is isolated here so the rate-resolution
-    /// decision around it (`resolvedTapSampleRate`) stays a pure, tested free
-    /// function. Internal rather than private so a test can drive the read
-    /// against a bogus id and exercise the failure path.
-    static func liveTapFormat(of tapID: AudioObjectID) -> AudioStreamBasicDescription? {
+    /// or `nil` when this state holds no tap yet, or when the read fails
+    /// (e.g. an unknown object id).
+    var liveTapFormat: AudioStreamBasicDescription? {
+        guard let tapID else { return nil }
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioTapPropertyFormat,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -188,52 +141,136 @@ final class ProcessTapEngine {
         return format
     }
 
-    /// The owning pid of a CoreAudio process object, or `nil` when unreadable.
-    private static func processPid(of object: AudioObjectID) -> pid_t? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioProcessPropertyPID,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var pid: pid_t = -1
-        var size = UInt32(MemoryLayout<pid_t>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &pid) == noErr,
-            pid > 0
-        else { return nil }
-        return pid
+    /// Tears down whatever this state currently holds, in reverse order of
+    /// acquisition, and returns the resulting `.empty` state. Destroys
+    /// nothing when already `.empty`, which is what makes repeated rollback
+    /// safe without a separate "already stopped" flag.
+    func rolledBack() -> LifecycleState {
+        switch self {
+        case .empty:
+            break
+        case .tapped(let tapID):
+            AudioHardwareDestroyProcessTap(tapID)
+        case .aggregated(let tapID, let aggregateID):
+            AudioHardwareDestroyAggregateDevice(aggregateID)
+            AudioHardwareDestroyProcessTap(tapID)
+        case .running(let tapID, let aggregateID, let ioProcID):
+            AudioDeviceStop(aggregateID, ioProcID)
+            AudioDeviceDestroyIOProcID(aggregateID, ioProcID)
+            AudioHardwareDestroyAggregateDevice(aggregateID)
+            AudioHardwareDestroyProcessTap(tapID)
+        }
+        return .empty
+    }
+}
+
+/// Builds a private, unmuted stereo-mixdown tap descriptor and the aggregate
+/// device that would host it. Both are plain data construction — no hardware
+/// is touched — so they live as `CATapDescription` extensions rather than
+/// free-floating static helpers.
+@available(macOS 14.4, *)
+extension CATapDescription {
+    /// The tap is private (invisible in Audio MIDI Setup) and keeps the
+    /// tapped app audible — the analyzer observes, never mutes.
+    convenience init(privateStereoMixdownOf processObjects: [AudioObjectID]) {
+        self.init(stereoMixdownOfProcesses: processObjects)
+        isPrivate = true
+        muteBehavior = .unmuted
     }
 
-    /// Whether `pid` is in `root`'s process subtree. The subtree walk is the
-    /// pure `isInProcessSubtree`; only the ppid lookup is the OS boundary.
-    private static func isInSubtree(_ pid: pid_t?, root: pid_t) -> Bool {
-        isInProcessSubtree(pid, root: root, parent: parentPid)
+    /// The private, auto-starting aggregate-device descriptor that would host
+    /// this tap as its sole, drift-compensated sub-tap.
+    var aggregateDeviceDescription: [String: Any] {
+        [
+            kAudioAggregateDeviceNameKey: "lyra-spectrum-tap",
+            kAudioAggregateDeviceUIDKey: UUID().uuidString,
+            kAudioAggregateDeviceIsPrivateKey: true,
+            kAudioAggregateDeviceTapAutoStartKey: true,
+            kAudioAggregateDeviceTapListKey: [
+                [
+                    kAudioSubTapUIDKey: uuid.uuidString,
+                    kAudioSubTapDriftCompensationKey: true,
+                ]
+            ],
+        ]
     }
+}
 
-    /// The parent pid of `pid` via `proc_pidinfo`, or `nil` when unreadable.
-    /// Internal rather than private so a test can drive it against a real pid
-    /// (e.g. `getpid()`) without going through the process-object subtree walk.
-    static func parentPid(of pid: pid_t) -> pid_t? {
-        var info = proc_bsdinfo()
-        let read = proc_pidinfo(
-            pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
-        guard read == Int32(MemoryLayout<proc_bsdinfo>.size) else { return nil }
-        return pid_t(info.pbi_ppid)
-    }
+/// CoreAudio process objects for `pid` and every descendant process. The
+/// now-playing pid alone is not enough: browsers (Chromium-based) emit audio
+/// from a helper subprocess, so a tap scoped to the main pid captures
+/// silence. Covering the whole subtree taps whichever family member actually
+/// owns the audio stream.
+@available(macOS 14.4, *)
+private func processObjects(forSubtreeOf pid: Int) -> [AudioObjectID] {
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyProcessObjectList,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var size: UInt32 = 0
+    guard
+        AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr
+    else { return [] }
+    var objects = [AudioObjectID](
+        repeating: AudioObjectID(kAudioObjectUnknown),
+        count: Int(size) / MemoryLayout<AudioObjectID>.size)
+    guard
+        AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &objects)
+            == noErr
+    else { return [] }
+    return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
+}
 
-    /// Unwraps the first (interleaved) CoreAudio input buffer and hands its
-    /// frames to the pure `deinterleaveStereo`. The AudioBufferList decoding is
-    /// the boundary; the frame math and ring writes are the testable core.
-    /// Internal rather than private so a test can drive it with a hand-built
-    /// `AudioBufferList` and verify correct delegation.
-    static func deinterleave(
-        _ inputData: UnsafePointer<AudioBufferList>,
+/// The owning pid of a CoreAudio process object, or `nil` when unreadable.
+@available(macOS 14.4, *)
+private func processPid(of object: AudioObjectID) -> pid_t? {
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioProcessPropertyPID,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var pid: pid_t = -1
+    var size = UInt32(MemoryLayout<pid_t>.size)
+    guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &pid) == noErr,
+        pid > 0
+    else { return nil }
+    return pid
+}
+
+/// Whether `pid` is in `root`'s process subtree. The subtree walk is the pure
+/// `isInProcessSubtree`; only the ppid lookup is the OS boundary.
+@available(macOS 14.4, *)
+private func isInSubtree(_ pid: pid_t?, root: pid_t) -> Bool {
+    isInProcessSubtree(pid, root: root, parent: parentPid)
+}
+
+/// The parent pid of `pid` via `proc_pidinfo`, or `nil` when unreadable.
+/// Needs no audio hardware or TCC permission, so it's callable against any
+/// real pid (e.g. `getpid()`) without going through the process-object
+/// subtree walk.
+func parentPid(of pid: pid_t) -> pid_t? {
+    var info = proc_bsdinfo()
+    let read = proc_pidinfo(
+        pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
+    guard read == Int32(MemoryLayout<proc_bsdinfo>.size) else { return nil }
+    return pid_t(info.pbi_ppid)
+}
+
+/// Unwraps the first (interleaved) CoreAudio input buffer and hands its
+/// frames to the pure `deinterleaveStereo`. The AudioBufferList decoding is
+/// the boundary; the frame math and ring writes are the testable core.
+extension UnsafeMutableAudioBufferListPointer {
+    func deinterleavedStereo(
         into scratch: UnsafeMutablePointer<Float>,
+        scratchCapacity: Int,
         leftRing: SampleRingBuffer,
         rightRing: SampleRingBuffer
     ) {
-        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
-        guard let first = buffers.first, let data = first.mData else { return }
-        let channels = max(Int(first.mNumberChannels), 1)
+        guard let first = first, let data = first.mData else { return }
+        let channels = Swift.max(Int(first.mNumberChannels), 1)
         let frameCount = Int(first.mDataByteSize) / MemoryLayout<Float>.size / channels
         deinterleaveStereo(
             samples: data.assumingMemoryBound(to: Float.self),
@@ -242,9 +279,6 @@ final class ProcessTapEngine {
             leftRing: leftRing, rightRing: rightRing)
     }
 }
-
-@available(macOS 14.4, *)
-extension ProcessTapEngine: AudioTapEngine {}
 
 /// Real-time-safe deinterleave of `frameCount` interleaved frames into the two
 /// channel rings. The scratch (≥ 2×`scratchCapacity`) holds the left frames in
