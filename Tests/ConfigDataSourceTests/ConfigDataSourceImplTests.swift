@@ -13,7 +13,7 @@ struct ConfigDataSourceImplConfigDirTests {
 
         let dataSource = ConfigDataSourceImpl(configHome: emptyXdgConfig.path)
 
-        #expect(!dataSource.configDir.isEmpty)
+        #expect(dataSource.configDir == Folder.home.path)
     }
 
     @Test("configDir matches the discovered config file's parent directory")
