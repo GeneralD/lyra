@@ -35,9 +35,7 @@ final class ProcessTapEngine {
 
         // The tap is private (invisible in Audio MIDI Setup) and keeps the
         // tapped app audible — the analyzer observes, never mutes.
-        let description = CATapDescription(stereoMixdownOfProcesses: processObjects)
-        description.isPrivate = true
-        description.muteBehavior = .unmuted
+        let description = Self.processTapDescription(processObjects: processObjects)
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr,
             tapID != AudioObjectID(kAudioObjectUnknown)
         else { return nil }
@@ -49,18 +47,8 @@ final class ProcessTapEngine {
 
         // A tap only produces audio when read through an aggregate device that
         // lists it. The aggregate is private and auto-starts the tap.
-        let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "lyra-spectrum-tap",
-            kAudioAggregateDeviceUIDKey: UUID().uuidString,
-            kAudioAggregateDeviceIsPrivateKey: true,
-            kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceTapListKey: [
-                [
-                    kAudioSubTapUIDKey: description.uuid.uuidString,
-                    kAudioSubTapDriftCompensationKey: true,
-                ]
-            ],
-        ]
+        let aggregateDescription = Self.aggregateDeviceDescription(
+            tapUID: description.uuid.uuidString)
         guard
             AudioHardwareCreateAggregateDevice(aggregateDescription as CFDictionary, &aggregateID)
                 == noErr,
@@ -151,6 +139,36 @@ final class ProcessTapEngine {
         return objects.filter { isInSubtree(processPid(of: $0), root: pid_t(pid)) }
     }
 
+    /// Builds the private, unmuted stereo-mixdown tap descriptor for
+    /// `processObjects`. Construction is plain data assembly — no hardware is
+    /// touched — kept internal (not private) so a test can assert the
+    /// resulting descriptor's properties directly.
+    static func processTapDescription(processObjects: [AudioObjectID]) -> CATapDescription {
+        let description = CATapDescription(stereoMixdownOfProcesses: processObjects)
+        description.isPrivate = true
+        description.muteBehavior = .unmuted
+        return description
+    }
+
+    /// Builds the private, auto-starting aggregate-device descriptor listing
+    /// `tapUID` as its sole sub-tap. Pure dictionary construction — no
+    /// hardware touched — kept internal (not private) so a test can assert
+    /// its contents.
+    static func aggregateDeviceDescription(tapUID: String) -> [String: Any] {
+        [
+            kAudioAggregateDeviceNameKey: "lyra-spectrum-tap",
+            kAudioAggregateDeviceUIDKey: UUID().uuidString,
+            kAudioAggregateDeviceIsPrivateKey: true,
+            kAudioAggregateDeviceTapAutoStartKey: true,
+            kAudioAggregateDeviceTapListKey: [
+                [
+                    kAudioSubTapUIDKey: tapUID,
+                    kAudioSubTapDriftCompensationKey: true,
+                ]
+            ],
+        ]
+    }
+
     /// The tap's output stream format read live via `kAudioTapPropertyFormat`,
     /// or `nil` when the read fails (e.g. an unknown object id). The single
     /// irreducible CoreAudio syscall is isolated here so the rate-resolution
@@ -192,7 +210,9 @@ final class ProcessTapEngine {
     }
 
     /// The parent pid of `pid` via `proc_pidinfo`, or `nil` when unreadable.
-    private static func parentPid(of pid: pid_t) -> pid_t? {
+    /// Internal rather than private so a test can drive it against a real pid
+    /// (e.g. `getpid()`) without going through the process-object subtree walk.
+    static func parentPid(of pid: pid_t) -> pid_t? {
         var info = proc_bsdinfo()
         let read = proc_pidinfo(
             pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
@@ -203,7 +223,9 @@ final class ProcessTapEngine {
     /// Unwraps the first (interleaved) CoreAudio input buffer and hands its
     /// frames to the pure `deinterleaveStereo`. The AudioBufferList decoding is
     /// the boundary; the frame math and ring writes are the testable core.
-    private static func deinterleave(
+    /// Internal rather than private so a test can drive it with a hand-built
+    /// `AudioBufferList` and verify correct delegation.
+    static func deinterleave(
         _ inputData: UnsafePointer<AudioBufferList>,
         into scratch: UnsafeMutablePointer<Float>,
         leftRing: SampleRingBuffer,

@@ -58,6 +58,44 @@ struct ResolvedTapSampleRateTests {
     }
 }
 
+@Suite("processTapDescription")
+struct ProcessTapDescriptionTests {
+    @Test("the descriptor is private and never mutes the tapped process")
+    func isPrivateAndUnmuted() {
+        guard #available(macOS 14.4, *) else { return }
+        let description = ProcessTapEngine.processTapDescription(processObjects: [42])
+        #expect(description.isPrivate)
+        #expect(description.muteBehavior == .unmuted)
+    }
+}
+
+@Suite("aggregateDeviceDescription")
+struct AggregateDeviceDescriptionTests {
+    @Test("lists the given tap UID as its sole, drift-compensated sub-tap")
+    func listsTapUIDAsSubTap() {
+        guard #available(macOS 14.4, *) else { return }
+        let tapUID = "tap-uid-under-test"
+        let descriptor = ProcessTapEngine.aggregateDeviceDescription(tapUID: tapUID)
+        #expect(descriptor[kAudioAggregateDeviceNameKey] as? String == "lyra-spectrum-tap")
+        #expect(descriptor[kAudioAggregateDeviceIsPrivateKey] as? Bool == true)
+        #expect(descriptor[kAudioAggregateDeviceTapAutoStartKey] as? Bool == true)
+        let tapList = descriptor[kAudioAggregateDeviceTapListKey] as? [[String: Any]]
+        #expect(tapList?.count == 1)
+        #expect(tapList?.first?[kAudioSubTapUIDKey] as? String == tapUID)
+        #expect(tapList?.first?[kAudioSubTapDriftCompensationKey] as? Bool == true)
+    }
+}
+
+@Suite("parentPid")
+struct ParentPidTests {
+    @Test("the current process's parent pid is readable and positive")
+    func readsRealParentPid() {
+        guard #available(macOS 14.4, *) else { return }
+        let parent = ProcessTapEngine.parentPid(of: getpid())
+        #expect((parent ?? 0) > 0)
+    }
+}
+
 @Suite("liveTapFormat")
 struct LiveTapFormatTests {
     @Test("an unknown object id yields no format")
@@ -149,6 +187,38 @@ struct DeinterleaveStereoTests {
                 into: scratch, scratchCapacity: cap, leftRing: left, rightRing: right)
         }
         #expect(left.latest(1).isEmpty)
+    }
+}
+
+@Suite("deinterleave")
+struct DeinterleaveTests {
+    @Test("unwraps a hand-built AudioBufferList and delegates to deinterleaveStereo")
+    func delegatesToDeinterleaveStereo() {
+        guard #available(macOS 14.4, *) else { return }
+        // Matches ProcessTapEngine's private `scratchCapacity` — the wrapper
+        // hardcodes it, so the scratch must be sized to match regardless of
+        // how few frames this test actually exercises.
+        let scratchCapacity = 4096
+        let scratch = UnsafeMutablePointer<Float>.allocate(capacity: scratchCapacity * 2)
+        scratch.initialize(repeating: 0, count: scratchCapacity * 2)
+        defer { scratch.deallocate() }
+        let left = SampleRingBuffer(capacity: 8)
+        let right = SampleRingBuffer(capacity: 8)
+
+        var samples: [Float] = [1, -1, 2, -2]  // interleaved L R L R
+        samples.withUnsafeMutableBufferPointer { buf in
+            let bufferList = AudioBufferList(
+                mNumberBuffers: 1,
+                mBuffers: AudioBuffer(
+                    mNumberChannels: 2,
+                    mDataByteSize: UInt32(buf.count * MemoryLayout<Float>.size),
+                    mData: UnsafeMutableRawPointer(buf.baseAddress)))
+            withUnsafePointer(to: bufferList) { ptr in
+                ProcessTapEngine.deinterleave(ptr, into: scratch, leftRing: left, rightRing: right)
+            }
+        }
+        #expect(left.latest(2) == [1, 2])
+        #expect(right.latest(2) == [-1, -2])
     }
 }
 
