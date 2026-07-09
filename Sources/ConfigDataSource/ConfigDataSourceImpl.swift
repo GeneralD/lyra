@@ -57,6 +57,10 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         findConfigFile()?.path
     }
 
+    public var configDir: String {
+        findConfigFile()?.parent?.path ?? Folder.home.path
+    }
+
     public func tryDecode() throws -> String {
         guard let file = findConfigFile(),
             let content = try? file.readAsString()
