@@ -31,8 +31,7 @@ extension TrackHandlerImpl: TrackHandler {
         }
 
         return await infoWithLyrics(
-            nowPlaying: nowPlaying, track: track,
-            title: title, artist: artist, candidates: candidates
+            nowPlaying: nowPlaying, track: track, candidates: candidates
         )
     }
 }
@@ -49,8 +48,7 @@ extension TrackHandlerImpl {
     }
 
     private func infoWithLyrics(
-        nowPlaying: NowPlaying, track: Track,
-        title: String, artist: String, candidates: [Track]
+        nowPlaying: NowPlaying, track: Track, candidates: [Track]
     ) async -> NowPlayingInfo {
         @Dependency(\.playbackUseCase) var playbackUseCase
         @Dependency(\.lyricsUseCase) var lyricsUseCase
@@ -65,8 +63,8 @@ extension TrackHandlerImpl {
 
         let elapsed = playbackUseCase.elapsedTime(for: nowPlaying)
         return .init(
-            title: result.trackName ?? title,
-            artist: result.artistName ?? artist,
+            title: result.trackName ?? track.title,
+            artist: result.artistName ?? track.artist,
             album: result.albumName,
             duration: nowPlaying.duration,
             elapsedTime: elapsed,
