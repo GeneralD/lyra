@@ -6,6 +6,12 @@ import Dependencies
 /// `ProcessGateway`'s OS-boundary role: injecting a fake makes
 /// `ProcessTapEngine`'s call order, guard branching, and rollback logic
 /// testable without live audio hardware.
+///
+/// Lives here rather than in `Domain` because, unlike `ProcessGateway`
+/// (`Int32`/`String` only), this protocol's signature is inherently
+/// CoreAudio-shaped (`CATapDescription`, `AudioStreamBasicDescription`,
+/// `AudioDeviceIOBlock`) — keeping it in `AudioTapDataSource` avoids leaking
+/// a platform framework into the platform-agnostic Domain contract layer.
 public protocol AudioTapGateway: Sendable {
     /// Every CoreAudio process object currently on the system, unfiltered.
     /// The now-playing pid's subtree is matched against this list.

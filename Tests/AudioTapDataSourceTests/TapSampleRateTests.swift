@@ -5,12 +5,6 @@ import Testing
 
 @Suite("tapSampleRate")
 struct TapSampleRateTests {
-    private func format(rate: Double) -> AudioStreamBasicDescription {
-        var f = AudioStreamBasicDescription()
-        f.mSampleRate = rate
-        return f
-    }
-
     @Test("positive rate is returned as-is — 44.1 kHz")
     func rate44100() {
         #expect(tapSampleRate(from: format(rate: 44100)) == 44100)
@@ -34,12 +28,6 @@ struct TapSampleRateTests {
 
 @Suite("resolvedTapSampleRate")
 struct ResolvedTapSampleRateTests {
-    private func format(rate: Double) -> AudioStreamBasicDescription {
-        var f = AudioStreamBasicDescription()
-        f.mSampleRate = rate
-        return f
-    }
-
     @Test("a readable positive rate is used as-is")
     func usesPositiveRate() {
         #expect(resolvedTapSampleRate(from: format(rate: 44100)) == 44100)
@@ -55,4 +43,10 @@ struct ResolvedTapSampleRateTests {
         #expect(resolvedTapSampleRate(from: format(rate: 0)) == 48000)
         #expect(resolvedTapSampleRate(from: format(rate: -1)) == 48000)
     }
+}
+
+private func format(rate: Double) -> AudioStreamBasicDescription {
+    var f = AudioStreamBasicDescription()
+    f.mSampleRate = rate
+    return f
 }

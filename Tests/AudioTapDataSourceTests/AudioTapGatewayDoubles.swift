@@ -1,5 +1,6 @@
 import CoreAudio
-import Domain
+
+@testable import AudioTapDataSource
 
 /// No-capture C function pointer matching `AudioDeviceIOProc`'s signature —
 /// stands in for a real registered IOProc handle in test doubles.
