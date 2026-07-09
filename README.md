@@ -253,6 +253,99 @@ Optional LLM-based song title and artist extraction via any OpenAI-compatible AP
 >
 > Included files are merged into the main config. Values in the main file take precedence over included ones.
 
+### `[lyrics]` — Tier C custom lyrics fallback (optional)
+
+When LRCLIB has no exact or fuzzy match for a track, lyra can shell out to a
+user-defined script as a last resort before giving up and showing the raw
+(unprocessed) title/artist:
+
+```toml
+[lyrics]
+fallback_command = ["/usr/bin/python3", "/Users/you/.config/lyra/lyrics-fallback.py"]
+timeout_ms = 5000
+```
+
+- `fallback_command` — an argv array (not a shell string). The first element
+  must be an absolute path to the executable; lyra does not search `$PATH` for
+  it (a `launchd`-run daemon has a minimal `PATH`, so relying on `$PATH`
+  resolution would silently fail in production). If omitted, Tier C is
+  skipped entirely.
+- `timeout_ms` — how long lyra waits for the script before killing it and
+  treating that candidate as a miss. Defaults to `5000`.
+
+lyra invokes the script once per metadata candidate (raw title/artist, plus
+any AI/MusicBrainz/regex-resolved guesses), appending `<title> <artist>` as
+the final two arguments, and sets two read-only environment variables:
+
+| Variable | Meaning |
+|---|---|
+| `LYRA_CONFIG_DIR` | The directory lyra actually loaded its config from. Setting this variable yourself has no effect on where lyra looks for its config — it is informational only. |
+| `LYRA_CACHE_DIR` | The directory lyra uses for its own cache (`~/.cache/lyra` by default). Also informational only. |
+
+The script must print a single line of JSON to stdout:
+
+```json
+{"track_name": "...", "artist_name": "...", "plain_lyrics": "..."}
+```
+
+lyra treats any of the following as "no match for this candidate" and moves
+on to the next one: a non-zero exit code, unparseable JSON on stdout, or a
+missing/empty `plain_lyrics` field. Whether your script signals "not found"
+via a non-zero exit or an empty `plain_lyrics` is up to you — lyra handles
+both identically.
+
+#### Example: utamap.com scraper
+
+This is a minimal example that scrapes [utamap.com](https://utamap.com) for
+Japanese lyrics. It is not shipped with lyra — save it yourself and point
+`fallback_command` at it:
+
+```python
+#!/usr/bin/env python3
+import sys
+import json
+import urllib.request
+import urllib.parse
+import re
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(1)
+    title, artist = sys.argv[-2], sys.argv[-1]
+
+    query = urllib.parse.quote(f"{title} {artist}")
+    search_url = f"https://www.utamap.com/showkasi.php?surl={query}"
+
+    try:
+        with urllib.request.urlopen(search_url, timeout=4) as response:
+            html = response.read().decode("utf-8", errors="ignore")
+    except Exception:
+        sys.exit(1)
+
+    match = re.search(r'<div id="kasi">(.*?)</div>', html, re.DOTALL)
+    if not match:
+        sys.exit(1)
+
+    lyrics = re.sub(r"<br\s*/?>", "\n", match.group(1))
+    lyrics = re.sub(r"<[^>]+>", "", lyrics).strip()
+
+    if not lyrics:
+        sys.exit(1)
+
+    print(json.dumps({
+        "track_name": title,
+        "artist_name": artist,
+        "plain_lyrics": lyrics,
+    }))
+
+if __name__ == "__main__":
+    main()
+```
+
+This example is illustrative only — utamap.com's actual HTML structure may
+differ; inspect the page and adjust the scraping regex accordingly. lyra
+ships no HTML-parsing code of its own for this site or any other.
+
 ### Screen selection
 
 | Value | Behavior |
