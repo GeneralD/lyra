@@ -103,16 +103,24 @@ extension CustomScriptLyricsDataSourceImpl {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            let buffer = ScriptProcessBuffer()
+            let group = DispatchGroup()
+            let hasResumed = OSAllocatedUnfairLock(initialState: false)
+
+            // Registered before `run()` so there is no race with an already-exited
+            // process (Foundation only guarantees delivery when the handler is set
+            // ahead of termination). Paired with `group.leave()` here rather than a
+            // post-hoc `waitUntilExit()`, which has been empirically observed to hang
+            // indefinitely after repeated short-lived invocations (#308 review).
+            group.enter()
+            process.terminationHandler = { _ in group.leave() }
+
             do {
                 try process.run()
             } catch {
                 continuation.resume(throwing: error)
                 return
             }
-
-            let buffer = ScriptProcessBuffer()
-            let group = DispatchGroup()
-            let hasResumed = OSAllocatedUnfairLock(initialState: false)
 
             group.enter()
             DispatchQueue.global().async {
@@ -146,7 +154,9 @@ extension CustomScriptLyricsDataSourceImpl {
                 }
                 guard shouldResume else { return }
                 timeoutWorkItem.cancel()
-                process.waitUntilExit()
+                // All three members (stdout drain, stderr drain, terminationHandler)
+                // have completed, so terminationStatus is already valid to read —
+                // no blocking waitUntilExit() call needed on the success path.
                 continuation.resume(
                     returning: (process.terminationStatus, buffer.stdoutTrimmed, buffer.stderrTrimmed))
             }
