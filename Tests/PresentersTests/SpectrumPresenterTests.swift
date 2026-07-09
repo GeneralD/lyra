@@ -224,7 +224,10 @@ struct SpectrumPresenterTests {
         // The old code hardcoded framerate_mod = 66/60; the default frame
         // preserves it exactly, so 60 Hz behavior is unchanged.
         #expect(abs(c.framerateMod - Float(66.0 / 60.0)) < 1e-5)
-        #expect(abs(c.integralMod - pow(c.framerateMod, 0.1)) < 1e-6)
+        // integralExponent = 60/fps reduces to exactly 1 at 60 fps, so the
+        // leaky integral decays by exactly `reduction` per frame — the
+        // pre-#299 hardcoded-60fps behavior, with no divisor at all (#306).
+        #expect(abs(c.integralExponent - 1) < 1e-6)
         #expect(abs(c.gravityScale - pow(c.framerateMod, 2.5) * 2) < 1e-6)
     }
 
@@ -289,5 +292,76 @@ struct SpectrumPresenterTests {
         let at120 = await framesToClear(frameInterval: 1.0 / 120)
         let at60 = await framesToClear(frameInterval: 1.0 / 60)
         #expect(at120 > at60)
+    }
+
+    @MainActor
+    @Test("the leaky integral decays to the same height in wall-clock time across frame rates (#306)")
+    func decayIsWallClockInvariantAcrossFramerates() async {
+        // integralExponent = 60/fps makes the leaky integral's per-second decay
+        // exactly invariant: reduction^(60/fps) compounded fps times per second
+        // always equals reduction^60, regardless of fps. Heights sampled at the
+        // same wall-clock instant should therefore agree across frame rates —
+        // unlike the pre-#306 `framerateMod^0.1` approximation, which drained
+        // the integral visibly faster at 120 Hz than at 60 Hz.
+        func fallenHeight(frameInterval: Double, frameCount: Int) async -> Float {
+            let style = SpectrumStyle(
+                enabled: true, stereo: false, barWidth: 1, barSpacing: 0, noiseReduction: 0.77)
+            let interactor = FakeSpectrumInteractor(style: style)
+            interactor.magnitudesValue = [1]
+            let presenter = Self.presenter(with: interactor)
+            presenter.start()
+            presenter.updateBarTrackLength(1)
+            interactor.capturingSubject.send(true)
+            await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+            interactor.capturingSubject.send(false)
+            await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 1 }
+
+            for _ in 0..<frameCount {
+                presenter.tick(frameInterval: frameInterval)
+            }
+            return presenter.binHeights().first ?? 0
+        }
+        for seconds in [0.1, 0.2, 0.3] {
+            let at60 = await fallenHeight(frameInterval: 1.0 / 60, frameCount: Int(60 * seconds))
+            let at120 = await fallenHeight(frameInterval: 1.0 / 120, frameCount: Int(120 * seconds))
+            let at240 = await fallenHeight(frameInterval: 1.0 / 240, frameCount: Int(240 * seconds))
+            #expect(abs(at120 - at60) < 1e-4)
+            #expect(abs(at240 - at60) < 1e-4)
+        }
+    }
+
+    @Test("the leaky integral's sustained steady state is wall-clock invariant across frame rates (#306 review)")
+    func sustainedInputIsWallClockInvariantAcrossFramerates() {
+        // Codex flagged that only the decay term was frame-rate-scaled: a
+        // SUSTAINED `value` added every frame with no scaling would compound
+        // to a higher steady state at higher fps even though the decay-only
+        // case was already exact (120 Hz would reach ~8x a single frame's
+        // height instead of cava's documented ~4x at reduction 0.77).
+        // Verifies the fix against the exact formula `stepped()` uses —
+        // `mem*integralDecay + value*integralInputScale` — bypassing the
+        // presenter (and its autosens, whose own frame-rate compensation is
+        // a separate, pre-existing approximation unrelated to this fix) so
+        // the integral itself is isolated.
+        func settledHeight(fps: Double, seconds: Double, reduction: Float, value: Float) -> Float {
+            let constants = spectrumFramerateConstants(frameInterval: 1 / fps)
+            let decay = pow(reduction, constants.integralExponent)
+            let inputScale = (1 - decay) / (1 - reduction)
+            return (0..<Int(fps * seconds)).reduce(Float(0)) { mem, _ in
+                mem * decay + value * inputScale
+            }
+        }
+        let reduction: Float = 0.77
+        for seconds in [0.5, 1.0, 2.0] {
+            let at60 = settledHeight(fps: 60, seconds: seconds, reduction: reduction, value: 0.2)
+            let at120 = settledHeight(fps: 120, seconds: seconds, reduction: reduction, value: 0.2)
+            let at240 = settledHeight(fps: 240, seconds: seconds, reduction: reduction, value: 0.2)
+            #expect(abs(at120 - at60) < 1e-4)
+            #expect(abs(at240 - at60) < 1e-4)
+        }
+        // The steady state itself should match cava's documented ~4.3x a
+        // single frame's height at reduction 0.77 (1 / (1 - 0.77) ≈ 4.35),
+        // not the ~8x a 120 Hz run would reach without input scaling.
+        let steadyState = settledHeight(fps: 120, seconds: 3, reduction: reduction, value: 0.2)
+        #expect(abs(steadyState - 0.2 / (1 - reduction)) < 1e-3)
     }
 }
