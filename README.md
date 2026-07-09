@@ -273,9 +273,10 @@ timeout_ms = 5000
 - `timeout_ms` — how long lyra waits for the script before killing it and
   treating that candidate as a miss. Defaults to `5000`.
 
-lyra invokes the script once per metadata candidate (raw title/artist, plus
-any AI/MusicBrainz/regex-resolved guesses), appending `<title> <artist>` as
-the final two arguments, and sets two read-only environment variables:
+lyra invokes the script once per metadata candidate that has a known artist
+(raw title/artist, plus any AI/MusicBrainz/regex-resolved guesses whose
+artist could be resolved), appending `<title> <artist>` as the final two
+arguments, and sets two read-only environment variables:
 
 | Variable | Meaning |
 |---|---|
@@ -293,6 +294,16 @@ on to the next one: a non-zero exit code, unparseable JSON on stdout, or a
 missing/empty `plain_lyrics` field. Whether your script signals "not found"
 via a non-zero exit or an empty `plain_lyrics` is up to you — lyra handles
 both identically.
+
+Even a syntactically valid response isn't accepted automatically: the
+returned `track_name` is run through the same match validator used for Tier
+B fuzzy search results, and must be at least 60% similar (Levenshtein-based)
+to the candidate title — otherwise the result is rejected as "no match" even
+though the script exited cleanly with non-empty lyrics. (The same validator
+also enforces a 5-second duration tolerance when both sides have a duration,
+but the script's JSON response has no `duration` field, so that half of the
+check never has grounds to reject a Tier C result today.) An accurate
+`track_name` therefore matters for more than display purposes.
 
 #### Example: utamap.com scraper
 
