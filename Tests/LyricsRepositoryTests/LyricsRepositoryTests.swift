@@ -241,6 +241,116 @@ struct LyricsRepositoryTests {
                 #expect(result?.artistName == "Real Artist")
             }
         }
+
+        @Test("Tier A cache write is keyed by the matched candidate, not candidates.first")
+        func cacheWriteKeyedByMatchedCandidateTierA() async {
+            let lrclibResult = LyricsResult(plainLyrics: "Lyrics body")
+            let spy = KeyCapturingLyricsCache()
+
+            await withDependencies {
+                $0.lyricsCache = spy
+                $0.lyricsDataSource = StubLyricsDataSource(
+                    getHandler: { _, artist, _ in
+                        artist == "Real Artist" ? lrclibResult : nil
+                    })
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                _ = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                let key = await spy.lastWriteKey
+                #expect(key?.title == "Real Title")
+                #expect(key?.artist == "Real Artist")
+            }
+        }
+
+        @Test("Tier B (search) validates title similarity and caches under the matched candidate")
+        func tierBValidatesAndCachesMatchedCandidate() async {
+            let validResult = LyricsResult(trackName: "Real Title", artistName: "Real Artist", syncedLyrics: "[00:01.00] Line")
+            let spy = KeyCapturingLyricsCache()
+
+            await withDependencies {
+                $0.lyricsCache = spy
+                $0.lyricsDataSource = QueryMatchingSearchDataSource(
+                    getResult: nil,
+                    resultsByQuery: ["Real Title Real Artist": [validResult]]
+                )
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                #expect(result?.syncedLyrics == "[00:01.00] Line")
+                let key = await spy.lastWriteKey
+                #expect(key?.title == "Real Title")
+                #expect(key?.artist == "Real Artist")
+            }
+        }
+
+        @Test("Tier B rejects a search result whose title is wildly different from the candidate")
+        func tierBRejectsMismatchedTitle() async {
+            let mismatchedResult = LyricsResult(trackName: "Completely Different Song", artistName: "Someone Else", plainLyrics: "wrong lyrics")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = QueryMatchingSearchDataSource(
+                    getResult: nil,
+                    resultsByQuery: ["My Title My Artist": [mismatchedResult]]
+                )
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "My Title", artist: "My Artist")
+                ])
+                #expect(result == nil, "a title-mismatched search result must not be accepted")
+            }
+        }
+
+        @Test("Tier C is tried after Tier A/B fail, and its result is cached under the matched candidate")
+        func tierCFallsBackAndCaches() async {
+            let scriptResult = LyricsResult(trackName: "Real Title", artistName: "Real Artist", plainLyrics: "script lyrics")
+            let spy = KeyCapturingLyricsCache()
+
+            await withDependencies {
+                $0.lyricsCache = spy
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(
+                    getHandler: { _, artist, _ in
+                        artist == "Real Artist" ? scriptResult : nil
+                    })
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                #expect(result?.plainLyrics == "script lyrics")
+                let key = await spy.lastWriteKey
+                #expect(key?.title == "Real Title")
+                #expect(key?.artist == "Real Artist")
+            }
+        }
+
+        @Test("no cache write occurs when Tier A/B/C all fail")
+        func noCacheWriteWhenAllTiersFail() async {
+            let spy = KeyCapturingLyricsCache()
+
+            await withDependencies {
+                $0.lyricsCache = spy
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Title", artist: "Artist")
+                ])
+                #expect(result == nil)
+                let key = await spy.lastWriteKey
+                #expect(key == nil)
+            }
+        }
     }
 }
 
@@ -280,4 +390,20 @@ private final class SpyLyricsDataSource: LyricsDataSource, @unchecked Sendable {
         searchQuery = query
         return searchResult
     }
+}
+
+private actor KeyCapturingLyricsCache: LyricsDataStore {
+    private(set) var lastWriteKey: (title: String, artist: String)?
+    func read(title: String, artist: String) async -> LyricsResult? { nil }
+    func write(title: String, artist: String, result: LyricsResult) async throws {
+        lastWriteKey = (title, artist)
+    }
+}
+
+private struct QueryMatchingSearchDataSource: LyricsDataSource {
+    var getResult: LyricsResult?
+    let resultsByQuery: [String: [LyricsResult]]
+
+    func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { getResult }
+    func search(query: String) async -> [LyricsResult]? { resultsByQuery[query] }
 }
