@@ -1,3 +1,4 @@
+import Dependencies
 import Entity
 import Testing
 
@@ -62,11 +63,18 @@ struct AudioTapDataSourceImplTests {
 
     @Test("startTap fails for a pid CoreAudio does not know")
     func unknownPidFails() async {
-        let dataSource = AudioTapDataSourceImpl()
-        // A pid far beyond pid_max never has a CoreAudio process object, so
-        // the translation step fails before any tap (or TCC prompt) is created.
-        #expect(await dataSource.startTap(pid: 99_999_999) == false)
-        #expect(dataSource.latestSamples(count: 1024) == StereoSamples())
+        // No process object matches this pid's subtree (#310's
+        // StubAudioTapGateway defaults to an empty list), so the translation
+        // step fails before any tap (or TCC prompt) is created — the same
+        // outcome the real CoreAudio boundary gives for a pid far beyond
+        // pid_max.
+        await withDependencies {
+            $0.audioTapGateway = StubAudioTapGateway()
+        } operation: {
+            let dataSource = AudioTapDataSourceImpl()
+            #expect(await dataSource.startTap(pid: 99_999_999) == false)
+            #expect(dataSource.latestSamples(count: 1024) == StereoSamples())
+        }
     }
 
     @Test("stopTap without a tap is a safe no-op, repeatedly")

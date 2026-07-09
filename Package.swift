@@ -405,6 +405,7 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "Atomics", package: "swift-atomics"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
