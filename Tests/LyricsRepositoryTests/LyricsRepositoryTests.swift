@@ -377,6 +377,47 @@ struct LyricsRepositoryTests {
             }
         }
 
+        @Test("a cached entry whose track_name doesn't match the candidate is skipped — poisoned pre-validation rows can't short-circuit the tiers")
+        func poisonedCacheEntryIsSkipped() async {
+            let poisoned = LyricsResult(
+                trackName: "Completely Unrelated Song", artistName: "Someone Else",
+                syncedLyrics: "[00:01.00] Wrong lyrics")
+            let fresh = LyricsResult(
+                trackName: "Real Title", artistName: "Real Artist",
+                syncedLyrics: "[00:01.00] Right lyrics")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: poisoned)
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: fresh, searchResult: nil)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Real Title", artist: "Real Artist")
+                ])
+                #expect(result?.syncedLyrics == "[00:01.00] Right lyrics")
+            }
+        }
+
+        @Test("a validated result missing artist_name takes the matched candidate's artist, not a mixed raw fallback")
+        func missingArtistBackfilledFromCandidate() async {
+            let scriptResult = LyricsResult(
+                trackName: "Real Title", artistName: nil, plainLyrics: "La la la")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: scriptResult, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Real Title", artist: "Candidate Artist")
+                ])
+                #expect(result?.trackName == "Real Title")
+                #expect(result?.artistName == "Candidate Artist")
+            }
+        }
+
         @Test("no cache write occurs when Tier A/B/C all fail")
         func noCacheWriteWhenAllTiersFail() async {
             let spy = KeyCapturingLyricsCache()

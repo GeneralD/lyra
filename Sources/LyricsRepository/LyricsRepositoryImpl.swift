@@ -37,9 +37,13 @@ extension LyricsRepositoryImpl: LyricsRepository {
         guard !candidates.isEmpty else { return nil }
 
         for candidate in candidates {
-            if let cached = await cache.read(title: candidate.title, artist: candidate.artist) {
-                return cached
-            }
+            guard let cached = await cache.read(title: candidate.title, artist: candidate.artist) else { continue }
+            // Rows written before validation existed (pre-#308 upgrades) can hold lyrics
+            // that never matched this candidate — a poisoned entry that would otherwise
+            // short-circuit the validated tiers forever. Re-validate on read; an invalid
+            // entry is skipped so Tier A/B/C can overwrite it with a real match.
+            guard validator.isValid(candidate: candidate, result: cached) else { continue }
+            return cached
         }
 
         if let result = await tierAExactMatch(candidates: candidates) {
@@ -111,8 +115,13 @@ extension LyricsRepositoryImpl {
 // MARK: - Private
 
 extension LyricsRepositoryImpl {
+    // Fill title and artist independently: a Tier C script may return a valid
+    // track_name with no artist_name, and the display/cache identity should then take
+    // the matched candidate's artist rather than mixing in the raw fallback downstream.
     private func displayAdjusted(_ result: LyricsResult, candidate: Track) -> LyricsResult {
-        (result.trackName?.isEmpty ?? true) ? result.withDisplay(title: candidate.title, artist: candidate.artist) : result
+        let title = result.trackName.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.title
+        let artist = result.artistName.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.artist
+        return result.withDisplay(title: title, artist: artist)
     }
 
     private func store(_ result: LyricsResult, track: Track) async {
