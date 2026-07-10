@@ -15,7 +15,7 @@ import Testing
 /// CI runs this suite in its own swift-test process (see test.yml): on a
 /// headless runner the live HAL churn destabilizes AVPlayer-dependent
 /// suites sharing the process (empirically: WallpaperPresenter timeouts).
-@Suite("CoreAudioTapGateway")
+@Suite("CoreAudioTapGateway", .serialized)
 struct CoreAudioTapGatewayTests {
     private let gateway = CoreAudioTapGateway()
     private let invalid = AudioObjectID(kAudioObjectUnknown)
@@ -64,7 +64,7 @@ struct CoreAudioTapGatewayTests {
         // Creating a process tap can raise the System Audio Recording TCC
         // prompt on a developer machine, so this runs only on CI, where the
         // unattended denial exercises the error → nil guard path.
-        guard ProcessInfo.processInfo.environment["CI"] != nil else { return }
+        guard ProcessInfo.processInfo.environment["CI"] == "true" else { return }
         guard #available(macOS 14.4, *) else { return }
         guard
             let tapID = gateway.createProcessTap(
