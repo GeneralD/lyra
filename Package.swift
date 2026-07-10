@@ -515,6 +515,10 @@ let package = Package(
                 "Domain",
             ]
         ),
+        .testTarget(
+            name: "CoreAudioTapGatewayTests",
+            dependencies: ["CoreAudioTapGateway"]
+        ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
             name: "AsyncRunnableCommandTests",

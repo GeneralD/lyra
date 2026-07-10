@@ -48,14 +48,25 @@ jobs:
           PROFDATA="$BIN/codecov/default.profdata"
           COVERAGE_DIR="$RUNNER_TEMP/coverage"
           mkdir -p "$COVERAGE_DIR"
-          swift test --enable-code-coverage
+          # CoreAudioTapGatewayTests exercises the live CoreAudio HAL
+          # (aggregate-device churn, process-tap attempt). On a headless
+          # runner that destabilizes AVPlayer-dependent suites sharing the
+          # same process, so it runs in its own swift-test process (#315).
+          swift test --enable-code-coverage --skip CoreAudioTapGatewayTests
 
           if [[ ! -f "$PROFDATA" ]]; then
             echo "Coverage profile not found: $PROFDATA"
             exit 1
           fi
+          cp "$PROFDATA" "$COVERAGE_DIR/main.profdata"
 
-          cp "$PROFDATA" "$COVERAGE_DIR/default.profdata"
+          swift test --enable-code-coverage --filter CoreAudioTapGatewayTests
+
+          if [[ ! -f "$PROFDATA" ]]; then
+            echo "Coverage profile not found: $PROFDATA"
+            exit 1
+          fi
+          cp "$PROFDATA" "$COVERAGE_DIR/gateway.profdata"
 
           echo "coverage_dir=$COVERAGE_DIR" >> "$GITHUB_OUTPUT"
 
