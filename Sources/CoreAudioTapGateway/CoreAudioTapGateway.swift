@@ -1,4 +1,5 @@
 import CoreAudio
+import Domain
 
 /// Live `AudioTapGateway`: thin, 1:1 pass-through wrappers around the actual
 /// CoreAudio C API calls. Holds no state of its own — `ProcessTapEngine`

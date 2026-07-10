@@ -111,6 +111,7 @@ graph TD
             AppKitScreenProvider[AppKitScreenProvider]
             StandardOutput[StandardOutput]
             DarwinGateway[DarwinGateway]
+            CoreAudioTapGateway[CoreAudioTapGateway]
             FrequencyAnalyzer[FrequencyAnalyzer]
         end
 
@@ -154,6 +155,7 @@ graph TD
     WallpaperRepository -.-> WallpaperDataSource
     MediaRemoteDataSource -.-> DarwinGateway
     WallpaperDataSource -.-> DarwinGateway
+    AudioTapDataSource -.-> CoreAudioTapGateway
 
     style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
     style CLI fill:#555,stroke:#333,color:#fff
@@ -189,6 +191,7 @@ graph TD
     style AppKitScreenProvider fill:#a75,stroke:#333,color:#fff
     style StandardOutput fill:#a75,stroke:#333,color:#fff
     style DarwinGateway fill:#a75,stroke:#333,color:#fff
+    style CoreAudioTapGateway fill:#a75,stroke:#333,color:#fff
     style FrequencyAnalyzer fill:#a75,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
@@ -222,7 +225,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
 | Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler`, `BenchmarkHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. BenchmarkHandler: CPU/memory measurement via `ProcessGateway`. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
-| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `FrequencyAnalyzer` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `FrequencyAnalyzer` owns the vDSP FFT → per-bar magnitude conversion (pure, dependency-free) |
+| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT → per-bar magnitude conversion (pure, dependency-free) |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor`, `SpectrumInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Entity | `Entity` | Pure data types, zero external dependencies |
@@ -237,6 +240,8 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 **MediaRemoteDataSource via swift-interpret helper**: `MediaRemote.framework` is a private framework, and `MRMediaRemoteGetNowPlayingInfo` only returns data when the **host process** carries an Apple-internal entitlement (`com.apple.private.tcc.allow` family). Apple-signed binaries — including `/usr/bin/swift` — qualify; any third-party binary (Developer ID, ad-hoc, anything notarized outside Apple) does **not**, because AMFI strips Apple-private entitlements from non-Apple-signed Mach-Os at load time. The helper Swift source (`Resources/media-remote-helper.swift`) is therefore spawned via the **absolute path** `/usr/bin/swift <src>` so that the Apple-signed `xcode_select` tool-shim is unconditionally the host process. **Never go through `/usr/bin/env swift`** — `env` respects `$PATH` and a developer with a Homebrew / swift.org / asdf swift earlier in `PATH` would silently fall into a non-Apple-signed binary, reintroducing the same regression. **Never pre-compile the helper with `swiftc`** — the resulting binary becomes the host, loses the entitlement, and `MRMediaRemoteGetNowPlayingInfo` silently returns no info on macOS 26+ (regression tracked in #261). The helper runs as a persistent subprocess and streams JSON over a pipe, using `MRMediaRemoteRegisterForNowPlayingNotifications` for event-driven updates. The 1–2 s `swift-frontend -interpret` cost on first launch is the price of admission; there is no Apple-supported alternative for third parties. **Artwork emission is scoped to track changes (#255)**: each JSON line carries an `event` tag (`"track-change"` for notification-driven + initial fetches, `"tick"` for the 3 s periodic snapshot). Base64-encoding the cover (hundreds of KB–several MB) on every tick pegged daemon CPU for no benefit, so `artwork_base64` is sent only on `track-change`; `MediaRemoteDataSourceImpl` backfills the cached cover on ticks and clears it when a `track-change` arrives cover-less. This composes with the daemon-side decode memoization (`lastArtworkBase64`/`lastArtworkData`, #270): #270 avoids re-*decoding* an unchanged payload, #255 avoids re-*transmitting* it.
 
 **ProcessGateway OS boundary**: `ProcessGateway` centralizes OS-bound work in Domain (resource sampling, process management, lock files, launchctl, executable discovery, streaming subprocesses). `DarwinGateway` is the live macOS implementation, and `DependencyInjection` wires it into handlers and data sources so application logic no longer reaches directly into `Process`, `flock`, `getrusage`, or `which`.
+
+**AudioTapGateway CoreAudio boundary (#313)**: `AudioTapGateway` (Domain) wraps the imperative CoreAudio calls of the process-tap capture chain (tap → aggregate device → IOProc), and `CoreAudioTapGateway` is the live 1:1 pass-through implementation — fully symmetric to `ProcessGateway`/`DarwinGateway`. The protocol signature is deliberately CoreAudio-shaped (`CATapDescription`, `AudioStreamBasicDescription`, `AudioDeviceIOBlock`): type-erasing those would force per-callback conversion — allocation on the RT-safe IOProc path. Domain's `import CoreAudio` follows the same contract-layer exception as the Interactor protocols' Combine import. A GitHub survey (2026-07) found no maintained SPM library wrapping the macOS 14.4+ process-tap API (`SimplyCoreAudio` is stale and pre-dates it; `AudioCap` is sample code), so absorbing CoreAudio behind a third-party wrapper was rejected; if one matures later, this Gateway protocol is the single swap point. Rule of thumb for future gateways: protocol in Domain (platform-typed signatures allowed when the boundary's shape is the contract), live implementation in its own Support module, `liveValue` in `DependencyInjection/GatewayRegistration.swift`.
 
 **AppKit lifecycle boundary**: The `App` module owns foreground `NSApplication` setup, accessory activation, `AppDelegate` retention, and termination signal registration. `DaemonCommand` stays CLI glue after lock acquisition and calls the App lifecycle runner instead of touching AppKit directly. `AppDelegate` receives router and termination-handler collaborators so launch bootstrap and signal-triggered shutdown can be unit-tested without `NSApplication.run()` or live signal registration.
 

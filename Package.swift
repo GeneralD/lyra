@@ -81,6 +81,14 @@ let package = Package(
                 "Domain"
             ]
         ),
+
+        // ── CoreAudioTapGateway ──
+        .target(
+            name: "CoreAudioTapGateway",
+            dependencies: [
+                "Domain"
+            ]
+        ),
         .target(
             name: "AppKitScreenProvider",
             dependencies: [
@@ -219,6 +227,7 @@ let package = Package(
                 "AudioTapDataSource",
                 "SQLiteDataStore",
                 "DarwinGateway",
+                "CoreAudioTapGateway",
                 "ProcessHandler",
                 "VersionHandler",
                 "ServiceHandler",

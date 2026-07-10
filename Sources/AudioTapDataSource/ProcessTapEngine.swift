@@ -1,5 +1,6 @@
 import CoreAudio
 import Dependencies
+import Domain
 import Foundation
 
 /// Owns one CoreAudio process-tap capture chain: process tap → private

@@ -1,4 +1,4 @@
-import AudioTapDataSource
+import CoreAudioTapGateway
 import DarwinGateway
 import Dependencies
 import Domain
