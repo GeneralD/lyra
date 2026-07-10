@@ -82,6 +82,34 @@ public final class DatabaseManager: Sendable {
             try? Folder.defaultCache.subfolder(named: "now-playing").delete()
         }
 
+        migrator.registerMigration("v5_musicbrainzCacheMultiCandidate") { db in
+            // The lyrics flow can cache a hit under ANY MusicBrainz candidate — not just
+            // the first — so the cache must store every candidate recording per query
+            // (one row each). SQLite cannot drop the old UNIQUE(query_title, query_artist)
+            // constraint in place, so rebuild the table with a plain (non-unique) index.
+            try db.create(table: "musicbrainz_cache_v5", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("query_title", .text).notNull()
+                t.column("query_artist", .text).notNull()
+                t.column("resolved_title", .text).notNull()
+                t.column("resolved_artist", .text).notNull()
+                t.column("duration", .double)
+                t.column("musicbrainz_id", .text).notNull()
+            }
+            try db.execute(
+                sql: """
+                    INSERT INTO musicbrainz_cache_v5
+                        (id, query_title, query_artist, resolved_title, resolved_artist, duration, musicbrainz_id)
+                    SELECT id, query_title, query_artist, resolved_title, resolved_artist, duration, musicbrainz_id
+                    FROM musicbrainz_cache
+                    """)
+            try db.drop(table: "musicbrainz_cache")
+            try db.rename(table: "musicbrainz_cache_v5", to: "musicbrainz_cache")
+            try db.create(
+                index: "idx_musicbrainz_cache_query", on: "musicbrainz_cache",
+                columns: ["query_title", "query_artist"])
+        }
+
         return migrator
     }
 }

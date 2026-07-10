@@ -17,7 +17,7 @@ struct LLMCacheTests {
 
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore(result: cached)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
             $0.musicBrainzMetadataDataSource = TrackingDataSource<MusicBrainzMetadata>(tracker: mbTracker)
             $0.regexMetadataDataSource = TrackingDataSource<Track>(tracker: regexTracker)
@@ -42,7 +42,7 @@ struct MusicBrainzCacheTests {
 
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore(result: metadata)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore(result: [metadata])
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
@@ -51,6 +51,32 @@ struct MusicBrainzCacheTests {
             let raw = Track(title: "raw", artist: "raw")
             let result = await repo.resolve(track: raw)
             #expect(result == [Track(title: "MB Title", artist: "MB Artist", duration: 240), raw])
+        }
+    }
+
+    @Test("cache hit reproduces the FULL candidate set — later candidates stay reachable on replays")
+    func mbCacheHitReturnsAllCandidates() async {
+        let cached = [
+            MusicBrainzMetadata(title: "First", artist: "Artist", duration: 200, musicbrainzId: "id-1"),
+            MusicBrainzMetadata(title: "Second", artist: "Artist", duration: 205, musicbrainzId: "id-2"),
+        ]
+
+        await withDependencies {
+            $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore(result: cached)
+            $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
+            $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
+            $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
+        } operation: {
+            let repo = MetadataRepositoryImpl()
+            let raw = Track(title: "raw", artist: "raw")
+            let result = await repo.resolve(track: raw)
+            #expect(
+                result == [
+                    Track(title: "First", artist: "Artist", duration: 200),
+                    Track(title: "Second", artist: "Artist", duration: 205),
+                    raw,
+                ])
         }
     }
 }
@@ -65,7 +91,7 @@ struct DataSourceMergingTests {
 
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource(candidates: [Track(title: "LLM", artist: "A")])
             $0.musicBrainzMetadataDataSource = StubDataSource(candidates: [mbMetadata])
             $0.regexMetadataDataSource = StubDataSource(candidates: [Track(title: "Regex", artist: "C")])
@@ -87,7 +113,7 @@ struct DataSourceMergingTests {
     func duplicateCandidatesAreDeduped() async {
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource(candidates: [Track(title: "Song", artist: "Artist")])
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource(candidates: [Track(title: "Song", artist: "Artist")])
@@ -100,11 +126,39 @@ struct DataSourceMergingTests {
         }
     }
 
+    @Test("same title/artist with different durations are distinct candidates — both survive dedup")
+    func differentDurationsSurviveDedup() async {
+        let recordings = [
+            MusicBrainzMetadata(title: "Song", artist: "Artist", duration: 200, musicbrainzId: "id-1"),
+            MusicBrainzMetadata(title: "Song", artist: "Artist", duration: 245, musicbrainzId: "id-2"),
+        ]
+
+        await withDependencies {
+            $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
+            $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
+            $0.musicBrainzMetadataDataSource = StubDataSource(candidates: recordings)
+            $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
+        } operation: {
+            let repo = MetadataRepositoryImpl()
+            let raw = Track(title: "raw", artist: "raw")
+            let result = await repo.resolve(track: raw)
+            // LRCLIB exact matching and the lyrics validator discriminate on duration, so
+            // the two recordings are genuinely different candidates.
+            #expect(
+                result == [
+                    Track(title: "Song", artist: "Artist", duration: 200),
+                    Track(title: "Song", artist: "Artist", duration: 245),
+                    raw,
+                ])
+        }
+    }
+
     @Test("falls back to Regex when LLM and MusicBrainz both fail, raw still appended")
     func regexFallback() async {
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource(candidates: [Track(title: "Regex", artist: "C")])
@@ -120,7 +174,7 @@ struct DataSourceMergingTests {
     func rawOnlyWhenAllSourcesFail() async {
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
@@ -143,7 +197,7 @@ struct CacheWriteTests {
 
         await withDependencies {
             $0.llmMetadataDataStore = store
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource(candidates: [Track(title: "LLM", artist: "A")])
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
@@ -155,29 +209,32 @@ struct CacheWriteTests {
         }
     }
 
-    @Test("MusicBrainz success writes to MusicBrainz cache")
+    @Test("MusicBrainz success writes ALL candidates to the MusicBrainz cache, not just the first")
     func mbWritesToMBCache() async {
-        let store = RecordingDataStore<MusicBrainzMetadata>()
-        let metadata = MusicBrainzMetadata(title: "Song", artist: "B", duration: 180, musicbrainzId: "xyz")
+        let store = RecordingDataStore<[MusicBrainzMetadata]>()
+        let candidates = [
+            MusicBrainzMetadata(title: "Song", artist: "B", duration: 180, musicbrainzId: "xyz"),
+            MusicBrainzMetadata(title: "Song (live)", artist: "B", duration: 195, musicbrainzId: "xyz-live"),
+        ]
 
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
             $0.musicBrainzMetadataDataStore = store
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
-            $0.musicBrainzMetadataDataSource = StubDataSource(candidates: [metadata])
+            $0.musicBrainzMetadataDataSource = StubDataSource(candidates: candidates)
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
         } operation: {
             let repo = MetadataRepositoryImpl()
             _ = await repo.resolve(track: Track(title: "raw", artist: "raw"))
             let written = await store.writtenValue
-            #expect(written == metadata)
+            #expect(written == candidates)
         }
     }
 
     @Test("Regex results are not cached")
     func regexNotCached() async {
         let aiStore = RecordingDataStore<Track>()
-        let mbStore = RecordingDataStore<MusicBrainzMetadata>()
+        let mbStore = RecordingDataStore<[MusicBrainzMetadata]>()
 
         await withDependencies {
             $0.llmMetadataDataStore = aiStore
@@ -206,7 +263,7 @@ struct TypeConversionTests {
 
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
             $0.musicBrainzMetadataDataSource = StubDataSource(candidates: [metadata])
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
@@ -227,7 +284,7 @@ struct IsAIMetadataCachedTests {
     func cachedReturnsTrue() async {
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore(result: Track(title: "Cached", artist: "Artist"))
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = StubDataSource<Track>(candidates: [])
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
@@ -243,7 +300,7 @@ struct IsAIMetadataCachedTests {
         let llmTracker = CallTracker()
         await withDependencies {
             $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
-            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<[MusicBrainzMetadata]>(result: nil)
             $0.llmMetadataDataSource = TrackingDataSource<Track>(tracker: llmTracker)
             $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
             $0.regexMetadataDataSource = StubDataSource<Track>(candidates: [])
