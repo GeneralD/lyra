@@ -83,6 +83,52 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(result == nil)
     }
 
+    @Test("missing track_name returns nil even with non-empty plain_lyrics")
+    func missingTrackNameReturnsNil() async {
+        let dataSource = CustomScriptLyricsDataSourceImpl(
+            fallbackCommand: ["/usr/bin/python3", "/path/to/script.py"],
+            timeoutMs: 5000,
+            configDir: "/config",
+            cacheDir: "/cache",
+            processRunner: { _, _, _, _ in
+                (status: 0, stdout: #"{"artist_name": "Artist", "plain_lyrics": "La la la"}"#, stderr: "")
+            }
+        )
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(result == nil)
+    }
+
+    @Test("empty track_name returns nil even with non-empty plain_lyrics")
+    func emptyTrackNameReturnsNil() async {
+        let dataSource = CustomScriptLyricsDataSourceImpl(
+            fallbackCommand: ["/usr/bin/python3", "/path/to/script.py"],
+            timeoutMs: 5000,
+            configDir: "/config",
+            cacheDir: "/cache",
+            processRunner: { _, _, _, _ in
+                (status: 0, stdout: #"{"track_name": "", "artist_name": "Artist", "plain_lyrics": "La la la"}"#, stderr: "")
+            }
+        )
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(result == nil)
+    }
+
+    @Test("non-absolute executable path returns nil without invoking processRunner")
+    func relativeExecutablePathReturnsNil() async {
+        let dataSource = CustomScriptLyricsDataSourceImpl(
+            fallbackCommand: ["python3", "/path/to/script.py"],
+            timeoutMs: 5000,
+            configDir: "/config",
+            cacheDir: "/cache",
+            processRunner: { _, _, _, _ in
+                Issue.record("processRunner must not be invoked for a non-absolute executable path")
+                return (status: 0, stdout: "", stderr: "")
+            }
+        )
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(result == nil)
+    }
+
     @Test("empty fallback_command returns nil without invoking processRunner")
     func emptyFallbackCommandReturnsNilWithoutRunning() async {
         let dataSource = CustomScriptLyricsDataSourceImpl(
@@ -190,6 +236,36 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(result.status == -1)
         #expect(result.stdout.isEmpty)
         #expect(elapsed < .seconds(5))
+    }
+
+    @Test("executeProcess force-kills a SIGTERM-ignoring script after the timeout")
+    func executeProcessForceKillsStubbornScript() async throws {
+        let pidFile = NSTemporaryDirectory() + "lyra-tierc-\(UUID().uuidString).pid"
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
+
+        // The script records its own pid, then ignores SIGTERM and sleeps far past the
+        // timeout. Only the SIGTERM→SIGKILL escalation can stop it.
+        let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
+            executable: "/bin/sh",
+            arguments: ["-c", "echo $$ > '\(pidFile)'; trap '' TERM; sleep 30"],
+            environment: [:],
+            timeoutMs: 200
+        )
+        #expect(result.status == -1)
+
+        let pidString =
+            (try? String(contentsOfFile: pidFile, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pid = Int32(pidString) ?? 0
+        #expect(pid > 0, "the script should have recorded its pid before ignoring SIGTERM")
+
+        // After the escalation reaps it, kill(pid, 0) fails (ESRCH). Poll rather than
+        // sleep a fixed interval — the reap is asynchronous.
+        let deadline = ContinuousClock.now + .seconds(3)
+        while kill(pid, 0) == 0, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(kill(pid, 0) != 0, "a SIGTERM-ignoring script must be SIGKILLed, not left running")
     }
 }
 

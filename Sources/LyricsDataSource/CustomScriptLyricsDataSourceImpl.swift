@@ -57,7 +57,10 @@ public struct CustomScriptLyricsDataSourceImpl: Sendable {
 
 extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
-        guard let executable = fallbackCommand.first else { return nil }
+        // The executable must be an absolute path — a launchd-run daemon has a minimal
+        // PATH, so relative paths (resolved against the daemon's CWD) would behave
+        // unpredictably and diverge from the documented contract. Reject them up front.
+        guard let executable = fallbackCommand.first, executable.hasPrefix("/") else { return nil }
         let arguments = Array(fallbackCommand.dropFirst()) + [title, artist]
         // Merge onto the parent environment rather than replacing it — Process.environment
         // REPLACES the child's entire environment when set, and the user's custom script
@@ -66,14 +69,19 @@ extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
             ["LYRA_CONFIG_DIR": configDir, "LYRA_CACHE_DIR": cacheDir]
         ) { _, new in new }
 
+        // Require a non-empty track_name: LyricsMatchValidator skips the title-similarity
+        // check when the result title is nil/empty, so a script that emits only
+        // plain_lyrics (or a generic response) would otherwise slip past validation and
+        // reintroduce the unvalidated-cache path Tier C exists to prevent.
         guard let (status, stdout, _) = try? await processRunner(executable, arguments, environment, timeoutMs),
             status == 0,
             let data = stdout.data(using: .utf8),
             let output = try? JSONDecoder().decode(ScriptOutput.self, from: data),
+            let trackName = output.trackName, !trackName.isEmpty,
             let plainLyrics = output.plainLyrics, !plainLyrics.isEmpty
         else { return nil }
 
-        return LyricsResult(trackName: output.trackName, artistName: output.artistName, plainLyrics: plainLyrics)
+        return LyricsResult(trackName: trackName, artistName: output.artistName, plainLyrics: plainLyrics)
     }
 
     public func search(query: String) async -> [LyricsResult]? { nil }
@@ -145,7 +153,16 @@ extension CustomScriptLyricsDataSourceImpl {
                     return true
                 }
                 guard shouldResume else { return }
+                // SIGTERM first, then escalate to SIGKILL on the direct child pid if it
+                // ignores the polite signal — otherwise a custom script that traps SIGTERM
+                // keeps running after lyra has moved on, defeating the configured timeout.
+                // Target the specific pid (never the process group) so lyra itself is never
+                // at risk; a shell script's own grandchildren are outside this guarantee.
                 process.terminate()
+                let pid = process.processIdentifier
+                DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(500)) {
+                    if process.isRunning { kill(pid, SIGKILL) }
+                }
                 continuation.resume(returning: (-1, "", "timed out after \(Int(timeoutMs))ms"))
             }
             DispatchQueue.global().asyncAfter(
