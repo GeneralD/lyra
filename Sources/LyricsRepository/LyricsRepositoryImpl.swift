@@ -76,11 +76,13 @@ extension LyricsRepositoryImpl {
         for c in candidates {
             let query = c.artist.isEmpty ? c.title : "\(c.title) \(c.artist)"
             guard let responses = await dataSource.search(query: query) else { continue }
-            guard
-                let matched = responses.first(where: { $0.syncedLyrics != nil })
-                    ?? responses.first(where: { $0.plainLyrics != nil })
-            else { continue }
-            guard validator.isValid(candidate: c, result: matched) else { continue }
+            // LRCLIB fuzzy search can return several lyric-bearing results, only some
+            // of which pass validation. Validate every candidate response — not just
+            // the first — and accept the first valid one (synced preferred over plain)
+            // so a noisy leading result can't sink an otherwise-matching later hit.
+            let valid = responses.filter { $0.syncedLyrics != nil || $0.plainLyrics != nil }
+                .filter { validator.isValid(candidate: c, result: $0) }
+            guard let matched = valid.first(where: { $0.syncedLyrics != nil }) ?? valid.first else { continue }
             let displayResult = displayAdjusted(matched, candidate: c)
             await store(displayResult, track: c)
             return displayResult

@@ -308,6 +308,28 @@ struct LyricsRepositoryTests {
             }
         }
 
+        @Test("Tier B validates every fuzzy hit — a noisy leading result does not sink a valid later one")
+        func tierBValidatesAllSearchResults() async {
+            let noise = LyricsResult(trackName: "Completely Unrelated Noise", artistName: "Nobody", plainLyrics: "noise")
+            let valid = LyricsResult(trackName: "My Title", artistName: "My Artist", syncedLyrics: "[00:01.00] Real")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = QueryMatchingSearchDataSource(
+                    getResult: nil,
+                    resultsByQuery: ["My Title My Artist": [noise, valid]]
+                )
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "My Title", artist: "My Artist")
+                ])
+                #expect(
+                    result?.syncedLyrics == "[00:01.00] Real",
+                    "the valid later hit must be accepted even though a noisy result came first")
+            }
+        }
+
         @Test("Tier C is tried after Tier A/B fail, and its result is cached under the matched candidate")
         func tierCFallsBackAndCaches() async {
             let scriptResult = LyricsResult(trackName: "Real Title", artistName: "Real Artist", plainLyrics: "script lyrics")
