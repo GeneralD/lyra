@@ -67,6 +67,7 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         else { return "" }
         let configDir = file.parent?.path ?? Folder.home.path
         try decodeOrThrow(content: content, path: file.path, configDir: configDir)
+        try strictDecodeOptionalSections(content: content, path: file.path, configDir: configDir)
         return file.path
     }
 }
@@ -127,6 +128,28 @@ extension ConfigDataSourceImpl {
 
     func decode(content: String, path: String, configDir: String) -> AppConfig? {
         try? decodeOrThrow(content: content, path: path, configDir: configDir)
+    }
+
+    // [ai] and [lyrics] decode leniently at runtime (AppConfig.init wraps them in
+    // try? so a malformed optional enhancement section degrades to nil instead of
+    // taking down the user's entire visual config), which hides their shape errors
+    // from decodeOrThrow. Validation must still surface them: probe the two sections
+    // strictly so `lyra healthcheck` reports a malformed [lyrics]/[ai] instead of
+    // the feature being silently disabled.
+    private struct StrictOptionalSections: Decodable {
+        let ai: AIConfig?
+        let lyrics: LyricsConfig?
+    }
+
+    func strictDecodeOptionalSections(content: String, path: String, configDir: String) throws {
+        guard path.hasSuffix(".toml") else {
+            _ = try JSONDecoder().decode(StrictOptionalSections.self, from: content.data(using: .utf8) ?? Data())
+            return
+        }
+        let table = try TOMLTable(string: content)
+        resolveIncludes(into: table, configDir: configDir)
+        table.remove(at: "includes")
+        _ = try TOMLDecoder().decode(StrictOptionalSections.self, from: table)
     }
 
     func resolveIncludes(into table: TOMLTable, configDir: String) {
