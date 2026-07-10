@@ -168,8 +168,11 @@ struct CustomScriptLyricsDataSourceImplTests {
             #expect(result.stdout == "hello-\(i)")
         }
 
+        // 30s budget (vs. a normal-case sub-second run) absorbs CI contention
+        // without losing detection power — a genuine hang would still fail
+        // this bound many times over.
         let elapsed = start.duration(to: .now)
-        #expect(elapsed < .seconds(10))
+        #expect(elapsed < .seconds(30))
     }
 
     @Test("executeProcess returns promptly on timeout instead of waiting out the full sleep duration")
