@@ -177,6 +177,46 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(timeoutMs == 1234)
     }
 
+    @Test("$LYRA_CONFIG_DIR / ${LYRA_CACHE_DIR} placeholders expand in fallback_command elements")
+    func placeholdersExpandInFallbackCommand() async {
+        let captured = CapturedInvocation()
+        let dataSource = CustomScriptLyricsDataSourceImpl(
+            fallbackCommand: ["/usr/bin/python3", "$LYRA_CONFIG_DIR/scripts/fetch.py", "${LYRA_CACHE_DIR}/state"],
+            timeoutMs: 5000,
+            configDir: "/config/lyra",
+            cacheDir: "/cache/lyra",
+            processRunner: { executable, arguments, environment, timeoutMs in
+                await captured.record(executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
+                return (status: 0, stdout: #"{"track_name": "Song", "plain_lyrics": "La"}"#, stderr: "")
+            }
+        )
+        _ = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+
+        let executable = await captured.executable
+        let arguments = await captured.arguments
+        #expect(executable == "/usr/bin/python3")
+        #expect(arguments == ["/config/lyra/scripts/fetch.py", "/cache/lyra/state", "Song", "Artist"])
+    }
+
+    @Test("placeholder-led executable expands before the absolute-path guard and runs")
+    func placeholderExecutablePassesAbsolutePathGuard() async {
+        let captured = CapturedInvocation()
+        let dataSource = CustomScriptLyricsDataSourceImpl(
+            fallbackCommand: ["$LYRA_CONFIG_DIR/scripts/fetch.sh"],
+            timeoutMs: 5000,
+            configDir: "/config/lyra",
+            cacheDir: "/cache/lyra",
+            processRunner: { executable, arguments, environment, timeoutMs in
+                await captured.record(executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
+                return (status: 0, stdout: #"{"track_name": "Song", "plain_lyrics": "La"}"#, stderr: "")
+            }
+        )
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(result != nil)
+        let executable = await captured.executable
+        #expect(executable == "/config/lyra/scripts/fetch.sh")
+    }
+
     @Test("search always returns nil — Tier C has no fuzzy-search endpoint")
     func searchReturnsNil() async {
         let dataSource = CustomScriptLyricsDataSourceImpl(

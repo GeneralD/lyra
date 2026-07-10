@@ -261,7 +261,7 @@ user-defined script as a last resort before giving up and showing the raw
 
 ```toml
 [lyrics]
-fallback_command = ["/usr/bin/python3", "/Users/you/.config/lyra/lyrics-fallback.py"]
+fallback_command = ["/usr/bin/python3", "$LYRA_CONFIG_DIR/scripts/lyrics-fallback.py"]
 timeout_ms = 5000
 ```
 
@@ -271,7 +271,12 @@ timeout_ms = 5000
   resolution would silently fail in production). A non-absolute path is
   rejected up front and Tier C is skipped for that lookup, so the failure is
   deterministic rather than dependent on the daemon's working directory. If
-  omitted, Tier C is skipped entirely.
+  omitted, Tier C is skipped entirely. The placeholders `$LYRA_CONFIG_DIR`
+  and `$LYRA_CACHE_DIR` (or `${…}` forms) are expanded in every element
+  before this check, so a command can locate its script relative to lyra's
+  config directory — as in the example above — without hardcoding a
+  machine-specific path. No other variables are expanded; this is a literal
+  placeholder substitution, not shell interpolation.
 - `timeout_ms` — how long lyra waits for the script before killing it and
   treating that candidate as a miss. Defaults to `5000`.
 
@@ -284,6 +289,9 @@ arguments, and sets two read-only environment variables:
 |---|---|
 | `LYRA_CONFIG_DIR` | The directory lyra actually loaded its config from. Setting this variable yourself has no effect on where lyra looks for its config — it is informational only. |
 | `LYRA_CACHE_DIR` | The directory lyra uses for its own cache (`~/.cache/lyra` by default). Also informational only. |
+
+The same two names double as placeholders inside `fallback_command` itself
+(see above) — the values are identical in both roles.
 
 > **Security & execution boundary.** The script runs with the full
 > privileges of the lyra process (the daemon user) and **inherits lyra's

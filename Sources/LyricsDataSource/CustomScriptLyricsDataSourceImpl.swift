@@ -57,11 +57,14 @@ public struct CustomScriptLyricsDataSourceImpl: Sendable {
 
 extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        // Placeholders expand BEFORE the absolute-path guard so a config can lead with
+        // "$LYRA_CONFIG_DIR/..." and still satisfy the absolute-executable contract.
+        let command = fallbackCommand.map(expandedPlaceholders)
         // The executable must be an absolute path — a launchd-run daemon has a minimal
         // PATH, so relative paths (resolved against the daemon's CWD) would behave
         // unpredictably and diverge from the documented contract. Reject them up front.
-        guard let executable = fallbackCommand.first, executable.hasPrefix("/") else { return nil }
-        let arguments = Array(fallbackCommand.dropFirst()) + [title, artist]
+        guard let executable = command.first, executable.hasPrefix("/") else { return nil }
+        let arguments = Array(command.dropFirst()) + [title, artist]
         // Merge onto the parent environment rather than replacing it — Process.environment
         // REPLACES the child's entire environment when set, and the user's custom script
         // still needs PATH/HOME/LANG/etc. to run like a normal subprocess (#308 review).
@@ -85,6 +88,16 @@ extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     }
 
     public func search(query: String) async -> [LyricsResult]? { nil }
+
+    /// Expands `$LYRA_CONFIG_DIR` / `$LYRA_CACHE_DIR` (and their `${…}` forms) in a
+    /// fallback_command element, so configs can locate scripts relative to lyra's own
+    /// directories instead of hardcoding machine-specific absolute paths.
+    private func expandedPlaceholders(_ element: String) -> String {
+        [
+            ("${LYRA_CONFIG_DIR}", configDir), ("$LYRA_CONFIG_DIR", configDir),
+            ("${LYRA_CACHE_DIR}", cacheDir), ("$LYRA_CACHE_DIR", cacheDir),
+        ].reduce(element) { $0.replacingOccurrences(of: $1.0, with: $1.1) }
+    }
 }
 
 private struct ScriptOutput: Decodable {
