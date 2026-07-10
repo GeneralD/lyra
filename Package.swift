@@ -228,6 +228,7 @@ let package = Package(
                 "SQLiteDataStore",
                 "DarwinGateway",
                 "CoreAudioTapGateway",
+                "FrequencyAnalyzer",
                 "ProcessHandler",
                 "VersionHandler",
                 "ServiceHandler",
@@ -275,7 +276,6 @@ let package = Package(
             name: "SpectrumUseCase",
             dependencies: [
                 "Domain",
-                "FrequencyAnalyzer",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -292,7 +292,9 @@ let package = Package(
         // ── FrequencyAnalyzer ──
         .target(
             name: "FrequencyAnalyzer",
-            dependencies: []
+            dependencies: [
+                "Domain"
+            ]
         ),
 
         // ── UseCase ──
@@ -490,6 +492,7 @@ let package = Package(
             dependencies: [
                 "SpectrumUseCase",
                 "Domain",
+                "FrequencyAnalyzer",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -503,7 +506,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FrequencyAnalyzerTests",
-            dependencies: ["FrequencyAnalyzer"]
+            dependencies: ["FrequencyAnalyzer", "Domain"]
         ),
         .testTarget(
             name: "AudioTapDataSourceTests",
