@@ -1,10 +1,9 @@
 import Dependencies
 import Domain
-import FrequencyAnalyzer
 
 /// Business logic for the spectrum analyzer (#23): forwards the capture
 /// lifecycle to the repository and converts the newest PCM window into
-/// per-bar magnitudes via the pure `FrequencyAnalyzer` (#297). The heights
+/// per-bar magnitudes via the injected `FrequencyAnalyzing` (#297). The heights
 /// are un-gained here — cava's autosens and smoothing live in the Presenter,
 /// which scales and clamps them per frame. In stereo the two channels are
 /// analyzed separately and mirrored around the center, cava-style — lowest
@@ -17,13 +16,14 @@ public final class SpectrumUseCaseImpl: @unchecked Sendable {
     // built inside `withDependencies` keep their fakes when methods run
     // outside that scope.
     @Dependency(\.audioCaptureRepository) private var repository
+    @Dependency(\.frequencyAnalyzerFactory) private var analyzerFactory
     /// Memoized analyzer plus the per-channel bar count and tap sample rate it
     /// was built for. The displayed bar count is derived from the overlay width
     /// (cava style), so it changes on resize. The sample rate is read from the
     /// tap at construction (#299) and fixed for the tap's lifetime; a tap
     /// recreation (play/pause, source change) picks up any new device rate and
     /// triggers a rebuild via the changed `window.sampleRate`.
-    private var analyzer: (bars: Int, sampleRate: Double, engine: FrequencyAnalyzer)?
+    private var analyzer: (bars: Int, sampleRate: Double, engine: any FrequencyAnalyzing)?
 
     public init() {}
 }
@@ -67,11 +67,11 @@ extension SpectrumUseCaseImpl {
     /// rate change); everything else is launch-static.
     private func resolvedAnalyzer(
         for style: SpectrumStyle, bars: Int, sampleRate: Double
-    ) -> FrequencyAnalyzer {
+    ) -> any FrequencyAnalyzing {
         if let analyzer, analyzer.bars == bars, analyzer.sampleRate == sampleRate {
             return analyzer.engine
         }
-        let engine = FrequencyAnalyzer(
+        let engine = analyzerFactory.analyzer(
             fftSize: style.fftSize,
             barCount: bars,
             minDb: style.minDb,

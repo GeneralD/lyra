@@ -5,13 +5,16 @@ import Dependencies
 /// tap's capture chain (tap → aggregate device → IOProc). Mirrors
 /// `ProcessGateway`'s OS-boundary role: injecting a fake makes
 /// `ProcessTapEngine`'s call order, guard branching, and rollback logic
-/// testable without live audio hardware.
+/// testable without live audio hardware. The live implementation is the
+/// `CoreAudioTapGateway` module, symmetric to `ProcessGateway`'s
+/// `DarwinGateway`.
 ///
-/// Lives here rather than in `Domain` because, unlike `ProcessGateway`
-/// (`Int32`/`String` only), this protocol's signature is inherently
-/// CoreAudio-shaped (`CATapDescription`, `AudioStreamBasicDescription`,
-/// `AudioDeviceIOBlock`) — keeping it in `AudioTapDataSource` avoids leaking
-/// a platform framework into the platform-agnostic Domain contract layer.
+/// This protocol's signature is inherently CoreAudio-shaped
+/// (`CATapDescription`, `AudioStreamBasicDescription`, `AudioDeviceIOBlock`):
+/// abstracting those types away would force per-callback conversion —
+/// allocation on the real-time IOProc path. The CoreAudio import is the same
+/// contract-layer exception as the Interactor protocols' Combine import —
+/// the boundary's shape is part of the contract (#313).
 public protocol AudioTapGateway: Sendable {
     /// Every CoreAudio process object currently on the system, unfiltered.
     /// The now-playing pid's subtree is matched against this list.

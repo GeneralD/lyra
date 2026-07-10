@@ -1,6 +1,7 @@
 import Dependencies
 import Domain
 import Foundation
+import FrequencyAnalyzer
 import Testing
 import os
 
@@ -189,6 +190,7 @@ private struct Harness {
         repository.samples = StereoSamples(left: left, right: right ?? left, sampleRate: sampleRate)
         useCase = withDependencies { [repository] in
             $0.audioCaptureRepository = repository
+            $0.frequencyAnalyzerFactory = LiveFrequencyAnalyzerFactory()
         } operation: {
             SpectrumUseCaseImpl()
         }

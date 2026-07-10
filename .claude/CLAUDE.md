@@ -33,6 +33,13 @@ macOS desktop overlay app showing synced lyrics and video wallpaper. VIPER + Cle
 
 ### Module Dependency Graph
 
+Two views: the **Layer Overview** shows how the layers relate; the
+**Implementation Modules** diagram expands the `Implementations` box module by
+module. Dotted edges are protocol-mediated (`@Dependency` via Domain); solid
+edges are direct module dependencies.
+
+#### Layer Overview
+
 ```mermaid
 graph TD
     subgraph Entry
@@ -63,60 +70,13 @@ graph TD
     end
 
     subgraph Implementations
-        subgraph CommandHandler["Command Handler"]
-            ProcessHandler[ProcessHandler]
-            VersionHandler[VersionHandler]
-            ServiceHandler[ServiceHandler]
-            HealthHandler[HealthHandler]
-            TrackHandler[TrackHandler]
-            ConfigHandler[ConfigHandler]
-            BenchmarkHandler[BenchmarkHandler]
-        end
-
-        subgraph Interactor
-            TrackInteractor[TrackInteractor]
-            ScreenInteractor[ScreenInteractor]
-            WallpaperInteractor[WallpaperInteractor]
-            SpectrumInteractor[SpectrumInteractor]
-        end
-
-        subgraph UseCase
-            ConfigUseCase[ConfigUseCase]
-            PlaybackUseCase[PlaybackUseCase]
-            LyricsUseCase[LyricsUseCase]
-            MetadataUseCase[MetadataUseCase]
-            WallpaperUseCase[WallpaperUseCase]
-            SpectrumUseCase[SpectrumUseCase]
-        end
-
-        subgraph Repository
-            ConfigRepository[ConfigRepository]
-            LyricsRepository[LyricsRepository]
-            MetadataRepository[MetadataRepository]
-            NowPlayingRepository[NowPlayingRepository]
-            WallpaperRepository[WallpaperRepository]
-            AudioCaptureRepository[AudioCaptureRepository]
-        end
-
-        subgraph DataSource
-            LyricsDataSource[LyricsDataSource]
-            MetadataDataSource[MetadataDataSource]
-            ConfigDataSource[ConfigDataSource]
-            MediaRemoteDataSource[MediaRemoteDataSource]
-            WallpaperDataSource[WallpaperDataSource]
-            AudioTapDataSource[AudioTapDataSource]
-        end
-
-        subgraph Support["Provider / Support"]
-            AppKitScreenProvider[AppKitScreenProvider]
-            StandardOutput[StandardOutput]
-            DarwinGateway[DarwinGateway]
-            FrequencyAnalyzer[FrequencyAnalyzer]
-        end
-
-        subgraph DataStore
-            SQLiteDataStore[SQLiteDataStore]
-        end
+        CommandHandler[Command Handler]
+        Interactor[Interactor]
+        UseCase[UseCase]
+        Repository[Repository]
+        DataSource[DataSource]
+        DataStore[DataStore]
+        Support[Provider / Support]
     end
 
     CLI --> App & AppRouter & AsyncParsableCommand
@@ -130,6 +90,89 @@ graph TD
 
     CLI -.-> CommandHandler
     Presenters -.-> Interactor
+    CommandHandler -.-> UseCase & Support
+    Interactor -.-> UseCase
+    UseCase -.-> Repository & Support
+    Repository -.-> DataSource & DataStore
+    DataSource -.-> Support
+
+    style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
+    style CLI fill:#555,stroke:#333,color:#fff
+    style App fill:#4c78a8,stroke:#333,color:#fff
+    style AppRouter fill:#6a5,stroke:#333,color:#fff
+    style Views fill:#6a5,stroke:#333,color:#fff
+    style Presenters fill:#6a5,stroke:#333,color:#fff
+    style DependencyInjection fill:#c44,stroke:#333,color:#fff
+    style Entity fill:#4a9,stroke:#333,color:#fff
+    style Domain fill:#38b,stroke:#333,color:#fff
+    style Interactor fill:#7b5,stroke:#333,color:#fff
+    style UseCase fill:#59c,stroke:#333,color:#fff
+    style Repository fill:#86c,stroke:#333,color:#fff
+    style DataSource fill:#c84,stroke:#333,color:#fff
+    style Support fill:#d57,stroke:#333,color:#fff
+    style DataStore fill:#a75,stroke:#333,color:#fff
+```
+
+#### Implementation Modules
+
+```mermaid
+graph LR
+    subgraph CommandHandler["Command Handler"]
+        ProcessHandler[ProcessHandler]
+        VersionHandler[VersionHandler]
+        ServiceHandler[ServiceHandler]
+        HealthHandler[HealthHandler]
+        TrackHandler[TrackHandler]
+        ConfigHandler[ConfigHandler]
+        BenchmarkHandler[BenchmarkHandler]
+    end
+
+    subgraph Interactor
+        TrackInteractor[TrackInteractor]
+        ScreenInteractor[ScreenInteractor]
+        WallpaperInteractor[WallpaperInteractor]
+        SpectrumInteractor[SpectrumInteractor]
+    end
+
+    subgraph UseCase
+        ConfigUseCase[ConfigUseCase]
+        PlaybackUseCase[PlaybackUseCase]
+        LyricsUseCase[LyricsUseCase]
+        MetadataUseCase[MetadataUseCase]
+        WallpaperUseCase[WallpaperUseCase]
+        SpectrumUseCase[SpectrumUseCase]
+    end
+
+    subgraph Repository
+        ConfigRepository[ConfigRepository]
+        LyricsRepository[LyricsRepository]
+        MetadataRepository[MetadataRepository]
+        NowPlayingRepository[NowPlayingRepository]
+        WallpaperRepository[WallpaperRepository]
+        AudioCaptureRepository[AudioCaptureRepository]
+    end
+
+    subgraph DataSource
+        LyricsDataSource[LyricsDataSource]
+        MetadataDataSource[MetadataDataSource]
+        ConfigDataSource[ConfigDataSource]
+        MediaRemoteDataSource[MediaRemoteDataSource]
+        WallpaperDataSource[WallpaperDataSource]
+        AudioTapDataSource[AudioTapDataSource]
+    end
+
+    subgraph Support["Provider / Support"]
+        AppKitScreenProvider[AppKitScreenProvider]
+        StandardOutput[StandardOutput]
+        DarwinGateway[DarwinGateway]
+        CoreAudioTapGateway[CoreAudioTapGateway]
+        FrequencyAnalyzer[FrequencyAnalyzer]
+    end
+
+    subgraph DataStore
+        SQLiteDataStore[SQLiteDataStore]
+    end
+
     TrackHandler -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase
     ConfigHandler -.-> ConfigUseCase
     ProcessHandler -.-> DarwinGateway
@@ -140,7 +183,7 @@ graph TD
     WallpaperInteractor -.-> WallpaperUseCase & ConfigUseCase
     SpectrumInteractor -.-> ConfigUseCase & PlaybackUseCase & SpectrumUseCase
     SpectrumUseCase -.-> AudioCaptureRepository
-    SpectrumUseCase --> FrequencyAnalyzer
+    SpectrumUseCase -.-> FrequencyAnalyzer
     AudioCaptureRepository -.-> AudioTapDataSource
     ConfigUseCase -.-> ConfigRepository
     ConfigRepository -.-> ConfigDataSource
@@ -154,20 +197,12 @@ graph TD
     WallpaperRepository -.-> WallpaperDataSource
     MediaRemoteDataSource -.-> DarwinGateway
     WallpaperDataSource -.-> DarwinGateway
+    AudioTapDataSource -.-> CoreAudioTapGateway
 
-    style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
-    style CLI fill:#555,stroke:#333,color:#fff
-    style App fill:#4c78a8,stroke:#333,color:#fff
-    style AppRouter fill:#6a5,stroke:#333,color:#fff
-    style Views fill:#6a5,stroke:#333,color:#fff
-    style Presenters fill:#6a5,stroke:#333,color:#fff
     style TrackInteractor fill:#7b5,stroke:#333,color:#fff
     style ScreenInteractor fill:#7b5,stroke:#333,color:#fff
     style WallpaperInteractor fill:#7b5,stroke:#333,color:#fff
     style SpectrumInteractor fill:#7b5,stroke:#333,color:#fff
-    style DependencyInjection fill:#c44,stroke:#333,color:#fff
-    style Entity fill:#4a9,stroke:#333,color:#fff
-    style Domain fill:#38b,stroke:#333,color:#fff
     style ConfigUseCase fill:#59c,stroke:#333,color:#fff
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
@@ -186,10 +221,11 @@ graph TD
     style MediaRemoteDataSource fill:#c84,stroke:#333,color:#fff
     style WallpaperDataSource fill:#c84,stroke:#333,color:#fff
     style AudioTapDataSource fill:#c84,stroke:#333,color:#fff
-    style AppKitScreenProvider fill:#a75,stroke:#333,color:#fff
-    style StandardOutput fill:#a75,stroke:#333,color:#fff
-    style DarwinGateway fill:#a75,stroke:#333,color:#fff
-    style FrequencyAnalyzer fill:#a75,stroke:#333,color:#fff
+    style AppKitScreenProvider fill:#d57,stroke:#333,color:#fff
+    style StandardOutput fill:#d57,stroke:#333,color:#fff
+    style DarwinGateway fill:#d57,stroke:#333,color:#fff
+    style CoreAudioTapGateway fill:#d57,stroke:#333,color:#fff
+    style FrequencyAnalyzer fill:#d57,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
@@ -222,7 +258,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter). DecodeEffect engine, RippleState |
 | Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler`, `BenchmarkHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. BenchmarkHandler: CPU/memory measurement via `ProcessGateway`. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
-| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `FrequencyAnalyzer` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `FrequencyAnalyzer` owns the vDSP FFT → per-bar magnitude conversion (pure, dependency-free) |
+| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT → per-bar magnitude conversion (pure computation behind Domain's `FrequencyAnalyzing` / `FrequencyAnalyzerFactory`) |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor`, `SpectrumInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
 | DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
 | Entity | `Entity` | Pure data types, zero external dependencies |
@@ -238,6 +274,10 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 
 **ProcessGateway OS boundary**: `ProcessGateway` centralizes OS-bound work in Domain (resource sampling, process management, lock files, launchctl, executable discovery, streaming subprocesses). `DarwinGateway` is the live macOS implementation, and `DependencyInjection` wires it into handlers and data sources so application logic no longer reaches directly into `Process`, `flock`, `getrusage`, or `which`.
 
+**AudioTapGateway CoreAudio boundary (#313)**: `AudioTapGateway` (Domain) wraps the imperative CoreAudio calls of the process-tap capture chain (tap → aggregate device → IOProc), and `CoreAudioTapGateway` is the live 1:1 pass-through implementation — fully symmetric to `ProcessGateway`/`DarwinGateway`. The protocol signature is deliberately CoreAudio-shaped (`CATapDescription`, `AudioStreamBasicDescription`, `AudioDeviceIOBlock`): type-erasing those would force per-callback conversion — allocation on the RT-safe IOProc path. Domain's `import CoreAudio` follows the same contract-layer exception as the Interactor protocols' Combine import. A GitHub survey (2026-07) found no maintained SPM library wrapping the macOS 14.4+ process-tap API (`SimplyCoreAudio` is stale and pre-dates it; `AudioCap` is sample code), so absorbing CoreAudio behind a third-party wrapper was rejected; if one matures later, this Gateway protocol is the single swap point. Rule of thumb for future gateways: protocol in Domain (platform-typed signatures allowed when the boundary's shape is the contract), live implementation in its own Support module, `liveValue` in `DependencyInjection/GatewayRegistration.swift`. The same shape covers non-gateway Support modules too: `FrequencyAnalyzer` is consumed through Domain's `FrequencyAnalyzing` protocol, built via the injected `FrequencyAnalyzerFactory` (a factory because the analyzer is rebuilt at runtime — bar count follows the overlay width, sample rate follows the tap — and the UseCase memoizes across rebuilds).
+
+**Analyzer memoization is UseCase-private state, not a DataStore (#313)**: `SpectrumUseCaseImpl` keeps the built analyzer in a private var keyed on `(bars, sampleRate)`. Modeling this as an in-memory DataStore was considered and rejected: the DataStore layer caches *domain data* — Entity values a Repository can read back (`MetadataDataStore.read(title:artist:)`) — whereas this memo reuses a *computational resource* (vDSP FFT setup) that is single-slot, instance-scoped, and main-thread-confined (the documented reason the class is `@unchecked Sendable`). Moving it behind a shared injected store would weaken the thread-confinement story and add indirection with no testability gain (rebuild-on-change is already covered by tests). Boundary for future work: if spectrum *results* (per-track bar data, resolved values) ever need caching across consumers, that IS domain data — put it in a DataStore behind the Repository, per the MetadataRepository precedent.
+
 **AppKit lifecycle boundary**: The `App` module owns foreground `NSApplication` setup, accessory activation, `AppDelegate` retention, and termination signal registration. `DaemonCommand` stays CLI glue after lock acquisition and calls the App lifecycle runner instead of touching AppKit directly. `AppDelegate` receives router and termination-handler collaborators so launch bootstrap and signal-triggered shutdown can be unit-tested without `NSApplication.run()` or live signal registration.
 
 **VIPER data flow**: `TrackInteractor` exposes a shared Combine publisher (`AnyPublisher<TrackUpdate, Never>`) built as a declarative pipeline: NowPlaying stream → `removeDuplicates` → `switchToLatest(resolve)` → `share()`. `HeaderPresenter` and `LyricsPresenter` each subscribe independently via `.sink`. No manual dispatch or procedural send calls.
@@ -246,7 +286,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 
 **FetchState\<T\>**: Generic enum (`.idle`, `.loading`, `.revealing(T)`, `.success(T)`, `.failure`) drives both data flow and UI animation. The `.revealing` → `.success` transition is timed by Presenters using `DecodeEffectState`. Use `FetchState<T>` only when the payload `T` is genuinely consumed downstream (e.g. `LyricsPresenter.lyricsState`, whose content feeds `columns(in:)` and `updateActiveLineTick()`). When a Presenter only needs the animation lifecycle and the View already renders the text from a separate `display…` property, expose the payload-less `RevealPhase` (`.idle` / `.revealing` / `.revealed`) instead and keep the decode target in a private field — `HeaderPresenter` does this for `titlePhase` / `artistPhase` so the public surface never duplicates `displayTitle` / `displayArtist` (#275).
 
-**Spectrum analyzer (#23)**: Real-time bars driven by the now-playing app's audio via a CoreAudio **process tap** (macOS 14.4+ APIs: `kAudioHardwarePropertyProcessObjectList` filtered to the now-playing pid's **process subtree** → `CATapDescription(stereoMixdownOfProcesses:)` → `AudioHardwareCreateProcessTap` → private aggregate device + `AudioDeviceCreateIOProcIDWithBlock`; requires the *System Audio Recording* TCC permission declared as `NSAudioCaptureUsageDescription` in the embedded Info.plist). The subtree matching (ppid walk via `proc_pidinfo`) is load-bearing: Chromium-based browsers emit audio from a helper subprocess, so a tap scoped to the main pid alone captures silence — empirically hit with Arc, whose "Browser Helper" child owns the audio stream. The pipeline is: `PlaybackUseCase.observeNowPlaying()` (backed by the **multicast** `NowPlayingRepository.stream()`, so no Interactor→Interactor dependency and no second helper stream) → `SpectrumInteractorImpl` consumes the stream in a single `for await` processor task — inherent serialization, so pause/play bursts cannot interleave tap create/destroy — deduping `AudioSourceState(pid:isPlaying:)` transitions itself (the helper's 3 s ticks must not rebuild the tap) → `SpectrumUseCase` (business logic: capture lifecycle + PCM→per-bar conversion via the pure `FrequencyAnalyzer`) → `AudioCaptureRepository` (thin orchestration over the tap DataSource) → `AudioTapDataSourceImpl` owns `ProcessTapEngine` (`@available(macOS 14.4, *)`, availability-erased as `AnyObject` for the 14.0 target) and a lock-free SPSC `SampleRingBuffer` (swift-atomics `ManagedAtomic` monotonic write index; the IOProc callback is RT-safe — no allocation, locks, or Swift concurrency). `FrequencyAnalyzer` (pure, dependency-free module) converts the newest PCM window: Hann window → vDSP FFT → `linear` (amplitude, cava's look) or `db` scale → per-bar max grouping over log-spaced bands. **Output is un-gained** — the analyzer preserves amplitude ratios and the gain lives in the Presenter (see #297 below). `SpectrumView` follows the #252/#258 zero-idle-cost pattern (conditional inclusion + `TimelineView(.animation(paused:))`); `binHeights()` is read-only so the Canvas draw closure never mutates `@Published` state. Tap lifecycle: playing+pid → create; paused/pid-lost/session-gone → destroy (a dead tap costs zero CPU). Known limitation (by decision): the tap captures the whole process tree — for browsers that means every tab, documented in README. TCC caveat for dev runs: a daemon spawned from a terminal inherits the terminal as TCC responsible process, so the permission prompt never appears and the tap reads silence — launch via launchd (LaunchAgent) so lyra itself is the responsible process.
+**Spectrum analyzer (#23)**: Real-time bars driven by the now-playing app's audio via a CoreAudio **process tap** (macOS 14.4+ APIs: `kAudioHardwarePropertyProcessObjectList` filtered to the now-playing pid's **process subtree** → `CATapDescription(stereoMixdownOfProcesses:)` → `AudioHardwareCreateProcessTap` → private aggregate device + `AudioDeviceCreateIOProcIDWithBlock`; requires the *System Audio Recording* TCC permission declared as `NSAudioCaptureUsageDescription` in the embedded Info.plist). The subtree matching (ppid walk via `proc_pidinfo`) is load-bearing: Chromium-based browsers emit audio from a helper subprocess, so a tap scoped to the main pid alone captures silence — empirically hit with Arc, whose "Browser Helper" child owns the audio stream. The pipeline is: `PlaybackUseCase.observeNowPlaying()` (backed by the **multicast** `NowPlayingRepository.stream()`, so no Interactor→Interactor dependency and no second helper stream) → `SpectrumInteractorImpl` consumes the stream in a single `for await` processor task — inherent serialization, so pause/play bursts cannot interleave tap create/destroy — deduping `AudioSourceState(pid:isPlaying:)` transitions itself (the helper's 3 s ticks must not rebuild the tap) → `SpectrumUseCase` (business logic: capture lifecycle + PCM→per-bar conversion via the pure `FrequencyAnalyzer`) → `AudioCaptureRepository` (thin orchestration over the tap DataSource) → `AudioTapDataSourceImpl` owns `ProcessTapEngine` (`@available(macOS 14.4, *)`, availability-erased as `AnyObject` for the 14.0 target) and a lock-free SPSC `SampleRingBuffer` (swift-atomics `ManagedAtomic` monotonic write index; the IOProc callback is RT-safe — no allocation, locks, or Swift concurrency). `FrequencyAnalyzer` (pure computation, injected as Domain's `FrequencyAnalyzing` via `FrequencyAnalyzerFactory`) converts the newest PCM window: Hann window → vDSP FFT → `linear` (amplitude, cava's look) or `db` scale → per-bar max grouping over log-spaced bands. **Output is un-gained** — the analyzer preserves amplitude ratios and the gain lives in the Presenter (see #297 below). `SpectrumView` follows the #252/#258 zero-idle-cost pattern (conditional inclusion + `TimelineView(.animation(paused:))`); `binHeights()` is read-only so the Canvas draw closure never mutates `@Published` state. Tap lifecycle: playing+pid → create; paused/pid-lost/session-gone → destroy (a dead tap costs zero CPU). Known limitation (by decision): the tap captures the whole process tree — for browsers that means every tab, documented in README. TCC caveat for dev runs: a daemon spawned from a terminal inherits the terminal as TCC responsible process, so the permission prompt never appears and the tap reads silence — launch via launchd (LaunchAgent) so lyra itself is the responsible process.
 
 **Spectrum cava-faithful smoothing + configurability (#297)**: `SpectrumPresenter.tick()` runs on the DisplayLink and applies a faithful port of cavacore.c (MIT): per-bar sensitivity scaling → gravity release → **non-normalized leaky integrator** (sustained energy compounds toward `1/(1-noise_reduction)` ≈ 4× at 0.77, so beats tower over one-frame transients — the reason cava's kick band reads prominent) → clamp at full height, with the gain auto-tuned from overshoot (cava's **autosens**, moved here from the UseCase). Three knob families are curated-default-but-configurable, following the philosophy of showing the good part without forcing setup: (1) **bar count is derived from the overlay size cava-style** (fixed `bar_width` + `bar_spacing`, count fills the track) — the View reports the track length via `SpectrumPresenter.updateBarTrackLength` (overlay width for vertical placements, height for horizontal), `targetBarCount` derives the count, and `SpectrumUseCase.magnitudes(style:barCount:)` rebuilds the `FrequencyAnalyzer` when the count changes; (2) **band cutoffs** `min_freq`/`max_freq` (default 40 Hz–14 kHz) — `FrequencyAnalyzer` maps Hz→FFT bin (at the tap's actual sample rate, propagated from the capture path — #299) and log-divides that range; (3) **gradient direction** `frequency`/`amplitude`/`level` and **placement** `bottom`/`top`/`left`/`right`/`underlay` — `left`/`right` rotate the bars into horizontal columns growing inward, `spectrumBarRects` computing an edge-anchored growth axis vs. an edge-parallel track axis so one geometry covers all four edges (`SpectrumGradientDirection`, `SpectrumPlacement` in Entity). The growth-axis size is `height_ratio` (fraction of the axis) plus an optional absolute clamp `min_height`/`max_height` in points (CSS `min-height`/`max-height` semantics, min wins on conflict) — the pure testable `spectrumBarStripDepth` free function resolves it, so a ratio-based length stays sane across very different displays (e.g. capping a horizontal placement on an ultrawide).
 

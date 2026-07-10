@@ -71,7 +71,10 @@ Shared conventions:
 - Keep `RootCommand` sync. Async subcommands should continue to use
   `AsyncRunnableCommand`; do not switch the app entry to `AsyncParsableCommand`.
 - `Domain` must not import `Foundation`. Use plain Swift types in protocol
-  signatures, and put concrete data types in `Entity`.
+  signatures, and put concrete data types in `Entity`. Framework imports are
+  allowed only as boundary-shaped exceptions recorded in CLAUDE.md Key Design
+  Decisions (currently Combine for Interactor streams and CoreAudio for
+  `AudioTapGateway`, #313).
 - Handlers, use cases, and repositories return data. `StandardOutput` formats
   and prints it. Never pass handler instances into output methods.
 - Views do not own business logic. Keep orchestration in Presenters and

@@ -1,5 +1,6 @@
 import CoreAudio
 import Dependencies
+import Domain
 
 /// What CoreAudio objects a `ProcessTapEngine` currently owns, in the order
 /// construction acquires them. Each case carries exactly the handles that
