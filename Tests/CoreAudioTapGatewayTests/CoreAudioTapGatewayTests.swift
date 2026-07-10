@@ -11,6 +11,10 @@ import Testing
 /// of asserting success — the untestable residue is the process-tap happy
 /// path, which needs the System Audio Recording TCC grant plus a live audio
 /// source and stays out of scope here.
+///
+/// CI runs this suite in its own swift-test process (see test.yml): on a
+/// headless runner the live HAL churn destabilizes AVPlayer-dependent
+/// suites sharing the process (empirically: WallpaperPresenter timeouts).
 @Suite("CoreAudioTapGateway")
 struct CoreAudioTapGatewayTests {
     private let gateway = CoreAudioTapGateway()
