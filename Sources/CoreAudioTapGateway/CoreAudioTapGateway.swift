@@ -1,4 +1,5 @@
 import CoreAudio
+import Domain
 
 /// Live `AudioTapGateway`: thin, 1:1 pass-through wrappers around the actual
 /// CoreAudio C API calls. Holds no state of its own — `ProcessTapEngine`
@@ -6,7 +7,7 @@ import CoreAudio
 /// `AudioTapDataSourceImpl`: only the process-tap create/destroy calls
 /// require macOS 14.4+, so those two guard internally rather than gating the
 /// whole type (aggregate device / IOProc are pre-existing CoreAudio HAL APIs).
-public final class CoreAudioTapGateway {
+public struct CoreAudioTapGateway {
     public init() {}
 }
 

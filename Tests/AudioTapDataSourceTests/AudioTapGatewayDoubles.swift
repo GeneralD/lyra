@@ -1,4 +1,5 @@
 import CoreAudio
+import Domain
 
 @testable import AudioTapDataSource
 

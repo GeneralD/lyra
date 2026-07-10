@@ -81,6 +81,14 @@ let package = Package(
                 "Domain"
             ]
         ),
+
+        // ── CoreAudioTapGateway ──
+        .target(
+            name: "CoreAudioTapGateway",
+            dependencies: [
+                "Domain"
+            ]
+        ),
         .target(
             name: "AppKitScreenProvider",
             dependencies: [
@@ -219,6 +227,8 @@ let package = Package(
                 "AudioTapDataSource",
                 "SQLiteDataStore",
                 "DarwinGateway",
+                "CoreAudioTapGateway",
+                "FrequencyAnalyzer",
                 "ProcessHandler",
                 "VersionHandler",
                 "ServiceHandler",
@@ -266,7 +276,6 @@ let package = Package(
             name: "SpectrumUseCase",
             dependencies: [
                 "Domain",
-                "FrequencyAnalyzer",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -283,7 +292,9 @@ let package = Package(
         // ── FrequencyAnalyzer ──
         .target(
             name: "FrequencyAnalyzer",
-            dependencies: []
+            dependencies: [
+                "Domain"
+            ]
         ),
 
         // ── UseCase ──
@@ -481,6 +492,7 @@ let package = Package(
             dependencies: [
                 "SpectrumUseCase",
                 "Domain",
+                "FrequencyAnalyzer",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -494,7 +506,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FrequencyAnalyzerTests",
-            dependencies: ["FrequencyAnalyzer"]
+            dependencies: ["FrequencyAnalyzer", "Domain"]
         ),
         .testTarget(
             name: "AudioTapDataSourceTests",
@@ -502,6 +514,10 @@ let package = Package(
                 "AudioTapDataSource",
                 "Domain",
             ]
+        ),
+        .testTarget(
+            name: "CoreAudioTapGatewayTests",
+            dependencies: ["CoreAudioTapGateway"]
         ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
