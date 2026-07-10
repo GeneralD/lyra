@@ -18,7 +18,7 @@ extension MetadataRepositoryImpl: MetadataRepository {
         let regexCandidates = await regexDataSource.resolve(track: track).map {
             Track(title: $0.title, artist: $0.artist, duration: track.duration)
         }
-        return llmCandidates + mbCandidates + regexCandidates + [track]
+        return dedupedByIdentity(llmCandidates + mbCandidates + regexCandidates + [track])
     }
 
     public func isAIMetadataCached(track: Track) async -> Bool {
@@ -29,6 +29,18 @@ extension MetadataRepositoryImpl: MetadataRepository {
 // MARK: - Private
 
 extension MetadataRepositoryImpl {
+    // Collapse duplicate (title, artist) candidates, keeping the first occurrence so the
+    // LLM > MusicBrainz > Regex > raw precedence is preserved. Identical guesses from
+    // different sources (e.g. raw == a regex candidate) otherwise cost the downstream
+    // lyrics tiers redundant network lookups and custom-script spawns.
+    private func dedupedByIdentity(_ tracks: [Track]) -> [Track] {
+        tracks.reduce(into: (seen: Set<String>(), result: [Track]())) { acc, track in
+            let key = track.title.lowercased() + "\u{1}" + track.artist.lowercased()
+            guard acc.seen.insert(key).inserted else { return }
+            acc.result.append(track)
+        }.result
+    }
+
     private func resolveLLM(track: Track) async -> [Track] {
         if let cached = await llmDataStore.read(title: track.title, artist: track.artist) {
             return [Track(title: cached.title, artist: cached.artist, duration: track.duration)]

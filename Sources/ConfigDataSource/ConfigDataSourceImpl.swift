@@ -85,7 +85,11 @@ extension ConfigDataSourceImpl {
             return try? Folder(path: path)
         }()
         let lyraXdg = try? xdgConfigFolder?.subfolder(named: "lyra")
-        let lyraDot = try? home.subfolder(named: ".lyra")
+        // An explicit configHome override means "use exactly this config root" — skip the
+        // legacy ~/.lyra fallback so an injected root stays hermetic (a real ~/.lyra on the
+        // dev machine can't leak into tests). In production the override is nil, so ~/.lyra
+        // is still searched as before.
+        let lyraDot = configHomeOverride == nil ? (try? home.subfolder(named: ".lyra")) : nil
         let candidates: [(Folder?, String)] = [
             (lyraXdg, "config.toml"),
             (lyraDot, "config.toml"),

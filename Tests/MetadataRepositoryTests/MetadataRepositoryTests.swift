@@ -83,6 +83,23 @@ struct DataSourceMergingTests {
         }
     }
 
+    @Test("duplicate (title, artist) candidates across sources are collapsed, first occurrence kept")
+    func duplicateCandidatesAreDeduped() async {
+        await withDependencies {
+            $0.llmMetadataDataStore = StubMetadataDataStore<Track>(result: nil)
+            $0.musicBrainzMetadataDataStore = StubMetadataDataStore<MusicBrainzMetadata>(result: nil)
+            $0.llmMetadataDataSource = StubDataSource(candidates: [Track(title: "Song", artist: "Artist")])
+            $0.musicBrainzMetadataDataSource = StubDataSource<MusicBrainzMetadata>(candidates: [])
+            $0.regexMetadataDataSource = StubDataSource(candidates: [Track(title: "Song", artist: "Artist")])
+        } operation: {
+            let repo = MetadataRepositoryImpl()
+            let raw = Track(title: "raw", artist: "raw")
+            let result = await repo.resolve(track: raw)
+            // The identical LLM and Regex "Song/Artist" candidates collapse to one; raw stays.
+            #expect(result == [Track(title: "Song", artist: "Artist"), raw])
+        }
+    }
+
     @Test("falls back to Regex when LLM and MusicBrainz both fail, raw still appended")
     func regexFallback() async {
         await withDependencies {

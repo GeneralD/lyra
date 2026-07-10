@@ -63,8 +63,8 @@ extension TrackHandlerImpl {
 
         let elapsed = playbackUseCase.elapsedTime(for: nowPlaying)
         return .init(
-            title: result.trackName ?? track.title,
-            artist: result.artistName ?? track.artist,
+            title: result.trackName.flatMap { $0.isEmpty ? nil : $0 } ?? track.title,
+            artist: result.artistName.flatMap { $0.isEmpty ? nil : $0 } ?? track.artist,
             album: result.albumName,
             duration: nowPlaying.duration,
             elapsedTime: elapsed,
