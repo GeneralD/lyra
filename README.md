@@ -314,7 +314,14 @@ Whether your script signals "not found" via a non-zero exit or an empty
 `plain_lyrics` is up to you — lyra handles both identically. (`track_name` is
 required because it is what the match validator below checks; a response with
 lyrics but no `track_name` would bypass validation entirely, so lyra rejects
-it.)
+it.) `artist_name` is optional — when omitted or empty, the matched
+candidate's artist is used for display and caching.
+
+A structurally wrong `[lyrics]` section (e.g. `fallback_command` as a plain
+string instead of an argv array) does not take down the rest of your config —
+lyra loads everything else and disables Tier C — but `lyra healthcheck`
+reports it as a validation error so the misconfiguration doesn't go
+unnoticed.
 
 Even a syntactically valid response isn't accepted automatically: the
 returned `track_name` is run through the same match validator used for Tier
