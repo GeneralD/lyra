@@ -117,7 +117,7 @@ graph TD
 #### Implementation Modules
 
 ```mermaid
-graph TD
+graph LR
     subgraph CommandHandler["Command Handler"]
         ProcessHandler[ProcessHandler]
         VersionHandler[VersionHandler]
