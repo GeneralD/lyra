@@ -67,6 +67,30 @@ struct DefaultValueTests {
         let config = try decode("")
         #expect(config.lyrics == nil)
     }
+
+    @Test("[lyrics] section decodes fallback_command and timeout_ms")
+    func lyricsSectionDecodes() throws {
+        let config = try decode(
+            """
+            [lyrics]
+            fallback_command = ["/usr/bin/python3", "/path/to/script.py"]
+            timeout_ms = 3000
+            """)
+        // Expected value built via the memberwise init, so this also pins that public API.
+        #expect(
+            config.lyrics == LyricsConfig(fallbackCommand: ["/usr/bin/python3", "/path/to/script.py"], timeoutMs: 3000))
+    }
+
+    @Test("[lyrics] section omitting timeout_ms falls back to the 5000ms default")
+    func lyricsSectionDefaultsTimeout() throws {
+        let config = try decode(
+            """
+            [lyrics]
+            fallback_command = ["/usr/bin/env", "true"]
+            """)
+        #expect(config.lyrics?.fallbackCommand == ["/usr/bin/env", "true"])
+        #expect(config.lyrics?.timeoutMs.value == 5000)
+    }
 }
 
 // MARK: - Wallpaper config (TOML)

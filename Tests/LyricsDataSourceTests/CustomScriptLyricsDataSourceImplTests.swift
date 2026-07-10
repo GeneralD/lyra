@@ -1,3 +1,4 @@
+import Dependencies
 import Domain
 import Foundation
 import Testing
@@ -238,6 +239,38 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(elapsed < .seconds(5))
     }
 
+    @Test("executeProcess throws when the executable cannot be launched")
+    func executeProcessThrowsOnLaunchFailure() async {
+        await #expect(throws: (any Error).self) {
+            try await CustomScriptLyricsDataSourceImpl.executeProcess(
+                executable: "/nonexistent/definitely-not-a-real-binary-xyz",
+                arguments: [],
+                environment: [:],
+                timeoutMs: 1000
+            )
+        }
+    }
+
+    @Test("the no-argument init reads fallback_command/timeout from config and runs the resolved script")
+    func initReadsConfigAndRunsScript() async throws {
+        // A [lyrics] section pointing at /bin/echo (absolute, always present). echo emits
+        // non-JSON, so get() returns nil — but constructing via the config-reading init and
+        // invoking the real processRunner exercises init(), resolvedCacheDir(), and the
+        // processRunner closure that the injectable init bypasses.
+        let json = #"{"lyrics": {"fallback_command": ["/bin/echo", "unused"], "timeout_ms": 5000}}"#
+        let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+        let loadResult = ConfigLoadResult(config: config, configDir: "/tmp/lyra-config")
+
+        let dataSource = withDependencies {
+            $0.configDataSource = StubConfigDataSource(loadResult: loadResult)
+        } operation: {
+            CustomScriptLyricsDataSourceImpl()
+        }
+
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(result == nil)
+    }
+
     @Test("executeProcess force-kills a SIGTERM-ignoring script after the timeout")
     func executeProcessForceKillsStubbornScript() async throws {
         let pidFile = NSTemporaryDirectory() + "lyra-tierc-\(UUID().uuidString).pid"
@@ -267,6 +300,16 @@ struct CustomScriptLyricsDataSourceImplTests {
         }
         #expect(kill(pid, 0) != 0, "a SIGTERM-ignoring script must be SIGKILLed, not left running")
     }
+}
+
+private struct StubConfigDataSource: ConfigDataSource {
+    var loadResult: ConfigLoadResult?
+    var configDir: String = "/tmp/lyra-config"
+    func load() -> ConfigLoadResult? { loadResult }
+    func tryDecode() throws -> String { "" }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
 }
 
 private actor CapturedInvocation {
