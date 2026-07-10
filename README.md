@@ -268,8 +268,10 @@ timeout_ms = 5000
 - `fallback_command` — an argv array (not a shell string). The first element
   must be an absolute path to the executable; lyra does not search `$PATH` for
   it (a `launchd`-run daemon has a minimal `PATH`, so relying on `$PATH`
-  resolution would silently fail in production). If omitted, Tier C is
-  skipped entirely.
+  resolution would silently fail in production). A non-absolute path is
+  rejected up front and Tier C is skipped for that lookup, so the failure is
+  deterministic rather than dependent on the daemon's working directory. If
+  omitted, Tier C is skipped entirely.
 - `timeout_ms` — how long lyra waits for the script before killing it and
   treating that candidate as a miss. Defaults to `5000`.
 
@@ -283,6 +285,14 @@ arguments, and sets two read-only environment variables:
 | `LYRA_CONFIG_DIR` | The directory lyra actually loaded its config from. Setting this variable yourself has no effect on where lyra looks for its config — it is informational only. |
 | `LYRA_CACHE_DIR` | The directory lyra uses for its own cache (`~/.cache/lyra` by default). Also informational only. |
 
+> **Security & execution boundary.** The script runs with the full
+> privileges of the lyra process (the daemon user) and **inherits lyra's
+> entire parent environment** — the two `LYRA_*` variables above are merged
+> *on top of* everything lyra was launched with, so the script can also see
+> any secrets or tokens present in that environment (e.g. an `[ai]` API key
+> exported into the daemon). Point `fallback_command` only at scripts you
+> wrote or fully trust; treat it as running your own code, not a sandbox.
+
 The script must print a single line of JSON to stdout:
 
 ```json
@@ -290,10 +300,13 @@ The script must print a single line of JSON to stdout:
 ```
 
 lyra treats any of the following as "no match for this candidate" and moves
-on to the next one: a non-zero exit code, unparseable JSON on stdout, or a
-missing/empty `plain_lyrics` field. Whether your script signals "not found"
-via a non-zero exit or an empty `plain_lyrics` is up to you — lyra handles
-both identically.
+on to the next one: a non-zero exit code, unparseable JSON on stdout, a
+missing/empty `track_name` field, or a missing/empty `plain_lyrics` field.
+Whether your script signals "not found" via a non-zero exit or an empty
+`plain_lyrics` is up to you — lyra handles both identically. (`track_name` is
+required because it is what the match validator below checks; a response with
+lyrics but no `track_name` would bypass validation entirely, so lyra rejects
+it.)
 
 Even a syntactically valid response isn't accepted automatically: the
 returned `track_name` is run through the same match validator used for Tier

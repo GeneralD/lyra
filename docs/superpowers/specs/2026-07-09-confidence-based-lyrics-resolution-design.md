@@ -107,21 +107,24 @@ timeout_ms = 5000
 {"track_name": "...", "artist_name": "...", "plain_lyrics": "..."}
 ```
 
-- `track_name`/`artist_name`: Tier Bと同じタイトル類似度チェックに使う(スクリプト側の正規化結果を許容する)。
+- `track_name`: Tier Bと同じタイトル類似度チェック(`LyricsMatchValidator`)にかける。`artist_name`は検証には使わず表示用のみ(validatorはタイトル類似度とduration許容のみで、artistは比較しない)。
+- `artist_name`: 表示・キャッシュキー用。
 - `plain_lyrics`: 実際の歌詞本文。
 
 lyra側は以下のいずれかを「この候補ではマッチなし」として扱い、次候補(または全候補終了)に進む:
 
 - 終了コードが非ゼロ
 - stdoutがJSONとしてパースできない
+- `track_name`が欠落または空文字列(validatorのタイトル検証を空振りさせないため必須)
 - `plain_lyrics`が欠落または空文字列
 
 歌詞が見つからない場合にスクリプトが具体的にどう振る舞うか(非ゼロ終了 or 空`plain_lyrics`)はスクリプト作者の自由とし、lyra側はどちらのパターンも「マッチなし」として同一に扱う。README掲載のサンプルではこの契約に沿った実装例を示す。
 
 ### タイムアウト
 
-- `timeout_ms`(デフォルト5000ms)を超えたらプロセスをkillし、その候補は「マッチなし」として次候補に進む。
-- Tier Cは全候補に対して試すため、最悪ケース(全候補でハング)は `timeout_ms × 候補数`(実質3〜4候補、重複除けばもっと少ない)。デフォルト5秒×4候補=20秒程度に収まる想定。Tier Cは最終手段であり、lyraは表示側で自然に生データ表示へフォールバックするため、この程度の待ち時間は許容範囲とする。
+- `timeout_ms`(デフォルト5000ms)を超えたらプロセスをkillし、その候補は「マッチなし」として次候補に進む。killはSIGTERM→(500ms猶予後もrunningなら)対象pidへSIGKILLとエスカレーションし、SIGTERMを無視するスクリプトが居残らないようにする(プロセスグループではなく直接の子pidのみを対象とし、lyra本体を巻き込まない)。
+- 候補は`MetadataRepositoryImpl`側で(title, artist)重複を除去してから渡すため、raw/LLM/MusicBrainz/regexで同一のペアが複数回スクリプト起動されることはない。
+- Tier Cは全候補に対して試すため、最悪ケース(全候補でハング)は `timeout_ms × ユニーク候補数`。実運用ではLLM 1 + MusicBrainz上位数件 + regex + raw の重複除去後で数件程度に収まる。全体の総合タイムバジェット(候補数のハード上限やcumulative deadline)は設けていない — Tier Cは最終手段であり、lyraは表示側で自然に生データ表示へフォールバックするため、per-candidateのタイムアウトのみで許容範囲とする(将来MusicBrainz variantを大量に返す構成で問題が出れば、全体上限の追加を検討)。
 
 ### README
 
