@@ -29,9 +29,9 @@ extension LRCLibTrackRecord: Codable, FetchableRecord, PersistableRecord {
 }
 
 extension LRCLibTrackRecord {
-    init(from result: LyricsResult) {
+    init(from result: LyricsResult, id: Int) {
         self.init(
-            id: result.id ?? 0,
+            id: id,
             trackName: result.trackName,
             artistName: result.artistName,
             albumName: result.albumName,

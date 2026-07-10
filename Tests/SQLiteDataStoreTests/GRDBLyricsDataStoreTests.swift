@@ -39,8 +39,55 @@ struct GRDBLyricsDataStoreTests {
         #expect(result == nil)
     }
 
-    @Test("ignores write with nil id")
-    func writeWithNilId() async throws {
+    @Test("id-less result with lyrics is cached under a synthetic negative id")
+    func writeWithNilIdAndLyrics() async throws {
+        let db = try DatabaseManager(inMemory: true)
+        let cache = GRDBLyricsDataStore(dbManager: db)
+
+        let result = LyricsResult(
+            id: nil,
+            trackName: "Script Song",
+            artistName: "Script Artist",
+            albumName: nil,
+            duration: nil,
+            instrumental: nil,
+            plainLyrics: "custom script lyrics",
+            syncedLyrics: nil
+        )
+
+        try await cache.write(title: "script song", artist: "script artist", result: result)
+        let read = await cache.read(title: "script song", artist: "script artist")
+
+        #expect(read?.plainLyrics == "custom script lyrics")
+        #expect(read?.trackName == "Script Song")
+        #expect((read?.id ?? 0) < 0)
+    }
+
+    @Test("rewriting the same id-less result converges on one row")
+    func rewriteWithNilIdReplacesRow() async throws {
+        let db = try DatabaseManager(inMemory: true)
+        let cache = GRDBLyricsDataStore(dbManager: db)
+
+        let first = LyricsResult(
+            id: nil, trackName: "Song", artistName: "Artist", albumName: nil,
+            duration: nil, instrumental: nil, plainLyrics: "v1", syncedLyrics: nil
+        )
+        let second = LyricsResult(
+            id: nil, trackName: "Song", artistName: "Artist", albumName: nil,
+            duration: nil, instrumental: nil, plainLyrics: "v2", syncedLyrics: nil
+        )
+
+        try await cache.write(title: "song", artist: "artist", result: first)
+        try await cache.write(title: "song", artist: "artist", result: second)
+
+        let read = await cache.read(title: "song", artist: "artist")
+        let rows = try await db.dbQueue.read { try LRCLibTrackRecord.fetchCount($0) }
+        #expect(read?.plainLyrics == "v2")
+        #expect(rows == 1)
+    }
+
+    @Test("ignores id-less write with no lyrics content")
+    func writeWithNilIdAndNoContent() async throws {
         let db = try DatabaseManager(inMemory: true)
         let cache = GRDBLyricsDataStore(dbManager: db)
 
