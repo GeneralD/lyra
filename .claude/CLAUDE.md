@@ -110,7 +110,7 @@ graph TD
     style UseCase fill:#59c,stroke:#333,color:#fff
     style Repository fill:#86c,stroke:#333,color:#fff
     style DataSource fill:#c84,stroke:#333,color:#fff
-    style Support fill:#a75,stroke:#333,color:#fff
+    style Support fill:#d57,stroke:#333,color:#fff
     style DataStore fill:#a75,stroke:#333,color:#fff
 ```
 
@@ -222,11 +222,11 @@ graph LR
     style MediaRemoteDataSource fill:#c84,stroke:#333,color:#fff
     style WallpaperDataSource fill:#c84,stroke:#333,color:#fff
     style AudioTapDataSource fill:#c84,stroke:#333,color:#fff
-    style AppKitScreenProvider fill:#a75,stroke:#333,color:#fff
-    style StandardOutput fill:#a75,stroke:#333,color:#fff
-    style DarwinGateway fill:#a75,stroke:#333,color:#fff
-    style CoreAudioTapGateway fill:#a75,stroke:#333,color:#fff
-    style FrequencyAnalyzer fill:#a75,stroke:#333,color:#fff
+    style AppKitScreenProvider fill:#d57,stroke:#333,color:#fff
+    style StandardOutput fill:#d57,stroke:#333,color:#fff
+    style DarwinGateway fill:#d57,stroke:#333,color:#fff
+    style CoreAudioTapGateway fill:#d57,stroke:#333,color:#fff
+    style FrequencyAnalyzer fill:#d57,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
