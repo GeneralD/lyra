@@ -33,6 +33,13 @@ macOS desktop overlay app showing synced lyrics and video wallpaper. VIPER + Cle
 
 ### Module Dependency Graph
 
+Two views: the **Layer Overview** shows how the layers relate; the
+**Implementation Modules** diagram expands the `Implementations` box module by
+module. Dotted edges are protocol-mediated (`@Dependency` via Domain); solid
+edges are direct module dependencies.
+
+#### Layer Overview
+
 ```mermaid
 graph TD
     subgraph Entry
@@ -63,61 +70,13 @@ graph TD
     end
 
     subgraph Implementations
-        subgraph CommandHandler["Command Handler"]
-            ProcessHandler[ProcessHandler]
-            VersionHandler[VersionHandler]
-            ServiceHandler[ServiceHandler]
-            HealthHandler[HealthHandler]
-            TrackHandler[TrackHandler]
-            ConfigHandler[ConfigHandler]
-            BenchmarkHandler[BenchmarkHandler]
-        end
-
-        subgraph Interactor
-            TrackInteractor[TrackInteractor]
-            ScreenInteractor[ScreenInteractor]
-            WallpaperInteractor[WallpaperInteractor]
-            SpectrumInteractor[SpectrumInteractor]
-        end
-
-        subgraph UseCase
-            ConfigUseCase[ConfigUseCase]
-            PlaybackUseCase[PlaybackUseCase]
-            LyricsUseCase[LyricsUseCase]
-            MetadataUseCase[MetadataUseCase]
-            WallpaperUseCase[WallpaperUseCase]
-            SpectrumUseCase[SpectrumUseCase]
-        end
-
-        subgraph Repository
-            ConfigRepository[ConfigRepository]
-            LyricsRepository[LyricsRepository]
-            MetadataRepository[MetadataRepository]
-            NowPlayingRepository[NowPlayingRepository]
-            WallpaperRepository[WallpaperRepository]
-            AudioCaptureRepository[AudioCaptureRepository]
-        end
-
-        subgraph DataSource
-            LyricsDataSource[LyricsDataSource]
-            MetadataDataSource[MetadataDataSource]
-            ConfigDataSource[ConfigDataSource]
-            MediaRemoteDataSource[MediaRemoteDataSource]
-            WallpaperDataSource[WallpaperDataSource]
-            AudioTapDataSource[AudioTapDataSource]
-        end
-
-        subgraph Support["Provider / Support"]
-            AppKitScreenProvider[AppKitScreenProvider]
-            StandardOutput[StandardOutput]
-            DarwinGateway[DarwinGateway]
-            CoreAudioTapGateway[CoreAudioTapGateway]
-            FrequencyAnalyzer[FrequencyAnalyzer]
-        end
-
-        subgraph DataStore
-            SQLiteDataStore[SQLiteDataStore]
-        end
+        CommandHandler[Command Handler]
+        Interactor[Interactor]
+        UseCase[UseCase]
+        Repository[Repository]
+        DataSource[DataSource]
+        DataStore[DataStore]
+        Support[Provider / Support]
     end
 
     CLI --> App & AppRouter & AsyncParsableCommand
@@ -131,6 +90,90 @@ graph TD
 
     CLI -.-> CommandHandler
     Presenters -.-> Interactor
+    CommandHandler -.-> UseCase & Support
+    Interactor -.-> UseCase
+    UseCase -.-> Repository
+    UseCase --> Support
+    Repository -.-> DataSource & DataStore
+    DataSource -.-> Support
+
+    style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
+    style CLI fill:#555,stroke:#333,color:#fff
+    style App fill:#4c78a8,stroke:#333,color:#fff
+    style AppRouter fill:#6a5,stroke:#333,color:#fff
+    style Views fill:#6a5,stroke:#333,color:#fff
+    style Presenters fill:#6a5,stroke:#333,color:#fff
+    style DependencyInjection fill:#c44,stroke:#333,color:#fff
+    style Entity fill:#4a9,stroke:#333,color:#fff
+    style Domain fill:#38b,stroke:#333,color:#fff
+    style Interactor fill:#7b5,stroke:#333,color:#fff
+    style UseCase fill:#59c,stroke:#333,color:#fff
+    style Repository fill:#86c,stroke:#333,color:#fff
+    style DataSource fill:#c84,stroke:#333,color:#fff
+    style Support fill:#a75,stroke:#333,color:#fff
+    style DataStore fill:#a75,stroke:#333,color:#fff
+```
+
+#### Implementation Modules
+
+```mermaid
+graph TD
+    subgraph CommandHandler["Command Handler"]
+        ProcessHandler[ProcessHandler]
+        VersionHandler[VersionHandler]
+        ServiceHandler[ServiceHandler]
+        HealthHandler[HealthHandler]
+        TrackHandler[TrackHandler]
+        ConfigHandler[ConfigHandler]
+        BenchmarkHandler[BenchmarkHandler]
+    end
+
+    subgraph Interactor
+        TrackInteractor[TrackInteractor]
+        ScreenInteractor[ScreenInteractor]
+        WallpaperInteractor[WallpaperInteractor]
+        SpectrumInteractor[SpectrumInteractor]
+    end
+
+    subgraph UseCase
+        ConfigUseCase[ConfigUseCase]
+        PlaybackUseCase[PlaybackUseCase]
+        LyricsUseCase[LyricsUseCase]
+        MetadataUseCase[MetadataUseCase]
+        WallpaperUseCase[WallpaperUseCase]
+        SpectrumUseCase[SpectrumUseCase]
+    end
+
+    subgraph Repository
+        ConfigRepository[ConfigRepository]
+        LyricsRepository[LyricsRepository]
+        MetadataRepository[MetadataRepository]
+        NowPlayingRepository[NowPlayingRepository]
+        WallpaperRepository[WallpaperRepository]
+        AudioCaptureRepository[AudioCaptureRepository]
+    end
+
+    subgraph DataSource
+        LyricsDataSource[LyricsDataSource]
+        MetadataDataSource[MetadataDataSource]
+        ConfigDataSource[ConfigDataSource]
+        MediaRemoteDataSource[MediaRemoteDataSource]
+        WallpaperDataSource[WallpaperDataSource]
+        AudioTapDataSource[AudioTapDataSource]
+    end
+
+    subgraph Support["Provider / Support"]
+        AppKitScreenProvider[AppKitScreenProvider]
+        StandardOutput[StandardOutput]
+        DarwinGateway[DarwinGateway]
+        CoreAudioTapGateway[CoreAudioTapGateway]
+        FrequencyAnalyzer[FrequencyAnalyzer]
+    end
+
+    subgraph DataStore
+        SQLiteDataStore[SQLiteDataStore]
+    end
+
     TrackHandler -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase
     ConfigHandler -.-> ConfigUseCase
     ProcessHandler -.-> DarwinGateway
@@ -157,19 +200,10 @@ graph TD
     WallpaperDataSource -.-> DarwinGateway
     AudioTapDataSource -.-> CoreAudioTapGateway
 
-    style AsyncParsableCommand fill:#555,stroke:#333,color:#fff
-    style CLI fill:#555,stroke:#333,color:#fff
-    style App fill:#4c78a8,stroke:#333,color:#fff
-    style AppRouter fill:#6a5,stroke:#333,color:#fff
-    style Views fill:#6a5,stroke:#333,color:#fff
-    style Presenters fill:#6a5,stroke:#333,color:#fff
     style TrackInteractor fill:#7b5,stroke:#333,color:#fff
     style ScreenInteractor fill:#7b5,stroke:#333,color:#fff
     style WallpaperInteractor fill:#7b5,stroke:#333,color:#fff
     style SpectrumInteractor fill:#7b5,stroke:#333,color:#fff
-    style DependencyInjection fill:#c44,stroke:#333,color:#fff
-    style Entity fill:#4a9,stroke:#333,color:#fff
-    style Domain fill:#38b,stroke:#333,color:#fff
     style ConfigUseCase fill:#59c,stroke:#333,color:#fff
     style PlaybackUseCase fill:#59c,stroke:#333,color:#fff
     style LyricsUseCase fill:#59c,stroke:#333,color:#fff
