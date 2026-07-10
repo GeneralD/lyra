@@ -177,6 +177,20 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(timeoutMs == 1234)
     }
 
+    @Test("executeProcess survives pathological timeout values — huge/NaN/infinite clamp instead of trapping")
+    func executeProcessClampsPathologicalTimeouts() async throws {
+        for pathological in [1e300, .nan, .infinity] as [Double] {
+            let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
+                executable: "/bin/echo", arguments: ["ok"], environment: [:], timeoutMs: pathological)
+            #expect(result.status == 0)
+            #expect(result.stdout == "ok")
+        }
+        // A negative value clamps to the 1 ms floor — the call must not trap; whether the
+        // subprocess beats the 1 ms deadline is timing-dependent, so only no-crash is asserted.
+        _ = try await CustomScriptLyricsDataSourceImpl.executeProcess(
+            executable: "/bin/echo", arguments: ["ok"], environment: [:], timeoutMs: -5)
+    }
+
     @Test("$LYRA_CONFIG_DIR / ${LYRA_CACHE_DIR} placeholders expand in fallback_command elements")
     func placeholdersExpandInFallbackCommand() async {
         let captured = CapturedInvocation()

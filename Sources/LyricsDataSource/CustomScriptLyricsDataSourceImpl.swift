@@ -118,7 +118,11 @@ extension CustomScriptLyricsDataSourceImpl {
     static func executeProcess(
         executable: String, arguments: [String], environment: [String: String], timeoutMs: Double
     ) async throws -> (status: Int32, stdout: String, stderr: String) {
-        try await withCheckedThrowingContinuation { continuation in
+        // timeout_ms comes straight from user config: clamp to a finite sane window
+        // (1 ms … 1 h) before Int conversion — Int(Double) traps on NaN/±inf/
+        // out-of-range, which would let a pathological config value crash the daemon.
+        let timeoutMs = timeoutMs.isFinite ? min(max(timeoutMs, 1), 3_600_000) : 5000
+        return try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
