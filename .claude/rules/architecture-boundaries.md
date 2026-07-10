@@ -5,7 +5,7 @@
 | Layer | Owns | Never |
 |---|---|---|
 | **Entity** | Pure data types, enums, Codable structs | Logic, imports beyond Foundation |
-| **Domain** | Protocols, DependencyKeys | Data type definitions, Foundation import |
+| **Domain** | Protocols, DependencyKeys | Data type definitions; framework imports beyond the documented boundary-shaped exceptions (Combine in Interactor protocols, CoreAudio in `AudioTapGateway` — see CLAUDE.md Key Design Decisions, #313) |
 | **Handler** | Business/measurement logic, orchestration | Output formatting, UI concerns |
 | **StandardOutput** | Formatting, terminal control (echo, `\r`) | Business logic, handler references |
 | **CLI Command** | Argument parsing, thin glue | Loops, task groups, complex branching |
@@ -36,7 +36,14 @@ If a command needs streaming output, iterate the stream and call output methods 
 
 ## Domain Module Constraints
 
-- **No Foundation import** — use `Double` not `TimeInterval`, `String` not `URL`
+- **No Foundation import by default** — use `Double` not `TimeInterval`, `String` not `URL`
+- **Framework imports only as documented boundary-shaped exceptions** — when
+  the boundary's shape IS the contract and plain-type wrapping would cost
+  correctness or performance, a framework import is allowed but must be
+  recorded in CLAUDE.md Key Design Decisions. Current exceptions: Combine
+  (Interactor protocols expose reactive streams), CoreAudio
+  (`AudioTapGateway` — type-erasing `CATapDescription`/`AudioDeviceIOBlock`
+  would force allocation on the RT-safe IOProc path, #313)
 - **Only protocols + DependencyKey** — data types go in Entity
 - **No logic** — Domain is a contract layer, not an implementation layer
 
