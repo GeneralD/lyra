@@ -7,7 +7,7 @@ import Domain
 /// `AudioTapDataSourceImpl`: only the process-tap create/destroy calls
 /// require macOS 14.4+, so those two guard internally rather than gating the
 /// whole type (aggregate device / IOProc are pre-existing CoreAudio HAL APIs).
-public final class CoreAudioTapGateway {
+public struct CoreAudioTapGateway {
     public init() {}
 }
 
