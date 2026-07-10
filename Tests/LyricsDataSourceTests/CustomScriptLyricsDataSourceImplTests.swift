@@ -99,7 +99,7 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(result == nil)
     }
 
-    @Test("arguments append title and artist after the configured argv, env vars carry config/cache dirs")
+    @Test("arguments append title and artist after the configured argv, env vars carry config/cache dirs on top of the parent environment")
     func argumentsAndEnvironment() async {
         let captured = CapturedInvocation()
         let dataSource = CustomScriptLyricsDataSourceImpl(
@@ -122,6 +122,11 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(arguments == ["/path/to/script.py", "--flag", "My Title", "My Artist"])
         #expect(environment?["LYRA_CONFIG_DIR"] == "/my/config")
         #expect(environment?["LYRA_CACHE_DIR"] == "/my/cache")
+        // The lyra-specific keys are merged ON TOP of the full parent environment
+        // (not a replacement) — assert a well-known parent var survives alongside them,
+        // rather than asserting the dictionary equals exactly the two lyra keys.
+        #expect(environment?["PATH"] == ProcessInfo.processInfo.environment["PATH"])
+        #expect((environment?.count ?? 0) > 2)
         #expect(timeoutMs == 1234)
     }
 
@@ -136,6 +141,52 @@ struct CustomScriptLyricsDataSourceImplTests {
         )
         let result = await dataSource.search(query: "anything")
         #expect(result == nil)
+    }
+
+    // MARK: - Real executeProcess (regression guard for the b09c1da waitUntilExit() hang fix)
+    //
+    // Every test above stubs `processRunner`, so none of them ever runs the real
+    // `executeProcess` static function — the exact code whose `waitUntilExit()` was
+    // replaced with `terminationHandler` + a 3rd DispatchGroup pair after repeated
+    // short-lived invocations were empirically observed to hang (#308 review). These
+    // two tests spawn real subprocesses through `executeProcess` directly so a future
+    // refactor that reintroduces a blocking wait is caught by the suite.
+
+    @Test("executeProcess spawns a real subprocess repeatedly without hanging")
+    func executeProcessRealSubprocessDoesNotHang() async throws {
+        let iterations = 50
+        let start = ContinuousClock.now
+
+        for i in 0..<iterations {
+            let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
+                executable: "/bin/echo",
+                arguments: ["hello-\(i)"],
+                environment: [:],
+                timeoutMs: 3000
+            )
+            #expect(result.status == 0)
+            #expect(result.stdout == "hello-\(i)")
+        }
+
+        let elapsed = start.duration(to: .now)
+        #expect(elapsed < .seconds(10))
+    }
+
+    @Test("executeProcess returns promptly on timeout instead of waiting out the full sleep duration")
+    func executeProcessTimeoutReturnsPromptly() async throws {
+        let start = ContinuousClock.now
+
+        let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
+            executable: "/bin/sh",
+            arguments: ["-c", "sleep 10"],
+            environment: [:],
+            timeoutMs: 100
+        )
+
+        let elapsed = start.duration(to: .now)
+        #expect(result.status == -1)
+        #expect(result.stdout.isEmpty)
+        #expect(elapsed < .seconds(5))
     }
 }
 

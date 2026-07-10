@@ -59,7 +59,12 @@ extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         guard let executable = fallbackCommand.first else { return nil }
         let arguments = Array(fallbackCommand.dropFirst()) + [title, artist]
-        let environment = ["LYRA_CONFIG_DIR": configDir, "LYRA_CACHE_DIR": cacheDir]
+        // Merge onto the parent environment rather than replacing it — Process.environment
+        // REPLACES the child's entire environment when set, and the user's custom script
+        // still needs PATH/HOME/LANG/etc. to run like a normal subprocess (#308 review).
+        let environment = ProcessInfo.processInfo.environment.merging(
+            ["LYRA_CONFIG_DIR": configDir, "LYRA_CACHE_DIR": cacheDir]
+        ) { _, new in new }
 
         guard let (status, stdout, _) = try? await processRunner(executable, arguments, environment, timeoutMs),
             status == 0,
