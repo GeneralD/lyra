@@ -9,6 +9,7 @@
 | **Handler** | Business/measurement logic, orchestration | Output formatting, UI concerns |
 | **StandardOutput** | Formatting, terminal control (echo, `\r`) | Business logic, handler references |
 | **CLI Command** | Argument parsing, thin glue | Loops, task groups, complex branching |
+| **DataStore** | Persistence/cache of *domain data* — Entity values a Repository reads back (SQLite caches, wallpaper files) | Caching *computational resources* (memoized engines, FFT setups, formatters) — those stay private state of the owning implementation (see CLAUDE.md "Analyzer memoization", #313) |
 
 ## CLI Command Pattern
 
@@ -16,6 +17,7 @@ All commands follow: **inject → call → write → guard**. No exceptions.
 
 Commands contain zero logic — no loops, task groups, branching, or data
 transformation. This ensures:
+
 - **Testability**: handler and output are independently testable without CLI
 - **Readability**: each command reads as a one-line description of what it does
 - **Separation of concerns**: handler owns logic, output owns formatting, command is glue only
