@@ -5,6 +5,7 @@ import Foundation
 public struct LyricsRepositoryImpl {
     @Dependency(\.lyricsCache) private var cache
     @Dependency(\.lyricsDataSource) private var dataSource
+    @Dependency(\.utaNetLyricsDataSource) private var utaNetDataSource
     @Dependency(\.customScriptLyricsDataSource) private var customScriptDataSource
     private let validator = LyricsMatchValidator()
 
@@ -30,6 +31,13 @@ extension LyricsRepositoryImpl: LyricsRepository {
             return result
         }
 
+        // uta-net matches strictly on normalized title+artist inside get() (and
+        // requires a non-empty artist), so no extra validation is needed here.
+        if let result = await utaNetDataSource.get(title: track.title, artist: track.artist, duration: track.duration) {
+            await store(result, track: track)
+            return result
+        }
+
         return nil
     }
 
@@ -41,7 +49,7 @@ extension LyricsRepositoryImpl: LyricsRepository {
             // Rows written before validation existed (pre-#308 upgrades) can hold lyrics
             // that never matched this candidate — a poisoned entry that would otherwise
             // short-circuit the validated tiers forever. Re-validate on read; an invalid
-            // entry is skipped so Tier A/B/C can overwrite it with a real match.
+            // entry is skipped so Tier A/B/C/D can overwrite it with a real match.
             guard validator.isValid(candidate: candidate, result: cached) else { continue }
             return cached
         }
@@ -52,7 +60,10 @@ extension LyricsRepositoryImpl: LyricsRepository {
         if let result = await tierBValidatedSearch(candidates: candidates) {
             return result
         }
-        if let result = await tierCCustomScript(candidates: candidates) {
+        if let result = await tierCUtaNet(candidates: candidates) {
+            return result
+        }
+        if let result = await tierDCustomScript(candidates: candidates) {
             return result
         }
         return nil
@@ -95,10 +106,27 @@ extension LyricsRepositoryImpl {
     }
 }
 
-// MARK: - Tier C: user-defined custom script
+// MARK: - Tier C: uta-net (built-in Japanese lyrics site)
 
 extension LyricsRepositoryImpl {
-    private func tierCCustomScript(candidates: [Track]) async -> LyricsResult? {
+    private func tierCUtaNet(candidates: [Track]) async -> LyricsResult? {
+        for c in candidates where !c.artist.isEmpty {
+            guard let result = await utaNetDataSource.get(title: c.title, artist: c.artist, duration: c.duration) else {
+                continue
+            }
+            guard validator.isValid(candidate: c, result: result) else { continue }
+            let displayResult = displayAdjusted(result, candidate: c)
+            await store(displayResult, track: c)
+            return displayResult
+        }
+        return nil
+    }
+}
+
+// MARK: - Tier D: user-defined custom script
+
+extension LyricsRepositoryImpl {
+    private func tierDCustomScript(candidates: [Track]) async -> LyricsResult? {
         for c in candidates where !c.artist.isEmpty {
             guard let result = await customScriptDataSource.get(title: c.title, artist: c.artist, duration: c.duration) else {
                 continue
@@ -115,7 +143,7 @@ extension LyricsRepositoryImpl {
 // MARK: - Private
 
 extension LyricsRepositoryImpl {
-    // Fill title and artist independently: a Tier C script may return a valid
+    // Fill title and artist independently: a Tier D script may return a valid
     // track_name with no artist_name, and the display/cache identity should then take
     // the matched candidate's artist rather than mixing in the raw fallback downstream.
     private func displayAdjusted(_ result: LyricsResult, candidate: Track) -> LyricsResult {

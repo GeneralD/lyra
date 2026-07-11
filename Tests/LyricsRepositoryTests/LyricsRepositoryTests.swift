@@ -137,6 +137,22 @@ struct LyricsRepositoryTests {
             }
         }
 
+        @Test("falls back to uta-net when LRCLIB get and search both miss")
+        func utaNetFallbackOnSingleTrack() async {
+            let utaNetResult = LyricsResult(trackName: "Song", artistName: "Artist", plainLyrics: "uta-net lyrics")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.utaNetLyricsDataSource = StubLyricsDataSource(getResult: utaNetResult)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(
+                    track: Track(title: "Song", artist: "Artist"))
+                #expect(result?.plainLyrics == "uta-net lyrics")
+            }
+        }
+
         @Test("does not cache when artist is empty")
         func noCacheForEmptyArtist() async {
             let expected = LyricsResult(plainLyrics: "Hello")
@@ -330,14 +346,63 @@ struct LyricsRepositoryTests {
             }
         }
 
-        @Test("Tier C is tried after Tier A/B fail, and its result is cached under the matched candidate")
-        func tierCFallsBackAndCaches() async {
+        @Test("Tier C (uta-net) is tried after Tier A/B fail, and its result is cached under the matched candidate")
+        func tierCUtaNetFallsBackAndCaches() async {
+            let utaNetResult = LyricsResult(trackName: "Real Title", artistName: "Real Artist", plainLyrics: "uta-net lyrics")
+            let spy = KeyCapturingLyricsCache()
+
+            await withDependencies {
+                $0.lyricsCache = spy
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.utaNetLyricsDataSource = StubLyricsDataSource(
+                    getHandler: { _, artist, _ in
+                        artist == "Real Artist" ? utaNetResult : nil
+                    })
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(
+                    getResult: LyricsResult(trackName: "Real Title", plainLyrics: "script lyrics"))
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Garbled Title", artist: "Garbled Artist"),
+                    Track(title: "Real Title", artist: "Real Artist"),
+                ])
+                // uta-net (Tier C) must win over the custom script (Tier D).
+                #expect(result?.plainLyrics == "uta-net lyrics")
+                let key = await spy.lastWriteKey
+                #expect(key?.title == "Real Title")
+                #expect(key?.artist == "Real Artist")
+            }
+        }
+
+        @Test("a uta-net result failing validation falls through to Tier D (custom script)")
+        func tierCUtaNetInvalidFallsThroughToScript() async {
+            let mismatched = LyricsResult(
+                trackName: "Completely Different Song", artistName: "Someone Else", plainLyrics: "wrong lyrics")
+            let scriptResult = LyricsResult(trackName: "Real Title", artistName: "Real Artist", plainLyrics: "script lyrics")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.utaNetLyricsDataSource = StubLyricsDataSource(getResult: mismatched, searchResult: nil)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: scriptResult, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Real Title", artist: "Real Artist")
+                ])
+                #expect(result?.plainLyrics == "script lyrics")
+            }
+        }
+
+        @Test("Tier D (custom script) is tried after Tier A/B/C fail, and its result is cached under the matched candidate")
+        func tierDFallsBackAndCaches() async {
             let scriptResult = LyricsResult(trackName: "Real Title", artistName: "Real Artist", plainLyrics: "script lyrics")
             let spy = KeyCapturingLyricsCache()
 
             await withDependencies {
                 $0.lyricsCache = spy
                 $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.utaNetLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
                 $0.customScriptLyricsDataSource = StubLyricsDataSource(
                     getHandler: { _, artist, _ in
                         artist == "Real Artist" ? scriptResult : nil
@@ -366,6 +431,7 @@ struct LyricsRepositoryTests {
                 $0.lyricsCache = SingleKeyLyricsCache(
                     matchTitle: "Real Title", matchArtist: "Real Artist", result: cached)
                 $0.lyricsDataSource = FailingLyricsDataSource()
+                $0.utaNetLyricsDataSource = FailingLyricsDataSource()
                 $0.customScriptLyricsDataSource = FailingLyricsDataSource()
             } operation: {
                 let repo = LyricsRepositoryImpl()
@@ -418,13 +484,14 @@ struct LyricsRepositoryTests {
             }
         }
 
-        @Test("no cache write occurs when Tier A/B/C all fail")
+        @Test("no cache write occurs when Tier A/B/C/D all fail")
         func noCacheWriteWhenAllTiersFail() async {
             let spy = KeyCapturingLyricsCache()
 
             await withDependencies {
                 $0.lyricsCache = spy
                 $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.utaNetLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
                 $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
             } operation: {
                 let repo = LyricsRepositoryImpl()
