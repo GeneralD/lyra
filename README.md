@@ -333,57 +333,121 @@ but the script's JSON response has no `duration` field, so that half of the
 check never has grounds to reject a Tier C result today.) An accurate
 `track_name` therefore matters for more than display purposes.
 
-#### Example: utamap.com scraper
+#### Example: KuGou lyrics fetcher
 
-This is a minimal example that scrapes [utamap.com](https://utamap.com) for
-Japanese lyrics. It is not shipped with lyra — save it yourself and point
-`fallback_command` at it:
+This is a working example that fetches lyrics through KuGou's keyless lyric
+API (search the song hash, list lyric candidates, download the pick as LRC,
+strip the timestamps, and wash out KuGou's non-lyric header lines). It is not
+shipped with lyra — save it yourself and point `fallback_command` at it:
 
 ```python
 #!/usr/bin/env python3
-import sys
+import base64
 import json
-import urllib.request
-import urllib.parse
 import re
+import sys
+import urllib.parse
+import urllib.request
+
+SEARCH_URL = "http://mobilecdn.kugou.com/api/v3/search/song?keyword={}&page=1&pagesize=5"
+CANDIDATES_URL = "http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&hash={}"
+DOWNLOAD_URL = "http://lyrics.kugou.com/download?ver=1&client=pc&id={}&accesskey={}&fmt=lrc&charset=utf8"
+TIMEOUT = 5
+
+CREDIT_PATTERN = re.compile(
+    r"^\s*[（(【\[]?\s*(作?[词詞]|作?曲|[编編]曲|歌手?|演唱|翻[译譯]|监制|製作|制作|提供|出品|[发發]行)\s*[:：]"
+)
+PROMO_PATTERN = re.compile(r"https?://|www\.|酷狗|QQ音乐", re.IGNORECASE)
+HEADER_SCAN_LINES = 6
+
+
+def fetched_json(url):
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return json.loads(response.read().decode(charset, errors="replace"))
+
+
+def normalized(text):
+    return re.sub(r"\s+", "", text).casefold()
+
+
+def matched_hash(title, artist):
+    query = urllib.parse.quote(f"{title} {artist}")
+    songs = fetched_json(SEARCH_URL.format(query)).get("data", {}).get("info", [])
+    titled = [s for s in songs if normalized(title) in normalized(s.get("songname", ""))]
+    # KuGou may list artists in simplified Chinese, so an artist match is
+    # preferred but not required once the title matches.
+    by_artist = [s for s in titled if normalized(artist) in normalized(s.get("singername", ""))]
+    return next(iter(by_artist or titled), {}).get("hash")
+
+
+def plain_lyrics(song_hash):
+    candidates = fetched_json(CANDIDATES_URL.format(song_hash)).get("candidates", [])
+    if not candidates:
+        return None
+    picked = candidates[0]
+    payload = fetched_json(DOWNLOAD_URL.format(picked["id"], picked["accesskey"]))
+    lrc = base64.b64decode(payload["content"]).decode("utf-8", errors="replace").lstrip("\ufeff")
+    lines = (re.sub(r"^(\[[^\]]*\])+", "", line).strip() for line in lrc.splitlines())
+    return "\n".join(line for line in lines if line) or None
+
+
+def washed(lyrics, title, artist):
+    """Drop KuGou's non-lyric header and promo lines.
+
+    KuGou LRC bodies open with a few metadata lines — a "title - artist" line,
+    词/曲 credits, sometimes a free-form comment — recognizable only by content.
+    Scan the first few lines and cut through the LAST one that looks like
+    metadata, so comment lines sitting above a title/credit line fall with it.
+    """
+    kept = [line for line in lyrics.splitlines() if not PROMO_PATTERN.search(line)]
+    t, a = normalized(title), normalized(artist)
+
+    def is_header(line):
+        if CREDIT_PATTERN.match(line):
+            return True
+        n = normalized(line)
+        if n in (t, a):
+            return True
+        if len(t) >= 6 and t in n:
+            return True
+        return len(a) >= 4 and a in n
+
+    header = [i for i, line in enumerate(kept[:HEADER_SCAN_LINES]) if is_header(line)]
+    return "\n".join(kept[header[-1] + 1:] if header else kept) or None
+
 
 def main():
     if len(sys.argv) < 3:
         sys.exit(1)
     title, artist = sys.argv[-2], sys.argv[-1]
 
-    query = urllib.parse.quote(f"{title} {artist}")
-    search_url = f"https://www.utamap.com/showkasi.php?surl={query}"
-
     try:
-        with urllib.request.urlopen(search_url, timeout=4) as response:
-            html = response.read().decode("utf-8", errors="ignore")
+        song_hash = matched_hash(title, artist)
+        raw = plain_lyrics(song_hash) if song_hash else None
+        lyrics = washed(raw, title, artist) if raw else None
     except Exception:
         sys.exit(1)
 
-    match = re.search(r'<div id="kasi">(.*?)</div>', html, re.DOTALL)
-    if not match:
-        sys.exit(1)
-
-    lyrics = re.sub(r"<br\s*/?>", "\n", match.group(1))
-    lyrics = re.sub(r"<[^>]+>", "", lyrics).strip()
-
     if not lyrics:
         sys.exit(1)
-
     print(json.dumps({
         "track_name": title,
         "artist_name": artist,
         "plain_lyrics": lyrics,
     }))
 
+
 if __name__ == "__main__":
     main()
 ```
 
-This example is illustrative only — utamap.com's actual HTML structure may
-differ; inspect the page and adjust the scraping regex accordingly. lyra
-ships no HTML-parsing code of its own for this site or any other.
+An earlier revision of this example scraped utamap.com instead; that site no
+longer responds on either port 80 or 443, so the scraper cannot work and was
+replaced. Third-party lyric endpoints come and go — treat any script here as
+a starting point you maintain yourself. lyra ships no fetching or parsing
+code of its own for this or any other lyrics site.
 
 ### Screen selection
 
