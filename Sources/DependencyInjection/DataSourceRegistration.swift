@@ -19,6 +19,10 @@ extension LyricsDataSourceKey: DependencyKey {
     public static let liveValue: any LyricsDataSource = LyricsDataSourceImpl()
 }
 
+extension UtaNetLyricsDataSourceKey: DependencyKey {
+    public static let liveValue: any LyricsDataSource = UtaNetLyricsDataSourceImpl()
+}
+
 extension CustomScriptLyricsDataSourceKey: DependencyKey {
     public static let liveValue: any LyricsDataSource = CustomScriptLyricsDataSourceImpl()
 }

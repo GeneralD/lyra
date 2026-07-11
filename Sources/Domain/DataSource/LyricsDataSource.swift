@@ -10,6 +10,10 @@ public enum LyricsDataSourceKey: TestDependencyKey {
     public static let testValue: any LyricsDataSource = UnimplementedLyricsDataSource()
 }
 
+public enum UtaNetLyricsDataSourceKey: TestDependencyKey {
+    public static let testValue: any LyricsDataSource = UnimplementedLyricsDataSource()
+}
+
 public enum CustomScriptLyricsDataSourceKey: TestDependencyKey {
     public static let testValue: any LyricsDataSource = UnimplementedLyricsDataSource()
 }
@@ -18,6 +22,11 @@ extension DependencyValues {
     public var lyricsDataSource: any LyricsDataSource {
         get { self[LyricsDataSourceKey.self] }
         set { self[LyricsDataSourceKey.self] = newValue }
+    }
+
+    public var utaNetLyricsDataSource: any LyricsDataSource {
+        get { self[UtaNetLyricsDataSourceKey.self] }
+        set { self[UtaNetLyricsDataSourceKey.self] = newValue }
     }
 
     public var customScriptLyricsDataSource: any LyricsDataSource {

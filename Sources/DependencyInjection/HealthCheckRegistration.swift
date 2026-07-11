@@ -12,6 +12,7 @@ extension HealthCheckersKey: DependencyKey {
         var checkers: [any HealthCheckable] = [
             ConfigRepositoryImpl(),
             LRCLibHealthCheck(),
+            UtaNetHealthCheck(),
             MusicBrainzHealthCheck(),
         ]
 
