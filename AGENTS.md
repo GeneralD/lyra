@@ -86,8 +86,9 @@ Shared conventions:
   OS integration work.
 - Metadata and lyrics resolution never short-circuit on first success: all
   metadata sources (LLM/MusicBrainz/Regex) are queried and merged, and every
-  lyrics tier (LRCLIB exact match, validated fuzzy search, user
-  `fallback_command` script) is tried across all candidates before giving up.
+  lyrics tier (LRCLIB exact match, validated fuzzy search, uta-net scrape,
+  user `fallback_command` script) is tried across all candidates before
+  giving up.
   Lyrics are cached (and read back) under the matched candidate's
   title/artist rather than `candidates.first`, and both the GUI
   (`TrackInteractorImpl`) and CLI (`TrackHandlerImpl.infoWithLyrics`) fall

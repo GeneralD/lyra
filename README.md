@@ -21,7 +21,7 @@
 
 Desktop lyrics overlay and video wallpaper for macOS.
 
-Displays synced lyrics from [LRCLIB](https://lrclib.net) over your desktop, with optional video wallpaper and mouse-reactive ripple effects. Text appears with a matrix-style decode animation.
+Displays synced lyrics from [LRCLIB](https://lrclib.net) over your desktop — falling back to [uta-net](https://www.uta-net.com) plain lyrics for Japanese songs — with optional video wallpaper and mouse-reactive ripple effects. Text appears with a matrix-style decode animation.
 
 <p align="center">
   <img src="assets/demo.gif" alt="lyra demo" width="600">
@@ -63,7 +63,7 @@ lyra config open      # open config in GUI app
 
 lyra track            # show now-playing info as JSON
 lyra track -r         # resolve metadata (MusicBrainz/regex)
-lyra track -l         # include lyrics (LRCLIB)
+lyra track -l         # include lyrics (LRCLIB / uta-net)
 lyra track -rl        # resolve + lyrics
 
 lyra benchmark        # measure CPU/memory baselines
@@ -253,11 +253,12 @@ Optional LLM-based song title and artist extraction via any OpenAI-compatible AP
 >
 > Included files are merged into the main config. Values in the main file take precedence over included ones.
 
-### `[lyrics]` — Tier C custom lyrics fallback (optional)
+### `[lyrics]` — Tier D custom lyrics fallback (optional)
 
-When LRCLIB has no exact or fuzzy match for a track, lyra can shell out to a
-user-defined script as a last resort before giving up and showing the raw
-(unprocessed) title/artist:
+When neither LRCLIB (exact or fuzzy match) nor uta-net (built-in Japanese
+lyrics site, tried automatically as Tier C) has lyrics for a track, lyra can
+shell out to a user-defined script as a last resort before giving up and
+showing the raw (unprocessed) title/artist:
 
 ```toml
 [lyrics]
@@ -269,9 +270,9 @@ timeout_ms = 5000
   must be an absolute path to the executable; lyra does not search `$PATH` for
   it (a `launchd`-run daemon has a minimal `PATH`, so relying on `$PATH`
   resolution would silently fail in production). A non-absolute path is
-  rejected up front and Tier C is skipped for that lookup, so the failure is
+  rejected up front and Tier D is skipped for that lookup, so the failure is
   deterministic rather than dependent on the daemon's working directory. If
-  omitted, Tier C is skipped entirely. The placeholders `$LYRA_CONFIG_DIR`
+  omitted, Tier D is skipped entirely. The placeholders `$LYRA_CONFIG_DIR`
   and `$LYRA_CACHE_DIR` (or `${…}` forms) are expanded in every element
   before this check, so a command can locate its script relative to lyra's
   config directory — as in the example above — without hardcoding a
