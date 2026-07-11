@@ -120,10 +120,16 @@ extension ConfigDataSourceImpl {
         guard path.hasSuffix(".toml") else {
             return try JSONDecoder().decode(AppConfig.self, from: content.data(using: .utf8) ?? Data())
         }
+        return try TOMLDecoder().decode(AppConfig.self, from: preparedTomlTable(content: content, configDir: configDir))
+    }
+
+    // Shared by decodeOrThrow and strictDecodeOptionalSections so include
+    // resolution can never drift between actual loading and strict validation.
+    func preparedTomlTable(content: String, configDir: String) throws -> TOMLTable {
         let table = try TOMLTable(string: content)
         resolveIncludes(into: table, configDir: configDir)
         table.remove(at: "includes")
-        return try TOMLDecoder().decode(AppConfig.self, from: table)
+        return table
     }
 
     func decode(content: String, path: String, configDir: String) -> AppConfig? {
@@ -146,10 +152,7 @@ extension ConfigDataSourceImpl {
             _ = try JSONDecoder().decode(StrictOptionalSections.self, from: content.data(using: .utf8) ?? Data())
             return
         }
-        let table = try TOMLTable(string: content)
-        resolveIncludes(into: table, configDir: configDir)
-        table.remove(at: "includes")
-        _ = try TOMLDecoder().decode(StrictOptionalSections.self, from: table)
+        _ = try TOMLDecoder().decode(StrictOptionalSections.self, from: preparedTomlTable(content: content, configDir: configDir))
     }
 
     func resolveIncludes(into table: TOMLTable, configDir: String) {
