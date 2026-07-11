@@ -449,6 +449,18 @@ replaced. Third-party lyric endpoints come and go — treat any script here as
 a starting point you maintain yourself. lyra ships no fetching or parsing
 code of its own for this or any other lyrics site.
 
+#### Composing multiple sources
+
+Because the contract is plain argv-in / JSON-on-stdout, sources compose
+naturally: point `fallback_command` at a small dispatcher script that invokes
+several single-source scripts (each itself a valid `fallback_command` target)
+in order and prints the first hit — a Japanese-catalog site first, KuGou as
+the wide-catalog fallback, and so on. Two things to keep in mind: run each
+source with its own subprocess timeout so one dead endpoint cannot eat the
+whole budget, and remember that `timeout_ms` covers the entire
+`fallback_command` run — budget it for the sum of your sources, not for a
+single one.
+
 ### Screen selection
 
 | Value | Behavior |
