@@ -193,6 +193,21 @@ struct UtaNetLyricsDataSourceImplTests {
 
         #expect(await keyword.value == "夜に駆ける")
     }
+
+    @Test("search forwards the trimmed query as the search keyword")
+    func searchForwardsTrimmedKeyword() async {
+        let keyword = ArgumentRecorder<String>()
+        let dataSource = UtaNetLyricsDataSourceImpl(
+            api: UtaNetStub(searchSongs: { kw in
+                await keyword.set(kw)
+                return ""
+            })
+        )
+
+        _ = await dataSource.search(query: " 夜に駆ける ")
+
+        #expect(await keyword.value == "夜に駆ける")
+    }
 }
 
 private actor ArgumentRecorder<Value: Sendable> {

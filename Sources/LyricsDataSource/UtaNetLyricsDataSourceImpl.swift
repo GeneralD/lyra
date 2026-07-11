@@ -34,7 +34,8 @@ extension UtaNetLyricsDataSourceImpl: LyricsDataSource {
     }
 
     public func search(query: String) async -> [LyricsResult]? {
-        guard let html = try? await api.searchSongs(keyword: query) else { return nil }
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let html = try? await api.searchSongs(keyword: keyword) else { return nil }
         let rows = UtaNetHTMLParser.songRows(inSearchResults: html)
         // Every returned result costs one extra page fetch for its lyrics body,
         // so only the top-relevance row is materialized, not the whole list.
