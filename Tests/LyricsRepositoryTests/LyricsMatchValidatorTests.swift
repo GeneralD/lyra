@@ -55,4 +55,20 @@ struct LyricsMatchValidatorTests {
         let result = LyricsResult(trackName: "shape of you", artistName: "Ed Sheeran", duration: 233, plainLyrics: "lyrics")
         #expect(validator.isValid(candidate: candidate, result: result))
     }
+
+    @Test("full-width and half-width forms of the same title match")
+    func widthDifferenceIgnored() {
+        // uta-net lists many titles in full-width forms; a Tier C result (or its
+        // cached row) must still validate against the half-width candidate.
+        let candidate = Track(title: "Q&A", artist: "YOASOBI")
+        let result = LyricsResult(trackName: "Ｑ＆Ａ", artistName: "ＹＯＡＳＯＢＩ", plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("diacritic differences do not affect title match")
+    func diacriticDifferenceIgnored() {
+        let candidate = Track(title: "Cafe de Paris", artist: "Someone")
+        let result = LyricsResult(trackName: "Café de Paris", artistName: "Someone", plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
 }

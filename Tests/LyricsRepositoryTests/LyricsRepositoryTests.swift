@@ -374,6 +374,25 @@ struct LyricsRepositoryTests {
             }
         }
 
+        @Test("a full-width uta-net result validates against the half-width candidate")
+        func tierCUtaNetFullWidthResultValidates() async {
+            // uta-net returns its own listing spelling (often full-width); the
+            // validator gate must not reject what the data source matched.
+            let utaNetResult = LyricsResult(trackName: "Ｑ＆Ａ", artistName: "ＹＯＡＳＯＢＩ", plainLyrics: "uta-net lyrics")
+
+            await withDependencies {
+                $0.lyricsCache = StubLyricsCache(stored: nil)
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+                $0.utaNetLyricsDataSource = StubLyricsDataSource(getResult: utaNetResult, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [
+                    Track(title: "Q&A", artist: "YOASOBI")
+                ])
+                #expect(result?.plainLyrics == "uta-net lyrics")
+            }
+        }
+
         @Test("a uta-net result failing validation falls through to Tier D (custom script)")
         func tierCUtaNetInvalidFallsThroughToScript() async {
             let mismatched = LyricsResult(

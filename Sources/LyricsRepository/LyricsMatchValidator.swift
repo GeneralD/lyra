@@ -26,7 +26,12 @@ extension LyricsMatchValidator {
     }
 
     private static func normalized(_ text: String) -> String {
-        text.lowercased().filter { $0.isLetter || $0.isNumber }
+        // Width folding matters since #317: uta-net freely lists titles in
+        // full-width forms (Ｑ＆Ａ), and without it a correct Tier C result —
+        // or its cached row on re-read — would fail title similarity against
+        // the half-width candidate. Case folds in the same pass.
+        text.folding(options: [.caseInsensitive, .widthInsensitive, .diacriticInsensitive], locale: nil)
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     private static func similarity(_ a: String, _ b: String) -> Double {
