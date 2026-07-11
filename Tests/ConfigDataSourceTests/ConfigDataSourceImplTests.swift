@@ -70,6 +70,20 @@ struct ConfigDataSourceImplTryDecodeTests {
         #expect(loaded?.config.screen == .main)
     }
 
+    @Test("a malformed [ai] section fails validation instead of passing silently")
+    func malformedAISectionFailsValidation() throws {
+        let (dataSource, folder) = try dataSource(
+            withConfig: """
+                screen = "main"
+
+                [ai]
+                endpoint = ["not", "a", "string"]
+                """)
+        defer { try? folder.delete() }
+
+        #expect(throws: (any Error).self) { try dataSource.tryDecode() }
+    }
+
     @Test("a well-formed [lyrics] section passes validation")
     func wellFormedLyricsSectionPassesValidation() throws {
         let (dataSource, folder) = try dataSource(
