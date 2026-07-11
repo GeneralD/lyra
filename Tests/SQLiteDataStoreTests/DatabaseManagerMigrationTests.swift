@@ -41,8 +41,8 @@ struct DatabaseManagerMigrationTests {
         }
     }
 
-    @Test("musicbrainz_cache has unique constraint on query_title+query_artist")
-    func musicbrainzUnique() throws {
+    @Test("musicbrainz_cache accepts multiple rows per query key — v5 stores every candidate recording")
+    func musicbrainzAllowsMultipleCandidatesPerQuery() throws {
         let db = try DatabaseManager(inMemory: true)
         try db.dbQueue.write { db in
             try db.execute(
@@ -52,15 +52,19 @@ struct DatabaseManagerMigrationTests {
                     VALUES ('Song', 'Artist', 'Song', 'Artist', 'id1')
                     """
             )
-            #expect(throws: (any Error).self) {
-                try db.execute(
-                    sql: """
-                        INSERT INTO musicbrainz_cache
-                        (query_title, query_artist, resolved_title, resolved_artist, musicbrainz_id)
-                        VALUES ('Song', 'Artist', 'Song2', 'Artist2', 'id2')
-                        """
-                )
-            }
+            // v5 dropped the old UNIQUE(query_title, query_artist) constraint: the lyrics
+            // flow can cache a hit under any MusicBrainz candidate, so the cache must hold
+            // the full candidate set (one row each) for a query.
+            try db.execute(
+                sql: """
+                    INSERT INTO musicbrainz_cache
+                    (query_title, query_artist, resolved_title, resolved_artist, musicbrainz_id)
+                    VALUES ('Song', 'Artist', 'Song2', 'Artist2', 'id2')
+                    """
+            )
+            let count = try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM musicbrainz_cache WHERE query_title = 'Song' AND query_artist = 'Artist'")
+            #expect(count == 2)
         }
     }
 

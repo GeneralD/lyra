@@ -253,6 +253,217 @@ Optional LLM-based song title and artist extraction via any OpenAI-compatible AP
 >
 > Included files are merged into the main config. Values in the main file take precedence over included ones.
 
+### `[lyrics]` — Tier C custom lyrics fallback (optional)
+
+When LRCLIB has no exact or fuzzy match for a track, lyra can shell out to a
+user-defined script as a last resort before giving up and showing the raw
+(unprocessed) title/artist:
+
+```toml
+[lyrics]
+fallback_command = ["/usr/bin/python3", "$LYRA_CONFIG_DIR/scripts/lyrics-fallback.py"]
+timeout_ms = 5000
+```
+
+- `fallback_command` — an argv array (not a shell string). The first element
+  must be an absolute path to the executable; lyra does not search `$PATH` for
+  it (a `launchd`-run daemon has a minimal `PATH`, so relying on `$PATH`
+  resolution would silently fail in production). A non-absolute path is
+  rejected up front and Tier C is skipped for that lookup, so the failure is
+  deterministic rather than dependent on the daemon's working directory. If
+  omitted, Tier C is skipped entirely. The placeholders `$LYRA_CONFIG_DIR`
+  and `$LYRA_CACHE_DIR` (or `${…}` forms) are expanded in every element
+  before this check, so a command can locate its script relative to lyra's
+  config directory — as in the example above — without hardcoding a
+  machine-specific path. No other variables are expanded; this is a literal
+  placeholder substitution, not shell interpolation.
+- `timeout_ms` — how long lyra waits for the script before killing it and
+  treating that candidate as a miss. Defaults to `5000`.
+
+lyra invokes the script once per metadata candidate that has a known artist
+(raw title/artist, plus any AI/MusicBrainz/regex-resolved guesses whose
+artist could be resolved), appending `<title> <artist>` as the final two
+arguments, and sets two read-only environment variables:
+
+| Variable | Meaning |
+|---|---|
+| `LYRA_CONFIG_DIR` | The directory lyra actually loaded its config from. Setting this variable yourself has no effect on where lyra looks for its config — it is informational only. |
+| `LYRA_CACHE_DIR` | The directory lyra uses for its own cache (`~/.cache/lyra` by default). Also informational only. |
+
+The same two names double as placeholders inside `fallback_command` itself
+(see above) — the values are identical in both roles.
+
+> **Security & execution boundary.** The script runs with the full
+> privileges of the lyra process (the daemon user) and **inherits lyra's
+> entire parent environment** — the two `LYRA_*` variables above are merged
+> *on top of* everything lyra was launched with, so the script can also see
+> any secrets or tokens present in that environment (e.g. an `[ai]` API key
+> exported into the daemon). Point `fallback_command` only at scripts you
+> wrote or fully trust; treat it as running your own code, not a sandbox.
+
+The script must print a single line of JSON to stdout:
+
+```json
+{"track_name": "...", "artist_name": "...", "plain_lyrics": "..."}
+```
+
+lyra treats any of the following as "no match for this candidate" and moves
+on to the next one: a non-zero exit code, unparseable JSON on stdout, a
+missing/empty `track_name` field, or a missing/empty `plain_lyrics` field.
+Whether your script signals "not found" via a non-zero exit or an empty
+`plain_lyrics` is up to you — lyra handles both identically. (`track_name` is
+required because it is what the match validator below checks; a response with
+lyrics but no `track_name` would bypass validation entirely, so lyra rejects
+it.) `artist_name` is optional — when omitted or empty, the matched
+candidate's artist is used for display and caching.
+
+A structurally wrong `[lyrics]` section (e.g. `fallback_command` as a plain
+string instead of an argv array) does not take down the rest of your config —
+lyra loads everything else and disables Tier C — but `lyra healthcheck`
+reports it as a validation error so the misconfiguration doesn't go
+unnoticed.
+
+Even a syntactically valid response isn't accepted automatically: the
+returned `track_name` is run through the same match validator used for Tier
+B fuzzy search results, and must be at least 60% similar (Levenshtein-based)
+to the candidate title — otherwise the result is rejected as "no match" even
+though the script exited cleanly with non-empty lyrics. (The same validator
+also enforces a 5-second duration tolerance when both sides have a duration,
+but the script's JSON response has no `duration` field, so that half of the
+check never has grounds to reject a Tier C result today.) An accurate
+`track_name` therefore matters for more than display purposes.
+
+#### Example: KuGou lyrics fetcher
+
+This is a working example that fetches lyrics through KuGou's keyless lyric
+API (search the song hash, list lyric candidates, download the pick as LRC,
+strip the timestamps, and wash out KuGou's non-lyric header lines). It is not
+shipped with lyra — save it yourself and point `fallback_command` at it:
+
+```python
+#!/usr/bin/env python3
+import base64
+import json
+import re
+import sys
+import urllib.parse
+import urllib.request
+
+SEARCH_URL = "http://mobilecdn.kugou.com/api/v3/search/song?keyword={}&page=1&pagesize=5"
+CANDIDATES_URL = "http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&hash={}"
+DOWNLOAD_URL = "http://lyrics.kugou.com/download?ver=1&client=pc&id={}&accesskey={}&fmt=lrc&charset=utf8"
+TIMEOUT = 5
+
+CREDIT_PATTERN = re.compile(
+    r"^\s*[（(【\[]?\s*(作?[词詞]|作?曲|[编編]曲|歌手?|演唱|翻[译譯]|监制|製作|制作|提供|出品|[发發]行)\s*[:：]"
+)
+PROMO_PATTERN = re.compile(r"https?://|www\.|酷狗|QQ音乐", re.IGNORECASE)
+HEADER_SCAN_LINES = 6
+
+
+def fetched_json(url):
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return json.loads(response.read().decode(charset, errors="replace"))
+
+
+def normalized(text):
+    return re.sub(r"\s+", "", text).casefold()
+
+
+def matched_hash(title, artist):
+    query = urllib.parse.quote(f"{title} {artist}")
+    songs = fetched_json(SEARCH_URL.format(query)).get("data", {}).get("info", [])
+    titled = [s for s in songs if normalized(title) in normalized(s.get("songname", ""))]
+    # KuGou may list artists in simplified Chinese, so an artist match is
+    # preferred but not required once the title matches.
+    by_artist = [s for s in titled if normalized(artist) in normalized(s.get("singername", ""))]
+    return next(iter(by_artist or titled), {}).get("hash")
+
+
+def plain_lyrics(song_hash):
+    candidates = fetched_json(CANDIDATES_URL.format(song_hash)).get("candidates", [])
+    if not candidates:
+        return None
+    picked = candidates[0]
+    payload = fetched_json(DOWNLOAD_URL.format(picked["id"], picked["accesskey"]))
+    lrc = base64.b64decode(payload["content"]).decode("utf-8", errors="replace").lstrip("\ufeff")
+    lines = (re.sub(r"^(\[[^\]]*\])+", "", line).strip() for line in lrc.splitlines())
+    return "\n".join(line for line in lines if line) or None
+
+
+def washed(lyrics, title, artist):
+    """Drop KuGou's non-lyric header and promo lines.
+
+    KuGou LRC bodies open with a few metadata lines — a "title - artist" line,
+    词/曲 credits, sometimes a free-form comment — recognizable only by content.
+    Scan the first few lines and cut through the LAST one that looks like
+    metadata, so comment lines sitting above a title/credit line fall with it.
+    """
+    kept = [line for line in lyrics.splitlines() if not PROMO_PATTERN.search(line)]
+    t, a = normalized(title), normalized(artist)
+
+    def is_header(line):
+        if CREDIT_PATTERN.match(line):
+            return True
+        n = normalized(line)
+        if n in (t, a):
+            return True
+        if len(t) >= 6 and t in n:
+            return True
+        return len(a) >= 4 and a in n
+
+    header = [i for i, line in enumerate(kept[:HEADER_SCAN_LINES]) if is_header(line)]
+    return "\n".join(kept[header[-1] + 1:] if header else kept) or None
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(1)
+    title, artist = sys.argv[-2], sys.argv[-1]
+
+    try:
+        song_hash = matched_hash(title, artist)
+        raw = plain_lyrics(song_hash) if song_hash else None
+        lyrics = washed(raw, title, artist) if raw else None
+    except Exception:
+        sys.exit(1)
+
+    if not lyrics:
+        sys.exit(1)
+    print(json.dumps({
+        "track_name": title,
+        "artist_name": artist,
+        "plain_lyrics": lyrics,
+    }))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+An earlier revision of this example scraped utamap.com instead; that site no
+longer responds on either port 80 or 443, so the scraper cannot work and was
+replaced. Third-party lyric endpoints come and go — treat any script here as
+a starting point you maintain yourself. lyra ships no fetching or parsing
+code of its own for this or any other lyrics site.
+
+#### Composing multiple sources
+
+Because the contract is plain argv-in / JSON-on-stdout, sources compose
+naturally: point `fallback_command` at a small dispatcher script that runs
+several single-source scripts (each itself a valid `fallback_command`
+target) and prints the first hit — a Japanese-catalog site first, KuGou as
+the wide-catalog fallback, and so on. Launching all sources concurrently
+and then resolving results in priority order keeps both properties at once:
+the preferred source still wins whenever it hits, while fall-through
+latency is bounded by the slowest source actually needed instead of the sum
+of every source before it. Two things to keep in mind: give each source its
+own subprocess timeout so one dead endpoint cannot eat the whole budget,
+and remember that `timeout_ms` covers the entire `fallback_command` run —
+budget it above your per-source timeout with headroom.
+
 ### Screen selection
 
 | Value | Behavior |

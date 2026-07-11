@@ -21,7 +21,7 @@ extension LyricsDataStoreKey: DependencyKey {
 }
 
 extension MusicBrainzMetadataDataStoreKey: DependencyKey {
-    public static let liveValue: any MetadataDataStore<MusicBrainzMetadata> = {
+    public static let liveValue: any MetadataDataStore<[MusicBrainzMetadata]> = {
         guard let db = SharedDatabaseManager.instance else { return NoopCache() }
         return GRDBMetadataDataStore(dbManager: db)
     }()

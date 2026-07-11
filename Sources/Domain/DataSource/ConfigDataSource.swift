@@ -6,6 +6,7 @@ public protocol ConfigDataSource: Sendable {
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
     var existingConfigPath: String? { get }
+    var configDir: String { get }
 }
 
 public enum ConfigDataSourceKey: TestDependencyKey {
@@ -25,4 +26,5 @@ private struct UnimplementedConfigDataSource: ConfigDataSource {
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }
+    var configDir: String { "" }
 }

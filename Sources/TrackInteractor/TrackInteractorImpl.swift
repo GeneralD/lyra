@@ -206,8 +206,8 @@ extension TrackInteractorImpl {
                                         return
                                     }
 
-                                    let finalTitle = result.trackName ?? resolvedTitle
-                                    let finalArtist = result.artistName ?? resolvedArtist
+                                    let finalTitle = result.trackName.flatMap { $0.isEmpty ? nil : $0 } ?? title
+                                    let finalArtist = result.artistName.flatMap { $0.isEmpty ? nil : $0 } ?? artist
                                     let content = lyrics.parseLyricsContent(from: result)
 
                                     unsafeSubject.send(

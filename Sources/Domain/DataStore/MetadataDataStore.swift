@@ -19,14 +19,14 @@ extension DependencyValues {
     }
 }
 
-// MARK: - MusicBrainz Metadata Cache (MusicBrainzMetadata)
+// MARK: - MusicBrainz Metadata Cache (all candidate recordings per query)
 
 public enum MusicBrainzMetadataDataStoreKey: TestDependencyKey {
-    public static let testValue: any MetadataDataStore<MusicBrainzMetadata> = NoopMetadataDataStore()
+    public static let testValue: any MetadataDataStore<[MusicBrainzMetadata]> = NoopMetadataDataStore()
 }
 
 extension DependencyValues {
-    public var musicBrainzMetadataDataStore: any MetadataDataStore<MusicBrainzMetadata> {
+    public var musicBrainzMetadataDataStore: any MetadataDataStore<[MusicBrainzMetadata]> {
         get { self[MusicBrainzMetadataDataStoreKey.self] }
         set { self[MusicBrainzMetadataDataStoreKey.self] = newValue }
     }

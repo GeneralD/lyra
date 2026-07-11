@@ -406,6 +406,7 @@ private struct StubConfigDataSource: ConfigDataSource {
     func template(format: ConfigFormat) -> String? { templateValue }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateValue }
     var existingConfigPath: String? { configPath }
+    var configDir: String { "" }
 }
 
 private enum StubError: Error, LocalizedError {

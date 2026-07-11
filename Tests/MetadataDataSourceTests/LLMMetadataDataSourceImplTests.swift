@@ -64,4 +64,5 @@ private struct StubConfigDataSource: ConfigDataSource {
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }
+    var configDir: String { "" }
 }

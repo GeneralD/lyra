@@ -9,6 +9,7 @@ public struct AppConfig {
     public let screenDebounce: FlexibleDouble
     public let wallpaper: WallpaperConfig?
     public let ai: AIConfig?
+    public let lyrics: LyricsConfig?
 }
 
 extension AppConfig: Sendable {}
@@ -16,14 +17,14 @@ extension AppConfig: Sendable {}
 extension AppConfig {
     public static let defaults = AppConfig(
         text: .defaults, artwork: .defaults, ripple: .defaults, spectrum: .defaults, screen: .main, screenDebounce: 5,
-        wallpaper: nil, ai: nil)
+        wallpaper: nil, ai: nil, lyrics: nil)
 }
 
 extension AppConfig: Codable {
     enum CodingKeys: String, CodingKey {
         case text, artwork, ripple, spectrum, screen
         case screenDebounce = "screen_debounce"
-        case wallpaper, ai
+        case wallpaper, ai, lyrics
     }
 
     public init(from decoder: Decoder) throws {
@@ -36,5 +37,6 @@ extension AppConfig: Codable {
         screenDebounce = try c.decodeIfPresent(FlexibleDouble.self, forKey: .screenDebounce) ?? Self.defaults.screenDebounce
         wallpaper = try c.decodeIfPresent(WallpaperConfig.self, forKey: .wallpaper) ?? Self.defaults.wallpaper
         ai = try? c.decodeIfPresent(AIConfig.self, forKey: .ai) ?? Self.defaults.ai
+        lyrics = try? c.decodeIfPresent(LyricsConfig.self, forKey: .lyrics) ?? Self.defaults.lyrics
     }
 }

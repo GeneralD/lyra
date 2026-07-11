@@ -19,6 +19,10 @@ extension LyricsDataSourceKey: DependencyKey {
     public static let liveValue: any LyricsDataSource = LyricsDataSourceImpl()
 }
 
+extension CustomScriptLyricsDataSourceKey: DependencyKey {
+    public static let liveValue: any LyricsDataSource = CustomScriptLyricsDataSourceImpl()
+}
+
 extension MediaRemoteDataSourceKey: DependencyKey {
     public static let liveValue: any MediaRemoteDataSource = MediaRemoteDataSourceImpl()
 }

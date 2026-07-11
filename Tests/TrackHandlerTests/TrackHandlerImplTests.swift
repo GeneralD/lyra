@@ -175,6 +175,30 @@ struct TrackHandlerImplTests {
             #expect(info.album == "Best Album")
         }
 
+        @Test("falls back to raw title/artist, not the unvalidated candidate guess, when lyrics are not found")
+        func fallsBackToRawWhenLyricsNotFound() async {
+            let info = await fetchWith(
+                nowPlaying: .stub(title: "Raw Title", artist: "Raw Artist"),
+                query: TrackQuery(lyrics: true),
+                metadataHandler: { _ in [Track(title: "Wrong Guess", artist: "Wrong Artist", duration: nil)] },
+                lyricsHandler: { _ in LyricsResult() }
+            )
+            #expect(info.title == "Raw Title")
+            #expect(info.artist == "Raw Artist")
+        }
+
+        @Test("empty lyrics trackName/artistName fall back to raw title/artist, not blank display")
+        func emptyLyricsMetadataFallsBackToRaw() async {
+            let info = await fetchWith(
+                nowPlaying: .stub(title: "Raw Title", artist: "Raw Artist"),
+                query: TrackQuery(lyrics: true),
+                lyricsHandler: { _ in LyricsResult(trackName: "", artistName: "", plainLyrics: "La la la") }
+            )
+            #expect(info.title == "Raw Title")
+            #expect(info.artist == "Raw Artist")
+            #expect(info.lyrics == "La la la")
+        }
+
         @Test("resolve + lyrics passes resolved candidates to lyrics search")
         func resolveAndLyrics() async {
             let tracker = CandidateTracker()
