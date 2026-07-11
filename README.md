@@ -452,14 +452,17 @@ code of its own for this or any other lyrics site.
 #### Composing multiple sources
 
 Because the contract is plain argv-in / JSON-on-stdout, sources compose
-naturally: point `fallback_command` at a small dispatcher script that invokes
-several single-source scripts (each itself a valid `fallback_command` target)
-in order and prints the first hit — a Japanese-catalog site first, KuGou as
-the wide-catalog fallback, and so on. Two things to keep in mind: run each
-source with its own subprocess timeout so one dead endpoint cannot eat the
-whole budget, and remember that `timeout_ms` covers the entire
-`fallback_command` run — budget it for the sum of your sources, not for a
-single one.
+naturally: point `fallback_command` at a small dispatcher script that runs
+several single-source scripts (each itself a valid `fallback_command`
+target) and prints the first hit — a Japanese-catalog site first, KuGou as
+the wide-catalog fallback, and so on. Launching all sources concurrently
+and then resolving results in priority order keeps both properties at once:
+the preferred source still wins whenever it hits, while fall-through
+latency is bounded by the slowest source actually needed instead of the sum
+of every source before it. Two things to keep in mind: give each source its
+own subprocess timeout so one dead endpoint cannot eat the whole budget,
+and remember that `timeout_ms` covers the entire `fallback_command` run —
+budget it above your per-source timeout with headroom.
 
 ### Screen selection
 
