@@ -10,19 +10,22 @@ public protocol OpenAICompatible {
 }
 
 extension OpenAICompatible {
-    public static func provider(for config: AIEndpoint) -> Provider {
+    /// Ephemeral session for the same staleness reason as `EphemeralSessionLRCLib`
+    /// (#318). The 60 s request timeout matches the `URLSession.shared` default
+    /// this call always ran with — kept generous because local LLMs can take
+    /// tens of seconds to produce a completion.
+    public static func ephemeralSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 60
+        return URLSession(configuration: configuration)
+    }
+
+    public static func provider(for config: AIEndpoint, urlSession: URLSession? = nil) -> Provider {
         let endpoint =
             config.endpoint.hasSuffix("/")
             ? String(config.endpoint.dropLast())
             : config.endpoint
-        // Ephemeral session per provider for the same staleness reason as
-        // LyricsDataSourceImpl (#318). The 60 s request timeout matches the
-        // URLSession default this call always ran with — kept generous because
-        // local LLMs can take tens of seconds to produce a completion.
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 60
-        let session = URLSession(configuration: configuration)
-        return Provider(baseURL: endpoint, urlSession: session).modifyRequests { req in
+        return Provider(baseURL: endpoint, urlSession: urlSession ?? ephemeralSession()).modifyRequests { req in
             req.addHeader("Authorization", value: "Bearer \(config.apiKey)")
         }
     }

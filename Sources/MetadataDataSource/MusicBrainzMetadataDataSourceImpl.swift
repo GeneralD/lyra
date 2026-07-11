@@ -6,15 +6,7 @@ public struct MusicBrainzMetadataDataSourceImpl {
     private let apiFactory: () -> any MusicBrainz
 
     public init() {
-        // Same session strategy as LyricsDataSourceImpl: a process-lifetime
-        // URLSession can go stale after sleep/wake or network changes (#318),
-        // so build an ephemeral session per call.
-        self.init {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 10
-            let session = URLSession(configuration: configuration)
-            return MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: session))
-        }
+        self.init { EphemeralSessionMusicBrainz() }
     }
 
     init(api: any MusicBrainz) {

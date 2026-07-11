@@ -1,21 +1,12 @@
 import Domain
 import Foundation
-import Papyrus
+@preconcurrency import Papyrus
 
 public struct LyricsDataSourceImpl {
     private let apiFactory: () -> any LRCLib
 
     public init() {
-        // A process-lifetime URLSession can silently go stale after sleep/wake or
-        // network changes, leaving lyrics fetches failing until the daemon restarts
-        // (#318). Building an ephemeral session per call — the same configuration
-        // LRCLibHealthCheck uses — guarantees fresh connections every time.
-        self.init {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 10
-            let session = URLSession(configuration: configuration)
-            return LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: session))
-        }
+        self.init { EphemeralSessionLRCLib() }
     }
 
     init(api: any LRCLib) {

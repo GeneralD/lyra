@@ -9,7 +9,7 @@ public struct LLMMetadataDataSourceImpl {
 
     public init() {
         self.init { config in
-            OpenAICompatibleAPI(provider: OpenAICompatibleAPI.provider(for: config))
+            EphemeralSessionOpenAICompatible(config: config)
         }
     }
 
