@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+@preconcurrency import Papyrus
 import Testing
 
 @testable import LyricsDataSource
@@ -61,6 +62,27 @@ struct LyricsDataSourceImplTests {
     func getReturnsNilOnAPIError() async {
         let dataSource = LyricsDataSourceImpl(
             api: LRCLibStub(get: { _, _, _ in throw StubError() })
+        )
+
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+
+        #expect(result == nil)
+    }
+
+    @Test("get returns nil on HTTP 404 — LRCLIB's regular no-lyrics answer")
+    func getReturnsNilOn404() async {
+        let dataSource = LyricsDataSourceImpl(
+            api: LRCLibStub(get: { _, _, _ in
+                throw PapyrusError(
+                    "Unsuccessful status code: 404.",
+                    nil,
+                    TestResponse(
+                        request: URLRequest(url: URL(string: "https://lrclib.net/api/get")!),
+                        statusCode: 404,
+                        body: Data()
+                    )
+                )
+            })
         )
 
         let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)

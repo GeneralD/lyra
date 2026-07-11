@@ -3,18 +3,31 @@ import Foundation
 @preconcurrency import Papyrus
 
 public struct MusicBrainzMetadataDataSourceImpl {
-    private let api: any MusicBrainz
+    private let apiFactory: () -> any MusicBrainz
 
     public init() {
-        self.init(api: MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL)))
+        // Same session strategy as LyricsDataSourceImpl: a process-lifetime
+        // URLSession can go stale after sleep/wake or network changes (#318),
+        // so build an ephemeral session per call.
+        self.init {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 10
+            let session = URLSession(configuration: configuration)
+            return MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: session))
+        }
     }
 
     init(api: any MusicBrainz) {
-        self.api = api
+        self.init { api }
+    }
+
+    init(apiFactory: @escaping () -> any MusicBrainz) {
+        self.apiFactory = apiFactory
     }
 }
 
-// Safe: `api` is set at init and never mutated; Papyrus's Provider is configured during construction only.
+// Safe: `apiFactory` is set at init and never mutated; it only constructs a fresh,
+// call-local API client (or returns the injected test stub).
 extension MusicBrainzMetadataDataSourceImpl: @unchecked Sendable {}
 
 extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
@@ -26,10 +39,14 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
 
         for (title, artist) in [(normalized, normalizedArtist), (normalized, nil as String?)] {
             let query = MusicBrainzAPI.luceneQuery(title: title, artist: artist, duration: nil)
-            guard let response = try? await api.searchRecording(query: query, fmt: "json", limit: 5) else { continue }
-            let candidates = matchRecordings(from: response, regex: regex)
-            guard !candidates.isEmpty else { continue }
-            return candidates
+            do {
+                let response = try await apiFactory().searchRecording(query: query, fmt: "json", limit: 5)
+                let candidates = matchRecordings(from: response, regex: regex)
+                guard !candidates.isEmpty else { continue }
+                return candidates
+            } catch {
+                fputs("lyra: MusicBrainz search failed: \(error)\n", stderr)
+            }
         }
 
         return []

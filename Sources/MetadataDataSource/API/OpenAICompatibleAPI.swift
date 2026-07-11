@@ -15,7 +15,14 @@ extension OpenAICompatible {
             config.endpoint.hasSuffix("/")
             ? String(config.endpoint.dropLast())
             : config.endpoint
-        return Provider(baseURL: endpoint).modifyRequests { req in
+        // Ephemeral session per provider for the same staleness reason as
+        // LyricsDataSourceImpl (#318). The 60 s request timeout matches the
+        // URLSession default this call always ran with — kept generous because
+        // local LLMs can take tens of seconds to produce a completion.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 60
+        let session = URLSession(configuration: configuration)
+        return Provider(baseURL: endpoint, urlSession: session).modifyRequests { req in
             req.addHeader("Authorization", value: "Bearer \(config.apiKey)")
         }
     }
