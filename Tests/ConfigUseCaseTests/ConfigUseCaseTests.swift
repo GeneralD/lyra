@@ -57,8 +57,8 @@ struct ConfigUseCaseTests {
         }
     }
 
-    @Test("appStyle is cached — repository.loadAppStyle() called only once")
-    func appStyleCachedSingleRead() {
+    @Test("appStyle は初回に一度ロードされキャッシュされる")
+    func appStyleLoadsOnceThenCaches() {
         let counter = CountingConfigRepository()
         withDependencies {
             $0.configRepository = counter
@@ -66,8 +66,81 @@ struct ConfigUseCaseTests {
             let useCase = ConfigUseCaseImpl()
             _ = useCase.appStyle
             _ = useCase.appStyle
-            _ = useCase.appStyle
             #expect(counter.callCount == 1)
+        }
+    }
+
+    @Test("reload はディスクを再読込し .updated を返す")
+    func reloadUpdatesFromDisk() {
+        let counter = CountingConfigRepository()
+        counter.validation = .loaded(path: "/c.toml")
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle  // 初回ロード（count 1）
+            let outcome = useCase.reload()  // 再ロード（count 2）
+            #expect(counter.callCount == 2)
+            guard case .updated = outcome else {
+                Issue.record("expected .updated")
+                return
+            }
+        }
+    }
+
+    @Test("decodeError では前回値を保持し .invalid を返す")
+    func reloadKeepsPreviousOnDecodeError() {
+        let counter = CountingConfigRepository()
+        counter.validation = .decodeError(path: "/c.toml", error: "syntax")
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle  // count 1
+            let outcome = useCase.reload()  // validate 失敗 → loadAppStyle 呼ばない（count 1 のまま）
+            #expect(counter.callCount == 1)
+            guard case .invalid(let f) = outcome else {
+                Issue.record("expected .invalid")
+                return
+            }
+            #expect(f.reason == .decode("syntax"))
+        }
+    }
+
+    @Test("ファイル存在下の .defaults は読取失敗とみなし前回値保持")
+    func reloadTreatsDefaultsWithExistingFileAsUnreadable() {
+        let counter = CountingConfigRepository()
+        counter.validation = .defaults
+        counter.pathExists = true
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            let outcome = useCase.reload()
+            guard case .invalid(let f) = outcome else {
+                Issue.record("expected .invalid")
+                return
+            }
+            #expect(f.reason == .unreadable)
+        }
+    }
+
+    @Test("ファイル不在の .defaults は正当なデフォルト適用として .updated")
+    func reloadAppliesDefaultsWhenNoFile() {
+        let counter = CountingConfigRepository()
+        counter.validation = .defaults
+        counter.pathExists = false
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            let outcome = useCase.reload()
+            guard case .updated = outcome else {
+                Issue.record("expected .updated")
+                return
+            }
         }
     }
 }
@@ -100,10 +173,11 @@ private struct MockConfigRepository: ConfigRepository {
     var templateResult: String?
     var writeTemplateResult: String = ""
     var configPath: String?
+    var validation: ConfigValidationResult = .defaults
 
     func loadAppStyle() -> AppStyle { style }
 
-    func validate() -> ConfigValidationResult { .defaults }
+    func validate() -> ConfigValidationResult { validation }
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
     var existingConfigPath: String? { configPath }
@@ -111,14 +185,16 @@ private struct MockConfigRepository: ConfigRepository {
 
 private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {
     var callCount = 0
+    var validation: ConfigValidationResult = .loaded(path: "/c.toml")
+    var pathExists = true
 
     func loadAppStyle() -> AppStyle {
         callCount += 1
         return .init()
     }
 
-    func validate() -> ConfigValidationResult { .defaults }
+    func validate() -> ConfigValidationResult { validation }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
-    var existingConfigPath: String? { nil }
+    var existingConfigPath: String? { pathExists ? "/c.toml" : nil }
 }
