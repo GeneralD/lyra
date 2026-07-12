@@ -1,4 +1,5 @@
 import AppKitScreenProvider
+import ConfigInteractor
 import Dependencies
 import Domain
 import ScreenInteractor
@@ -12,6 +13,10 @@ extension TrackInteractorKey: DependencyKey {
 
 extension ScreenInteractorKey: DependencyKey {
     public static let liveValue: any ScreenInteractor = ScreenInteractorImpl()
+}
+
+extension ConfigInteractorKey: DependencyKey {
+    public static let liveValue: any ConfigInteractor = ConfigInteractorImpl()
 }
 
 extension WallpaperInteractorKey: DependencyKey {
