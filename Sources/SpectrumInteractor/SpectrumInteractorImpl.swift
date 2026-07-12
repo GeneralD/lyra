@@ -64,21 +64,51 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
         // A single for-await loop is the serialization point: events apply
         // one at a time, so a rapid pause→play burst can never interleave
         // capture start/stop calls. `previous` dedupes the helper's periodic
-        // ticks — restarting the capture rebuilds the tap, so repeats must
-        // not pass.
+        // ticks — restarting a live capture rebuilds the tap, so repeats must
+        // not pass. A failed tap creation is the exception: `previous` is still
+        // set to the attempted source, but `failedAttempts` tracks consecutive
+        // failures for it and the `retrying` budget deliberately lets an
+        // identical repeat back through the dedup, so the next tick re-attempts
+        // — up to `maxCaptureAttempts` per source, then it gives up until the
+        // source changes. That recovers the transient app-switch race (empty
+        // process list / HAL contention) without spinning forever on a
+        // permanent denial (pre-14.4 OS, TCC) (#312).
         let candidate = Task {
+            let maxCaptureAttempts = 3
             var previous: AudioSourceState?
+            var failedAttempts = 0
             for await info in playback.observeNowPlaying() {
                 let source = AudioSourceState(
                     pid: info?.pid, isPlaying: (info?.playbackRate ?? 0) > 0)
-                guard source != previous else { continue }
+                let isNewSource = source != previous
+                let retrying =
+                    !isNewSource
+                    && (1..<maxCaptureAttempts).contains(failedAttempts)
+                guard isNewSource || retrying else { continue }
+                // A new source starts its own retry budget; a retry keeps the
+                // running count. A stop is always a new source, so it resets
+                // here too.
+                failedAttempts = isNewSource ? 0 : failedAttempts
                 previous = source
                 guard let pid = source.pid, source.isPlaying else {
                     await spectrum.stopCapture()
                     subject.send(false)
                     continue
                 }
-                subject.send(await spectrum.startCapture(pid: pid))
+                let started = await spectrum.startCapture(pid: pid)
+                subject.send(started)
+                failedAttempts = started ? 0 : failedAttempts + 1
+                guard started else {
+                    let giveUp = failedAttempts >= maxCaptureAttempts
+                    fputs(
+                        "lyra: spectrum: startCapture(pid: \(pid)) failed "
+                            + "(attempt \(failedAttempts)/\(maxCaptureAttempts)); "
+                            + (giveUp
+                                ? "giving up until the source changes\n"
+                                : "retrying on next now-playing tick\n"),
+                        stderr)
+                    continue
+                }
             }
             // Upstream finished (helper EOF): tear the capture down. A
             // cancelled task skips this — stop() owns that teardown.
