@@ -117,6 +117,45 @@ struct SpectrumInteractorImplTests {
         #expect(harness.spectrum.startedPids == [4242])
     }
 
+    @Test("a failed capture is retried on the next identical now-playing tick (#312)")
+    func failedCaptureRetriesOnNextTick() async {
+        let harness = Harness()
+        // First tap creation fails (transient app-switch race), the retry
+        // succeeds. The failure must NOT settle the dedup state.
+        harness.spectrum.startResults = [false, true]
+        harness.interactor.start()
+        harness.send(pid: 4242, playbackRate: 1)
+        // The helper re-emits the same pid+playing state on its periodic tick.
+        // Pre-fix, `previous` was settled before the failure was known, so this
+        // identical event was swallowed by the dedup and the capture never
+        // recovered until a daemon restart.
+        harness.send(pid: 4242, playbackRate: 1)
+
+        await harness.pollUntil { harness.spectrum.startedPids == [4242, 4242] }
+        #expect(harness.spectrum.startedPids == [4242, 4242])
+        await harness.pollUntil { harness.capturing.value == true }
+        #expect(harness.capturing.value == true)
+    }
+
+    @Test("retries are bounded so a permanent failure does not spin forever (#312)")
+    func failedCaptureGivesUpAfterBoundedRetries() async {
+        let harness = Harness()
+        // A permanent failure (old OS / TCC denial) never succeeds.
+        harness.spectrum.startResults = Array(repeating: false, count: 8)
+        harness.interactor.start()
+        // Five identical ticks, but the source is retried at most 3 times
+        // (maxCaptureAttempts) before the dedup gives up until the source
+        // changes — so a denied capture cannot log/hit CoreAudio every tick.
+        for _ in 0..<5 { harness.send(pid: 4242, playbackRate: 1) }
+        // The pause is a new source: it lands strictly after the five identical
+        // ticks were evaluated and marks the end of the retry window.
+        harness.send(pid: 4242, playbackRate: 0)
+
+        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        #expect(harness.spectrum.startedPids == [4242, 4242, 4242])
+        #expect(harness.capturing.value == false)
+    }
+
     @Test("second start() while running never spawns a competing processor")
     func startTwiceKeepsSingleProcessor() async {
         let harness = Harness()
@@ -223,7 +262,10 @@ private final class CurrentValueBox: @unchecked Sendable {
 
 private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(
-        initialState: (started: [Int](), stops: 0, style: SpectrumStyle?.none, bars: Int?.none))
+        initialState: (
+            started: [Int](), stops: 0, style: SpectrumStyle?.none, bars: Int?.none,
+            results: [Bool]()
+        ))
     var magnitudesResult: [Float] = []
 
     var startedPids: [Int] { state.withLock { $0.started } }
@@ -231,9 +273,20 @@ private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
     var lastStyle: SpectrumStyle? { state.withLock { $0.style } }
     var lastBarCount: Int? { state.withLock { $0.bars } }
 
+    /// Scripted return values for successive `startCapture` calls, consumed in
+    /// order; once exhausted the capture succeeds. Default empty → always
+    /// succeeds, keeping the happy-path tests unchanged.
+    var startResults: [Bool] {
+        get { state.withLock { $0.results } }
+        set { state.withLock { $0.results = newValue } }
+    }
+
     func startCapture(pid: Int) async -> Bool {
-        state.withLock { $0.started.append(pid) }
-        return true
+        state.withLock {
+            $0.started.append(pid)
+            guard !$0.results.isEmpty else { return true }
+            return $0.results.removeFirst()
+        }
     }
 
     func stopCapture() async {
