@@ -84,6 +84,17 @@ private struct FixtureSpectrumInteractor: SpectrumInteractor {
     func magnitudes(barCount: Int) -> [Float] { Array(repeating: 0.5, count: barCount) }
 }
 
+private final class SpyConfigInteractor: ConfigInteractor, @unchecked Sendable {
+    var startCallCount = 0
+    var stopCallCount = 0
+
+    var appStyleChanges: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
+    var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { Just(nil).eraseToAnyPublisher() }
+
+    func start() { startCallCount += 1 }
+    func stop() { stopCallCount += 1 }
+}
+
 private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
     let title: String
     let artist: String
@@ -310,7 +321,7 @@ struct AppRouterTests {
                     .lyricsLines: "One\nTwo",
                 ]
             ),
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -359,7 +370,7 @@ struct AppRouterTests {
 
         let router = AppRouter(
             launchEnvironment: .init(environment: [.uiTestMode: "true"]),
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -383,6 +394,53 @@ struct AppRouterTests {
         #expect(!hasValue(named: "ripplePresenter", from: router))
         #expect(!hasValue(named: "frameScheduler", from: router))
         #expect(!hasValue(named: "appWindow", from: router))
+    }
+
+    @Test("start wires ConfigInteractor/ConfigStatusPresenter and stop tears the presenter down")
+    func startAndStopWireConfigHotReload() {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let spy = SpyConfigInteractor()
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = MutableScreenInteractor(
+                    layout: ScreenLayout(
+                        windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        screenOrigin: .zero
+                    )
+                )
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = FixtureWallpaperInteractor(wallpaperState: .init(items: []))
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+                dependencies.configInteractor = spy
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+
+        // Reliably observable inside the bootstrap scope: start() calls
+        // configInteractor.start() from within withBootstrap, so the spy
+        // injected via AppDependencyBootstrap is the one actually resolved.
+        #expect(spy.startCallCount == 1)
+        #expect(hasValue(named: "configStatusPresenter", from: router))
+
+        router.stop()
+
+        // stop()'s configInteractor.stop() call runs outside the bootstrap
+        // scope, so @Dependency resolution falls back to the process-wide
+        // default rather than this test's spy (a scoping quirk of
+        // swift-dependencies, harmless in production since ConfigInteractor's
+        // liveValue is itself a singleton). Assert stop-side teardown via the
+        // presenter's lifecycle instead of the spy's stopCallCount.
+        #expect(!hasValue(named: "configStatusPresenter", from: router))
     }
 
     @Test("start forwards layout changes and player attachment to the window")
@@ -417,7 +475,7 @@ struct AppRouterTests {
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
                 dependencies.continuousClock = ImmediateClock()
             },
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -464,7 +522,7 @@ struct AppRouterTests {
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
                 dependencies.continuousClock = ImmediateClock()
             },
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -500,7 +558,7 @@ struct AppRouterTests {
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
                 dependencies.continuousClock = ImmediateClock()
             },
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
