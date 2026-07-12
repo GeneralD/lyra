@@ -58,7 +58,7 @@ private struct ConfigStatusCaption: View {
         Text("config invalid · kept previous style")
             .font(.system(size: 10, weight: .medium))
             .tracking(1.5)
-            .foregroundStyle(ConfigStatusAmber.bright.opacity(0.9))
+            .foregroundStyle(configStatusAmberBright.opacity(0.9))
             .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
     }
 }
@@ -84,13 +84,13 @@ private struct DestabilizedGeodesicIndicator: View {
                 draw(&context, size: size, time: timeline.date.timeIntervalSinceReferenceDate)
             }
         }
-        .frame(width: ConfigStatusMetrics.diameter, height: ConfigStatusMetrics.diameter)
+        .frame(width: configStatusDiameter, height: configStatusDiameter)
     }
 
     private func draw(_ context: inout GraphicsContext, size: CGSize, time: TimeInterval) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let radius = size.width / 2 - ConfigStatusMetrics.rimInset
-        let angle = time * ConfigStatusMetrics.spinRate
+        let radius = size.width / 2 - configStatusRimInset
+        let angle = time * configStatusSpinRate
         // Project every surviving edge, then paint back-to-front so the near
         // panels sit on top of the far ones (same cheap painter's-algorithm
         // depth as the loading indicator).
@@ -119,7 +119,7 @@ private struct DestabilizedGeodesicIndicator: View {
     /// The multiplier is irrational-ish relative to the modulus above so the
     /// jitter pattern doesn't visibly repeat in lockstep with the gaps.
     private func jitter(for index: Int) -> Double {
-        ConfigStatusMetrics.jitterAmplitude * sin(Double(index) * 2.399963)
+        configStatusJitterAmplitude * sin(Double(index) * 2.399963)
     }
 
     /// Spin around the vertical axis, apply a fixed tilt, displace radially
@@ -130,8 +130,8 @@ private struct DestabilizedGeodesicIndicator: View {
     {
         let x1 = v.x * cos(angle) + v.z * sin(angle)
         let z1 = -v.x * sin(angle) + v.z * cos(angle)
-        let y2 = v.y * cos(ConfigStatusMetrics.tilt) - z1 * sin(ConfigStatusMetrics.tilt)
-        let z2 = v.y * sin(ConfigStatusMetrics.tilt) + z1 * cos(ConfigStatusMetrics.tilt)
+        let y2 = v.y * cos(configStatusTilt) - z1 * sin(configStatusTilt)
+        let z2 = v.y * sin(configStatusTilt) + z1 * cos(configStatusTilt)
         let jitteredRadius = radius * CGFloat(1 + jitter(for: index))
         return (
             CGPoint(
@@ -150,40 +150,35 @@ private struct DestabilizedGeodesicIndicator: View {
     ) {
         let depth = ((p.depth + q.depth) / 2 + 1) / 2  // 0 far … 1 near
         let alpha = 0.18 + depth * 0.82
-        let lineWidth =
-            ConfigStatusMetrics.minLineWidth + CGFloat(depth) * ConfigStatusMetrics.lineWidthRange
+        let lineWidth = configStatusMinLineWidth + CGFloat(depth) * configStatusLineWidthRange
         var path = Path()
         path.move(to: p.point)
         path.addLine(to: q.point)
         context.stroke(
             path, with: .color(.black.opacity(0.16 + depth * 0.24)),
-            lineWidth: lineWidth + ConfigStatusMetrics.haloPadding)
+            lineWidth: lineWidth + configStatusHaloPadding)
         context.stroke(
             path,
             with: .color(
-                (depth > 0.5 ? ConfigStatusAmber.bright : ConfigStatusAmber.mid).opacity(alpha)),
+                (depth > 0.5 ? configStatusAmberBright : configStatusAmberMid).opacity(alpha)),
             style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
     }
 }
 
-private enum ConfigStatusMetrics {
-    static let diameter: CGFloat = 120  // smaller than the loading sphere (196) — a corner badge, not a centerpiece
-    static let rimInset: CGFloat = 8
-    static let tilt: Double = 0.42  // radians — same fixed 3/4 view as the loading sphere
-    static let spinRate: Double = 0.6  // slower than the loading spin (2.0) — steadier, reads as "settled", not "in progress"
-    static let minLineWidth: CGFloat = 0.5
-    static let lineWidthRange: CGFloat = 1.1
-    static let haloPadding: CGFloat = 1.1
-    static let jitterAmplitude: Double = 0.12  // fraction of radius a surviving strut endpoint is displaced
-}
+private let configStatusDiameter: CGFloat = 120  // smaller than the loading sphere (196) — a corner badge, not a centerpiece
+private let configStatusRimInset: CGFloat = 8
+private let configStatusTilt: Double = 0.42  // radians — same fixed 3/4 view as the loading sphere
+private let configStatusSpinRate: Double = 0.6  // slower than the loading spin (2.0) — steadier, reads as "settled", not "in progress"
+private let configStatusMinLineWidth: CGFloat = 0.5
+private let configStatusLineWidthRange: CGFloat = 1.1
+private let configStatusHaloPadding: CGFloat = 1.1
+private let configStatusJitterAmplitude: Double = 0.12  // fraction of radius a surviving strut endpoint is displaced
 
 /// Two amber tones mirroring `GeodesicGold`'s bright/mid split, so the error
 /// indicator shares the same depth-shading technique while staying visually
 /// distinct (amber vs. gold) from the loading sphere at a glance.
-private enum ConfigStatusAmber {
-    static let bright = Color(red: 1.000, green: 0.700, blue: 0.300)
-    static let mid = Color(red: 0.850, green: 0.520, blue: 0.180)
-}
+private let configStatusAmberBright = Color(red: 1.000, green: 0.700, blue: 0.300)
+private let configStatusAmberMid = Color(red: 0.850, green: 0.520, blue: 0.180)
 
 #if DEBUG
     #Preview("Config Status") {
