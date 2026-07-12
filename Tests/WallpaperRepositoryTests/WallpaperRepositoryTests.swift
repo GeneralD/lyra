@@ -47,6 +47,17 @@ private enum StubError: Error {
     case dataSourceFailed
 }
 
+private final class StubCacheStore: WallpaperCacheStore, @unchecked Sendable {
+    let entry: WallpaperCacheEntry?
+
+    init(entry: WallpaperCacheEntry? = nil) {
+        self.entry = entry
+    }
+
+    func read(url: String) async -> WallpaperCacheEntry? { entry }
+    func write(url: String, contentHash: String, fileExt: String) async throws {}
+}
+
 // MARK: - Tests
 
 @Suite("WallpaperRepository")
@@ -363,5 +374,104 @@ struct WallpaperRepositoryTests {
                 #expect(first == second)
             }
         }
+    }
+}
+
+// Exercises the download → SHA256 → cache-dedup path against an injected cache
+// root (cacheHome), so no real ~/.cache write happens.
+@Suite("WallpaperRepository cache & hashing")
+struct WallpaperRepositoryCacheTests {
+    private func makeTempDir() throws -> String {
+        let dir = NSTemporaryDirectory() + "lyra-wp-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    @Test("hashes and caches a downloaded file into the injected cache root")
+    func hashesDownloadedFileIntoInjectedCacheRoot() async throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // A real, non-empty download so streamingSHA256's read loop runs.
+        let sourceFile = tempDir + "/download.mp4"
+        try Data(repeating: 0xAB, count: 4096).write(to: URL(fileURLWithPath: sourceFile))
+
+        let remote = SpyRemoteDataSource()
+        remote.result = sourceFile
+
+        let result = try await withDependencies {
+            $0.localWallpaperDataSource = SpyLocalDataSource()
+            $0.remoteWallpaperDataSource = remote
+            $0.youtubeWallpaperDataSource = SpyYouTubeDataSource()
+            $0.wallpaperCacheStore = StubCacheStore()
+        } operation: {
+            let repo = WallpaperRepositoryImpl(cacheHome: tempDir)
+            return try await repo.resolve(value: "https://example.com/bg.mp4", configDir: "/tmp")
+        }
+
+        let path = try #require(result?.path)
+        #expect(path.hasPrefix(tempDir + "/lyra/wallpapers/"))
+        #expect(path.hasSuffix(".mp4"))
+        #expect(FileManager.default.fileExists(atPath: path))
+        #expect(!FileManager.default.fileExists(atPath: sourceFile))  // moved into cache
+    }
+
+    @Test("returns the cached file when the store has an entry and the file exists")
+    func returnsCachedFileOnHit() async throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // Pre-seed the exact cache file the store's entry points to.
+        let wallpapersDir = tempDir + "/lyra/wallpapers"
+        try FileManager.default.createDirectory(atPath: wallpapersDir, withIntermediateDirectories: true)
+        let cachedFile = "\(wallpapersDir)/deadbeef.mp4"
+        try Data("cached".utf8).write(to: URL(fileURLWithPath: cachedFile))
+
+        let remote = SpyRemoteDataSource()
+
+        let result = try await withDependencies {
+            $0.localWallpaperDataSource = SpyLocalDataSource()
+            $0.remoteWallpaperDataSource = remote
+            $0.youtubeWallpaperDataSource = SpyYouTubeDataSource()
+            $0.wallpaperCacheStore = StubCacheStore(entry: .init(contentHash: "deadbeef", fileExt: "mp4"))
+        } operation: {
+            let repo = WallpaperRepositoryImpl(cacheHome: tempDir)
+            return try await repo.resolve(value: "https://example.com/bg.mp4", configDir: "/tmp")
+        }
+
+        #expect(result?.path == cachedFile)
+        #expect(remote.calledWith == nil)  // cache hit short-circuits before download
+    }
+
+    @Test("removes the temp download when an identical file is already cached")
+    func removesTempWhenAlreadyCached() async throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // Two temp files with identical content hash to the same cache path.
+        let content = Data(repeating: 0xCD, count: 2048)
+        let first = tempDir + "/first.mp4"
+        let second = tempDir + "/second.mp4"
+        try content.write(to: URL(fileURLWithPath: first))
+        try content.write(to: URL(fileURLWithPath: second))
+
+        let remote = SpyRemoteDataSource()
+
+        try await withDependencies {
+            $0.localWallpaperDataSource = SpyLocalDataSource()
+            $0.remoteWallpaperDataSource = remote
+            $0.youtubeWallpaperDataSource = SpyYouTubeDataSource()
+            $0.wallpaperCacheStore = StubCacheStore()  // never a cache hit → always downloads
+        } operation: {
+            let repo = WallpaperRepositoryImpl(cacheHome: tempDir)
+            remote.result = first
+            _ = try await repo.resolve(value: "https://example.com/first.mp4", configDir: "/tmp")
+            remote.result = second
+            _ = try await repo.resolve(value: "https://example.com/second.mp4", configDir: "/tmp")
+        }
+
+        // First was moved into cache; the identical second was discarded, not moved.
+        #expect(!FileManager.default.fileExists(atPath: first))
+        #expect(!FileManager.default.fileExists(atPath: second))
     }
 }

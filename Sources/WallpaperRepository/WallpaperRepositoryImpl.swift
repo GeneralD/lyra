@@ -9,7 +9,18 @@ public struct WallpaperRepositoryImpl: Sendable {
     @Dependency(\.youtubeWallpaperDataSource) private var youtube
     @Dependency(\.wallpaperCacheStore) private var cacheStore
 
-    public init() {}
+    // Overrides the wallpaper cache root. Defaults to nil (production reads
+    // XDG_CACHE_HOME or ~/.cache), and tests inject a temp dir so the cache
+    // dedup/hash paths run hermetically — mirrors ConfigDataSourceImpl(configHome:).
+    private let cacheHome: String?
+
+    public init(cacheHome: String? = nil) {
+        // Treat an all-whitespace override as absent — otherwise a "" override
+        // would win over the env fallback and resolve to an unusable
+        // "/lyra/wallpapers". Mirrors the XDG_CACHE_HOME empty-string handling.
+        let trimmed = cacheHome?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.cacheHome = (trimmed?.isEmpty == false) ? trimmed : nil
+    }
 }
 
 extension WallpaperRepositoryImpl: WallpaperRepository {
@@ -31,7 +42,7 @@ extension WallpaperRepositoryImpl {
 
         // Check DB cache first
         if let entry = await cacheStore.read(url: value) {
-            let cacheDir = try Self.wallpaperCacheDir()
+            let cacheDir = try wallpaperCacheDir()
             let cachedPath = "\(cacheDir)/\(entry.contentHash).\(entry.fileExt)"
             if FileManager.default.fileExists(atPath: cachedPath) {
                 return cachedPath
@@ -51,7 +62,7 @@ extension WallpaperRepositoryImpl {
     private func deduplicateAndCache(tempPath: String, url: String) async throws -> String {
         let ext = (tempPath as NSString).pathExtension.isEmpty ? "mp4" : (tempPath as NSString).pathExtension
         let contentHash = try Self.streamingSHA256(of: tempPath)
-        let cacheDir = try Self.wallpaperCacheDir()
+        let cacheDir = try wallpaperCacheDir()
         let finalPath = "\(cacheDir)/\(contentHash).\(ext)"
 
         // Move temp file to content-hash-based path (skip if already exists from another URL)
@@ -87,9 +98,10 @@ extension WallpaperRepositoryImpl {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func wallpaperCacheDir() throws -> String {
+    private func wallpaperCacheDir() throws -> String {
         let envCache =
-            ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
+            cacheHome
+            ?? ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
             ?? "\(NSHomeDirectory())/.cache"
