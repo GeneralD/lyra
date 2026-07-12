@@ -7,9 +7,11 @@ import Testing
 struct FindExecutableTests {
     @Test("resolves a well-known executable via the known-path scan")
     func resolvesKnownPath() {
-        // `ls` lives at /bin/ls on macOS — the last of the known paths checked,
-        // so this exercises the full knownPaths loop up to a hit.
-        #expect(findExecutableInPath("ls") == "/bin/ls")
+        // `ls` lives at /bin/ls on current macOS; accept /usr/bin/ls too so the
+        // test asserts "the known-path scan resolved a real system location",
+        // not one exact path that could shift if Apple relocates the binary.
+        let resolved = findExecutableInPath("ls")
+        #expect(resolved == "/bin/ls" || resolved == "/usr/bin/ls")
     }
 
     @Test("returns nil when neither known paths nor `which` locate the tool")

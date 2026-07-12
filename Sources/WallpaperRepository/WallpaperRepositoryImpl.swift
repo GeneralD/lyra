@@ -15,7 +15,11 @@ public struct WallpaperRepositoryImpl: Sendable {
     private let cacheHome: String?
 
     public init(cacheHome: String? = nil) {
-        self.cacheHome = cacheHome?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Treat an all-whitespace override as absent — otherwise a "" override
+        // would win over the env fallback and resolve to an unusable
+        // "/lyra/wallpapers". Mirrors the XDG_CACHE_HOME empty-string handling.
+        let trimmed = cacheHome?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.cacheHome = (trimmed?.isEmpty == false) ? trimmed : nil
     }
 }
 
