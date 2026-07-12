@@ -121,14 +121,15 @@ struct SpectrumInteractorImplTests {
     func failedCaptureRetriesOnNextTick() async {
         let harness = Harness()
         // First tap creation fails (transient app-switch race), the retry
-        // succeeds. The failure must NOT settle the dedup state.
+        // succeeds. The failure leaves the retry budget open, so an identical
+        // repeat is let back through the dedup instead of being swallowed.
         harness.spectrum.startResults = [false, true]
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
         // The helper re-emits the same pid+playing state on its periodic tick.
-        // Pre-fix, `previous` was settled before the failure was known, so this
-        // identical event was swallowed by the dedup and the capture never
-        // recovered until a daemon restart.
+        // Pre-fix, a repeat was unconditionally swallowed by the dedup, so a
+        // failed start could never recover until a daemon restart; the retry
+        // budget now lets this identical event back through to re-attempt.
         harness.send(pid: 4242, playbackRate: 1)
 
         await harness.pollUntil { harness.spectrum.startedPids == [4242, 4242] }

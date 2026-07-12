@@ -65,12 +65,14 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
         // one at a time, so a rapid pause→play burst can never interleave
         // capture start/stop calls. `previous` dedupes the helper's periodic
         // ticks — restarting a live capture rebuilds the tap, so repeats must
-        // not pass. A failed tap creation is the exception: it does NOT settle
-        // `previous`, so the next identical tick re-enters and retries — up to
-        // `maxCaptureAttempts` per source, then it gives up until the source
-        // changes. That recovers the transient app-switch race (empty process
-        // list / HAL contention) without spinning forever on a permanent
-        // denial (pre-14.4 OS, TCC) (#312).
+        // not pass. A failed tap creation is the exception: `previous` is still
+        // set to the attempted source, but `failedAttempts` tracks consecutive
+        // failures for it and the `retrying` budget deliberately lets an
+        // identical repeat back through the dedup, so the next tick re-attempts
+        // — up to `maxCaptureAttempts` per source, then it gives up until the
+        // source changes. That recovers the transient app-switch race (empty
+        // process list / HAL contention) without spinning forever on a
+        // permanent denial (pre-14.4 OS, TCC) (#312).
         let candidate = Task {
             let maxCaptureAttempts = 3
             var previous: AudioSourceState?
