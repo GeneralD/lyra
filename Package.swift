@@ -265,6 +265,13 @@ let package = Package(
             ]
         ),
         .target(
+            name: "ConfigInteractor",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
             name: "WallpaperInteractor",
             dependencies: [
                 "Domain",
@@ -476,6 +483,14 @@ let package = Package(
             name: "ScreenInteractorTests",
             dependencies: [
                 "ScreenInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "ConfigInteractorTests",
+            dependencies: [
+                "ConfigInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
