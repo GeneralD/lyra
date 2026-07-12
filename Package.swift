@@ -740,6 +740,7 @@ let package = Package(
             dependencies: [
                 "LyricsDataSource",
                 "Domain",
+                "ConfigDataSource",
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Papyrus", package: "papyrus"),
             ]

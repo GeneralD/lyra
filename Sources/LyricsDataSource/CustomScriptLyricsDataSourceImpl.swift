@@ -4,48 +4,35 @@ import Foundation
 import os
 
 public struct CustomScriptLyricsDataSourceImpl: Sendable {
-    private let fallbackCommand: [String]
-    private let timeoutMs: Double
-    private let configDir: String
-    private let cacheDir: String
+    // Config values (fallback_command, timeout_ms, configDir) are deliberately NOT
+    // captured here at init — `configDataSource` is read fresh inside `get()` on every
+    // call, mirroring LLMMetadataDataSourceImpl, so an edited [lyrics] section takes
+    // effect on the daemon's very next lookup without a restart (#41).
+    @Dependency(\.configDataSource) private var configDataSource
     let processRunner:
         @Sendable (String, [String], [String: String], Double) async throws -> (
             status: Int32, stdout: String, stderr: String
         )
 
     public init() {
-        @Dependency(\.configDataSource) var configDataSource
-        let lyrics = configDataSource.load()?.config.lyrics
-        self.init(
-            fallbackCommand: lyrics?.fallbackCommand ?? [],
-            timeoutMs: lyrics?.timeoutMs.value ?? 5000,
-            configDir: configDataSource.configDir,
-            cacheDir: Self.resolvedCacheDir(),
-            processRunner: { executable, arguments, environment, timeoutMs in
-                try await Self.executeProcess(
-                    executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
-            }
-        )
+        self.init(processRunner: { executable, arguments, environment, timeoutMs in
+            try await Self.executeProcess(
+                executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
+        })
     }
 
+    // Test seam: inject a processRunner spy/stub. Config values are supplied via
+    // `@Dependency(\.configDataSource)` — tests override it with `withDependencies`.
     init(
-        fallbackCommand: [String],
-        timeoutMs: Double,
-        configDir: String,
-        cacheDir: String,
         processRunner:
             @escaping @Sendable (String, [String], [String: String], Double) async throws -> (
                 status: Int32, stdout: String, stderr: String
             )
     ) {
-        self.fallbackCommand = fallbackCommand
-        self.timeoutMs = timeoutMs
-        self.configDir = configDir
-        self.cacheDir = cacheDir
         self.processRunner = processRunner
     }
 
-    private static func resolvedCacheDir() -> String {
+    static func resolvedCacheDir() -> String {
         let base =
             ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -57,9 +44,17 @@ public struct CustomScriptLyricsDataSourceImpl: Sendable {
 
 extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        // Read config fresh on every call (never captured at init) so an edited
+        // fallback_command/timeout_ms takes effect on the daemon's next lookup (#41).
+        let lyrics = configDataSource.load()?.config.lyrics
+        let fallbackCommand = lyrics?.fallbackCommand ?? []
+        let timeoutMs = lyrics?.timeoutMs.value ?? 5000
+        let configDir = configDataSource.configDir
+        let cacheDir = Self.resolvedCacheDir()
+
         // Placeholders expand BEFORE the absolute-path guard so a config can lead with
         // "$LYRA_CONFIG_DIR/..." and still satisfy the absolute-executable contract.
-        let command = fallbackCommand.map(expandedPlaceholders)
+        let command = fallbackCommand.map { Self.expandedPlaceholders($0, configDir: configDir, cacheDir: cacheDir) }
         // The executable must be an absolute path — a launchd-run daemon has a minimal
         // PATH, so relative paths (resolved against the daemon's CWD) would behave
         // unpredictably and diverge from the documented contract. Reject them up front.
@@ -92,7 +87,7 @@ extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     /// Expands `$LYRA_CONFIG_DIR` / `$LYRA_CACHE_DIR` (and their `${…}` forms) in a
     /// fallback_command element, so configs can locate scripts relative to lyra's own
     /// directories instead of hardcoding machine-specific absolute paths.
-    private func expandedPlaceholders(_ element: String) -> String {
+    private static func expandedPlaceholders(_ element: String, configDir: String, cacheDir: String) -> String {
         [
             ("${LYRA_CONFIG_DIR}", configDir), ("$LYRA_CONFIG_DIR", configDir),
             ("${LYRA_CACHE_DIR}", cacheDir), ("$LYRA_CACHE_DIR", cacheDir),
