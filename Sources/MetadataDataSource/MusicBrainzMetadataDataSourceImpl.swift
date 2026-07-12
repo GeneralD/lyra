@@ -1,26 +1,29 @@
 import Domain
 import Foundation
 @preconcurrency import Papyrus
+import ScopedAPISession
 
 public struct MusicBrainzMetadataDataSourceImpl {
-    private let apiFactory: () -> any MusicBrainz
+    private let apiSession: ScopedAPISession<any MusicBrainz>
 
     public init() {
-        self.init { EphemeralSessionMusicBrainz() }
+        self.init(
+            apiSession: ScopedAPISession(timeout: 10) {
+                MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: $0))
+            }
+        )
     }
 
     init(api: any MusicBrainz) {
-        self.init { api }
+        self.init(apiSession: ScopedAPISession(timeout: 10) { _ in api })
     }
 
-    init(apiFactory: @escaping () -> any MusicBrainz) {
-        self.apiFactory = apiFactory
+    init(apiSession: ScopedAPISession<any MusicBrainz>) {
+        self.apiSession = apiSession
     }
 }
 
-// Safe: `apiFactory` is set at init and never mutated; it only constructs a fresh,
-// call-local API client (or returns the injected test stub).
-extension MusicBrainzMetadataDataSourceImpl: @unchecked Sendable {}
+extension MusicBrainzMetadataDataSourceImpl: Sendable {}
 
 extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
     public func resolve(track: Track) async -> [MusicBrainzMetadata] {
@@ -32,7 +35,7 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
         for (title, artist) in [(normalized, normalizedArtist), (normalized, nil as String?)] {
             let query = MusicBrainzAPI.luceneQuery(title: title, artist: artist, duration: nil)
             do {
-                let response = try await apiFactory().searchRecording(query: query, fmt: "json", limit: 5)
+                let response = try await apiSession.withAPI { try await $0.searchRecording(query: query, fmt: "json", limit: 5) }
                 let candidates = matchRecordings(from: response, regex: regex)
                 guard !candidates.isEmpty else { continue }
                 return candidates

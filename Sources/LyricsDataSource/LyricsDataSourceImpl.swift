@@ -1,31 +1,36 @@
 import Domain
 import Foundation
 @preconcurrency import Papyrus
+import ScopedAPISession
 
 public struct LyricsDataSourceImpl {
-    private let apiFactory: () -> any LRCLib
+    private let apiSession: ScopedAPISession<any LRCLib>
 
     public init() {
-        self.init { EphemeralSessionLRCLib() }
+        self.init(
+            apiSession: ScopedAPISession(timeout: 10) {
+                LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: $0))
+            }
+        )
     }
 
     init(api: any LRCLib) {
-        self.init { api }
+        self.init(apiSession: ScopedAPISession(timeout: 10) { _ in api })
     }
 
-    init(apiFactory: @escaping () -> any LRCLib) {
-        self.apiFactory = apiFactory
+    init(apiSession: ScopedAPISession<any LRCLib>) {
+        self.apiSession = apiSession
     }
 }
 
-// Safe: `apiFactory` is set at init and never mutated; it only constructs a fresh,
-// call-local API client (or returns the injected test stub).
-extension LyricsDataSourceImpl: @unchecked Sendable {}
+extension LyricsDataSourceImpl: Sendable {}
 
 extension LyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         do {
-            let result = try await apiFactory().get(trackName: title, artistName: artist, duration: duration.map(Int.init))
+            let result = try await apiSession.withAPI {
+                try await $0.get(trackName: title, artistName: artist, duration: duration.map(Int.init))
+            }
             guard result.plainLyrics != nil || result.syncedLyrics != nil else { return nil }
             return result
         } catch {
@@ -36,7 +41,7 @@ extension LyricsDataSourceImpl: LyricsDataSource {
 
     public func search(query: String) async -> [LyricsResult]? {
         do {
-            return try await apiFactory().search(q: query)
+            return try await apiSession.withAPI { try await $0.search(q: query) }
         } catch {
             log(error, operation: "search")
             return nil

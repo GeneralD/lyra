@@ -10,22 +10,16 @@ public protocol OpenAICompatible {
 }
 
 extension OpenAICompatible {
-    /// Ephemeral session for the same staleness reason as `EphemeralSessionLRCLib`
-    /// (#318). The 60 s request timeout matches the `URLSession.shared` default
-    /// this call always ran with — kept generous because local LLMs can take
-    /// tens of seconds to produce a completion.
-    public static func ephemeralSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 60
-        return URLSession(configuration: configuration)
-    }
-
+    /// Builds the auth-attaching Provider. The session comes from the caller's
+    /// `ScopedAPISession` in production (#318); the `nil` default gives a
+    /// throwaway ephemeral session for construction-only tests that never make a
+    /// network call.
     public static func provider(for config: AIEndpoint, urlSession: URLSession? = nil) -> Provider {
         let endpoint =
             config.endpoint.hasSuffix("/")
             ? String(config.endpoint.dropLast())
             : config.endpoint
-        return Provider(baseURL: endpoint, urlSession: urlSession ?? ephemeralSession()).modifyRequests { req in
+        return Provider(baseURL: endpoint, urlSession: urlSession ?? URLSession(configuration: .ephemeral)).modifyRequests { req in
             req.addHeader("Authorization", value: "Bearer \(config.apiKey)")
         }
     }
