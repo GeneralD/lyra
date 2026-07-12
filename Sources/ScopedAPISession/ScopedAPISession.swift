@@ -1,7 +1,7 @@
 import Foundation
 
 /// Runs a single API call against a fresh, per-call ephemeral `URLSession` that is
-/// invalidated the moment the call returns (#318).
+/// finished and invalidated when the body completes (#318).
 ///
 /// A process-lifetime `URLSession` can silently go stale after sleep/wake or
 /// network changes, leaving requests failing until the daemon restarts. Building
