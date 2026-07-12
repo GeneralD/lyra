@@ -89,6 +89,14 @@ let package = Package(
                 "Domain"
             ]
         ),
+
+        // ── FileWatchGateway ──
+        .target(
+            name: "FileWatchGateway",
+            dependencies: [
+                "Domain"
+            ]
+        ),
         .target(
             name: "AppKitScreenProvider",
             dependencies: [
@@ -527,6 +535,10 @@ let package = Package(
         .testTarget(
             name: "CoreAudioTapGatewayTests",
             dependencies: ["CoreAudioTapGateway"]
+        ),
+        .testTarget(
+            name: "FileWatchGatewayTests",
+            dependencies: ["FileWatchGateway", "Domain"]
         ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
