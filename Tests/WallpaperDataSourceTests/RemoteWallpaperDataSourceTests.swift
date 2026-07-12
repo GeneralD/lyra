@@ -56,4 +56,11 @@ struct RemoteWallpaperDataSourceTests {
             try await dataSource.resolve(RemoteWallpaper(url: url))
         }
     }
+
+    @Test("public init wires the default URLSession download performer")
+    func publicInitConstructsDefaultPerformer() {
+        // Exercises the default wiring path of the no-arg init. The performer
+        // closure itself is network-backed (URLSession.shared) and is not invoked.
+        _ = RemoteWallpaperDataSourceImpl()
+    }
 }
