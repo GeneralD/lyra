@@ -10,12 +10,16 @@ public protocol OpenAICompatible {
 }
 
 extension OpenAICompatible {
-    public static func provider(for config: AIEndpoint) -> Provider {
+    /// Builds the auth-attaching Provider. The session comes from the caller's
+    /// `ScopedAPISession` in production (#318); the `nil` default gives a
+    /// throwaway ephemeral session for construction-only tests that never make a
+    /// network call.
+    public static func provider(for config: AIEndpoint, urlSession: URLSession? = nil) -> Provider {
         let endpoint =
             config.endpoint.hasSuffix("/")
             ? String(config.endpoint.dropLast())
             : config.endpoint
-        return Provider(baseURL: endpoint).modifyRequests { req in
+        return Provider(baseURL: endpoint, urlSession: urlSession ?? URLSession(configuration: .ephemeral)).modifyRequests { req in
             req.addHeader("Authorization", value: "Bearer \(config.apiKey)")
         }
     }

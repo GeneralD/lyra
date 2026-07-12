@@ -2,19 +2,31 @@ import Dependencies
 import Domain
 import Foundation
 @preconcurrency import Papyrus
+import ScopedAPISession
 
 public struct LLMMetadataDataSourceImpl {
     @Dependency(\.configDataSource) private var configDataSource
-    private let apiFactory: @Sendable (AIEndpoint) -> any OpenAICompatible
+    private let sessionFactory: @Sendable (AIEndpoint) -> ScopedAPISession<any OpenAICompatible>
 
     public init() {
-        self.init { config in
-            OpenAICompatibleAPI(provider: OpenAICompatibleAPI.provider(for: config))
-        }
+        self.init(sessionFactory: { config in
+            ScopedAPISession(timeout: 60) {
+                OpenAICompatibleAPI(provider: OpenAICompatibleAPI.provider(for: config, urlSession: $0))
+            }
+        })
     }
 
+    // Test seam: inject a plain API factory (a stub). The scoped session it is
+    // wrapped in creates and tears down a throwaway ephemeral session the stub
+    // ignores, so the production call path is exercised without a network call.
     init(apiFactory: @escaping @Sendable (AIEndpoint) -> any OpenAICompatible) {
-        self.apiFactory = apiFactory
+        self.init(sessionFactory: { config in
+            ScopedAPISession(timeout: 60) { _ in apiFactory(config) }
+        })
+    }
+
+    init(sessionFactory: @escaping @Sendable (AIEndpoint) -> ScopedAPISession<any OpenAICompatible>) {
+        self.sessionFactory = sessionFactory
     }
 }
 
@@ -32,13 +44,12 @@ extension LLMMetadataDataSourceImpl: MetadataDataSource {
 
 extension LLMMetadataDataSourceImpl {
     fileprivate func callAPI(config: AIEndpoint, rawTitle: String, rawArtist: String) async -> ExtractedMetadata? {
-        let api = apiFactory(config)
         let request = MetadataExtractionPrompt(rawTitle: rawTitle, rawArtist: rawArtist)
             .request(model: config.model)
 
         let response: ChatCompletionResponse
         do {
-            response = try await api.chatCompletion(request: request)
+            response = try await sessionFactory(config).withAPI { try await $0.chatCompletion(request: request) }
         } catch {
             fputs("lyra: AI extraction failed: \(error)\n", stderr)
             return nil

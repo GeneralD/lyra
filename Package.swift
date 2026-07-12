@@ -380,10 +380,12 @@ let package = Package(
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ]
         ),
+        .target(name: "ScopedAPISession"),
         .target(
             name: "LyricsDataSource",
             dependencies: [
                 "Domain",
+                "ScopedAPISession",
                 .product(name: "Papyrus", package: "papyrus"),
             ]
         ),
@@ -391,6 +393,7 @@ let package = Package(
             name: "MetadataDataSource",
             dependencies: [
                 "Domain",
+                "ScopedAPISession",
                 .product(name: "Papyrus", package: "papyrus"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -447,6 +450,12 @@ let package = Package(
 
         // ══ Tests ══
 
+        .testTarget(
+            name: "ScopedAPISessionTests",
+            dependencies: [
+                "ScopedAPISession"
+            ]
+        ),
         .testTarget(
             name: "TrackInteractorTests",
             dependencies: [

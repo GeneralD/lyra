@@ -1,21 +1,29 @@
 import Domain
 import Foundation
 @preconcurrency import Papyrus
+import ScopedAPISession
 
 public struct MusicBrainzMetadataDataSourceImpl {
-    private let api: any MusicBrainz
+    private let apiSession: ScopedAPISession<any MusicBrainz>
 
     public init() {
-        self.init(api: MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL)))
+        self.init(
+            apiSession: ScopedAPISession(timeout: 10) {
+                MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: $0))
+            }
+        )
     }
 
     init(api: any MusicBrainz) {
-        self.api = api
+        self.init(apiSession: ScopedAPISession(timeout: 10) { _ in api })
+    }
+
+    init(apiSession: ScopedAPISession<any MusicBrainz>) {
+        self.apiSession = apiSession
     }
 }
 
-// Safe: `api` is set at init and never mutated; Papyrus's Provider is configured during construction only.
-extension MusicBrainzMetadataDataSourceImpl: @unchecked Sendable {}
+extension MusicBrainzMetadataDataSourceImpl: Sendable {}
 
 extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
     public func resolve(track: Track) async -> [MusicBrainzMetadata] {
@@ -26,10 +34,14 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
 
         for (title, artist) in [(normalized, normalizedArtist), (normalized, nil as String?)] {
             let query = MusicBrainzAPI.luceneQuery(title: title, artist: artist, duration: nil)
-            guard let response = try? await api.searchRecording(query: query, fmt: "json", limit: 5) else { continue }
-            let candidates = matchRecordings(from: response, regex: regex)
-            guard !candidates.isEmpty else { continue }
-            return candidates
+            do {
+                let response = try await apiSession.withAPI { try await $0.searchRecording(query: query, fmt: "json", limit: 5) }
+                let candidates = matchRecordings(from: response, regex: regex)
+                guard !candidates.isEmpty else { continue }
+                return candidates
+            } catch {
+                fputs("lyra: MusicBrainz search failed: \(error)\n", stderr)
+            }
         }
 
         return []
