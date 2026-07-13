@@ -65,6 +65,11 @@ extension LyricsRepositoryImpl {
     private func tierAExactMatch(candidates: [Track]) async -> LyricsResult? {
         for c in candidates where !c.artist.isEmpty {
             guard let result = await dataSource.get(title: c.title, artist: c.artist, duration: c.duration) else { continue }
+            // Validate before caching, symmetric with Tier B/C. LRCLIB's /api/get does its
+            // own loose matching and can return a different song; caching that unvalidated
+            // used to poison the entry so the read-side re-validation discarded it forever,
+            // forcing a live re-fetch on every replay (#326). A validated write is stable.
+            guard validator.isValid(candidate: c, result: result) else { continue }
             let displayResult = displayAdjusted(result, candidate: c)
             await store(displayResult, track: c)
             return displayResult

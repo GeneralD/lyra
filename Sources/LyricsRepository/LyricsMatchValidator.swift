@@ -17,12 +17,29 @@ struct LyricsMatchValidator {
 extension LyricsMatchValidator {
     private func titleMatches(candidate: Track, result: LyricsResult) -> Bool {
         guard let resultTitle = result.trackName, !resultTitle.isEmpty else { return true }
+        // Famous-song catalogs append remaster/live/version suffixes ("Yesterday -
+        // Remastered 2009"), so LRCLIB's canonical title is the played title plus extra
+        // trailing tokens. Accept a whole-token prefix match first — matched on word
+        // boundaries so "Yes" never matches "Yesterday" — before the fuzzy fallback,
+        // which the plain concatenated-similarity metric alone would reject (#326).
+        if Self.isTokenPrefix(Self.tokens(candidate.title), Self.tokens(resultTitle)) { return true }
         return Self.similarity(Self.normalized(candidate.title), Self.normalized(resultTitle)) >= titleSimilarityThreshold
     }
 
     private func durationMatches(candidate: Track, result: LyricsResult) -> Bool {
         guard let candidateDuration = candidate.duration, let resultDuration = result.duration else { return true }
         return abs(candidateDuration - resultDuration) <= durationToleranceSeconds
+    }
+
+    private static func tokens(_ text: String) -> [String] {
+        text.lowercased().split { !($0.isLetter || $0.isNumber) }.map(String.init)
+    }
+
+    // One token list is a whole-token prefix of the other (in either direction).
+    private static func isTokenPrefix(_ a: [String], _ b: [String]) -> Bool {
+        let (shorter, longer) = a.count <= b.count ? (a, b) : (b, a)
+        guard !shorter.isEmpty else { return false }
+        return Array(longer.prefix(shorter.count)) == shorter
     }
 
     private static func normalized(_ text: String) -> String {
