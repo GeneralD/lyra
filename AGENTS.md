@@ -94,6 +94,20 @@ Shared conventions:
   back to the raw title/artist -- never an unvalidated candidate guess --
   when nothing validates. See `.claude/CLAUDE.md` (Key Design Decisions,
   #308) for full detail.
+- Config hot-reloads without a daemon restart. `ConfigUseCase.reload()` keeps
+  the previous `AppStyle` in effect on any failure (unreadable file, decode
+  error, or a file that resolves to defaults while it still exists) --
+  never regress on a bad edit. The new `ConfigWatchGateway` (Domain) /
+  `FileWatchGateway` (Support) pair watches the config's *parent directory*
+  (atomic saves rename the file) via `DispatchSource`, and the new
+  `ConfigInteractor` module debounces watch events before calling
+  `reload()` and republishing the outcome over Combine. An invalid reload
+  is shown graphically (an amber "destabilized" geodesic sphere via
+  `ConfigStatusPresenter`/`ConfigStatusOverlay`) since a daemon has no
+  visible stderr. See `.claude/CLAUDE.md` (Key Design Decisions, #41) for
+  full detail. PR1 ships the pipeline + the lyrics `fallback_command`
+  hot-reload only; wiring feature Presenters to re-render on config change
+  is follow-up work.
 
 ## Testing Rules
 
