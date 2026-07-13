@@ -736,6 +736,18 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "ConfigHotReloadTests",
+            dependencies: [
+                "ConfigUseCase",
+                "ConfigInteractor",
+                "ConfigRepository",
+                "ConfigDataSource",
+                "Domain",
+                "Entity",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
             name: "LyricsDataSourceTests",
             dependencies: [
                 "LyricsDataSource",
