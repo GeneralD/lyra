@@ -8,15 +8,70 @@ import Testing
 
 // MARK: - Stub
 
+/// Reference-type backing for the style fields so a single `StubTrackInteractor`
+/// value (copied on every `@Dependency` access, per swift-dependencies) can still
+/// report updated config after `presenter.start()` — mutating the box is visible
+/// through every copy that shares it.
+private final class StubTrackInteractorStyleBox: @unchecked Sendable {
+    var decodeEffectConfig: DecodeEffect
+    var textLayout: TextLayout
+    var artworkStyle: ArtworkStyle
+
+    init(decodeEffectConfig: DecodeEffect, textLayout: TextLayout, artworkStyle: ArtworkStyle) {
+        self.decodeEffectConfig = decodeEffectConfig
+        self.textLayout = textLayout
+        self.artworkStyle = artworkStyle
+    }
+}
+
 private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var trackChangePublisher: AnyPublisher<TrackUpdate, Never> = Empty().eraseToAnyPublisher()
-    var decodeEffectConfig: DecodeEffect = .init(duration: 0)
-    var textLayout: TextLayout = .init()
-    var artworkStyle: ArtworkStyle = .init()
+    private let styleBox: StubTrackInteractorStyleBox
+
+    init(
+        trackChangePublisher: AnyPublisher<TrackUpdate, Never> = Empty().eraseToAnyPublisher(),
+        decodeEffectConfig: DecodeEffect = .init(duration: 0),
+        textLayout: TextLayout = .init(),
+        artworkStyle: ArtworkStyle = .init()
+    ) {
+        self.trackChangePublisher = trackChangePublisher
+        self.styleBox = StubTrackInteractorStyleBox(
+            decodeEffectConfig: decodeEffectConfig, textLayout: textLayout, artworkStyle: artworkStyle)
+    }
+
+    var decodeEffectConfig: DecodeEffect { styleBox.decodeEffectConfig }
+    var textLayout: TextLayout { styleBox.textLayout }
+    var artworkStyle: ArtworkStyle { styleBox.artworkStyle }
+
+    /// Replaces one or more style fields on the shared box, simulating a config
+    /// reload landing after `start()` already ran.
+    func updateStyle(
+        textLayout: TextLayout? = nil, artworkStyle: ArtworkStyle? = nil,
+        decodeEffectConfig: DecodeEffect? = nil
+    ) {
+        if let textLayout { styleBox.textLayout = textLayout }
+        if let artworkStyle { styleBox.artworkStyle = artworkStyle }
+        if let decodeEffectConfig { styleBox.decodeEffectConfig = decodeEffectConfig }
+    }
 
     var trackChange: AnyPublisher<TrackUpdate, Never> { trackChangePublisher }
     var artwork: AnyPublisher<Data?, Never> { Empty().eraseToAnyPublisher() }
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
+}
+
+/// Stub `ConfigInteractor` whose `appStyleChanges` ping is externally controlled
+/// via the injected subject, so tests can fire it after mutating the track stub.
+private final class StubConfigInteractor: ConfigInteractor, @unchecked Sendable {
+    private let appStyleChangesPublisher: AnyPublisher<Void, Never>
+
+    init(appStyleChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()) {
+        self.appStyleChangesPublisher = appStyleChanges
+    }
+
+    var appStyleChanges: AnyPublisher<Void, Never> { appStyleChangesPublisher }
+    var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { Just(nil).eraseToAnyPublisher() }
+    func start() {}
+    func stop() {}
 }
 
 // MARK: - Helpers
@@ -278,6 +333,95 @@ struct HeaderPresenterTests {
                 try? await Task.sleep(for: .milliseconds(200))
                 #expect(presenter.displayTitle == "Song", "Display should not change after stop")
                 #expect(presenter.titlePhase == .revealed, "Phase should not change after stop")
+            }
+        }
+    }
+
+    @Suite("config hot reload")
+    struct HotReload {
+        @MainActor
+        @Test("appStyleChanges 発火で titleStyle/artworkSize/titleColor が新値に更新される")
+        func appliesUpdatedStyleOnPing() async {
+            let initialLayout = TextLayout(
+                title: TextAppearance(fontSize: 18, fontWeight: "bold", color: .solid("#111111FF")),
+                artist: TextAppearance(fontWeight: "medium")
+            )
+            let updatedLayout = TextLayout(
+                title: TextAppearance(fontSize: 32, fontWeight: "black", color: .solid("#222222FF")),
+                artist: TextAppearance(fontWeight: "medium")
+            )
+            let trackStub = StubTrackInteractor(
+                decodeEffectConfig: .init(duration: 0),
+                textLayout: initialLayout,
+                artworkStyle: ArtworkStyle(size: 96, opacity: 1.0)
+            )
+            let appStyleChanges = PassthroughSubject<Void, Never>()
+
+            await withDependencies {
+                $0.trackInteractor = trackStub
+                $0.configInteractor = StubConfigInteractor(
+                    appStyleChanges: appStyleChanges.eraseToAnyPublisher())
+            } operation: {
+                let presenter = HeaderPresenter()
+                presenter.start()
+
+                #expect(presenter.titleStyle.fontSize == 18)
+                #expect(presenter.artworkSize == 96)
+
+                // Subscription must not be re-wired — only the shared style stub
+                // mutates, then the ping alone drives the refresh.
+                trackStub.updateStyle(
+                    textLayout: updatedLayout, artworkStyle: ArtworkStyle(size: 200, opacity: 0.4))
+                appStyleChanges.send(())
+
+                await waitUntil { presenter.titleStyle.fontSize == 32 }
+
+                #expect(presenter.titleStyle.fontSize == 32)
+                #expect(presenter.titleStyle.fontWeight == "black")
+                #expect(presenter.titleColor == .solid("#222222FF"))
+                #expect(presenter.artworkSize == 200)
+                #expect(presenter.artworkOpacity == 0.4)
+            }
+        }
+
+        @MainActor
+        @Test("AI 処理中の appStyleChanges は titleColor/artistColor に processingColor を維持する")
+        func keepsProcessingColorDuringAIResolving() async {
+            let subject = PassthroughSubject<TrackUpdate, Never>()
+            let appStyleChanges = PassthroughSubject<Void, Never>()
+            let initialProcessing: ColorStyle = .solid("#FF00FFFF")
+            let updatedProcessing: ColorStyle = .solid("#00FFFFFF")
+
+            let trackStub = StubTrackInteractor(
+                trackChangePublisher: subject.eraseToAnyPublisher(),
+                decodeEffectConfig: .init(duration: 0, processingColor: initialProcessing)
+            )
+
+            await withDependencies {
+                $0.trackInteractor = trackStub
+                $0.configInteractor = StubConfigInteractor(
+                    appStyleChanges: appStyleChanges.eraseToAnyPublisher())
+            } operation: {
+                let presenter = HeaderPresenter()
+                presenter.start()
+
+                subject.send(
+                    TrackUpdate(title: "Song", artist: "Artist", lyricsState: .loading, aiResolving: true))
+                await waitUntil { presenter.titleColor == initialProcessing }
+
+                // Config reloads while AI resolution is in flight; processingColor
+                // itself may also change (e.g. edited config), but the effective
+                // titleColor/artistColor must stay pinned to processingColor,
+                // never fall back to the normal configured color mid-scramble.
+                trackStub.updateStyle(
+                    decodeEffectConfig: .init(duration: 0, processingColor: updatedProcessing))
+                appStyleChanges.send(())
+
+                await waitUntil { presenter.titleColor == updatedProcessing }
+
+                #expect(presenter.titleColor == updatedProcessing)
+                #expect(presenter.artistColor == updatedProcessing)
+                #expect(presenter.titlePhase == .revealing)
             }
         }
     }

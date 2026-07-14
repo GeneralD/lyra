@@ -23,10 +23,12 @@ public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var titleColor: ColorStyle = .solid("#FFFFFFD9")
     @Published public private(set) var artistColor: ColorStyle = .solid("#FFFFFFD9")
 
-    public private(set) var titleStyle: TextAppearance = .init()
-    public private(set) var artistStyle: TextAppearance = .init()
-    public private(set) var artworkSize: Double = 96
-    public private(set) var artworkOpacity: Double = 1.0
+    // font / size / color 系は config のホットリロードで再反映されるため
+    // @Published (View の再描画を誘発する) にする (#41 PR2)。
+    @Published public private(set) var titleStyle: TextAppearance = .init()
+    @Published public private(set) var artistStyle: TextAppearance = .init()
+    @Published public private(set) var artworkSize: Double = 96
+    @Published public private(set) var artworkOpacity: Double = 1.0
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
@@ -34,22 +36,26 @@ public final class HeaderPresenter: ObservableObject {
     private var artistTarget: String?
     private var artworkData: Data?
     private var processingColor: ColorStyle = .solid("#4ADE80FF")
+    // AI 処理中（scramble 中）かどうか。applyStyle() が titleColor/artistColor を
+    // 再適用する際、処理中は processingColor を維持し、通常時は configured color に
+    // 戻すために必要 (#57 の色を config ホットリロードで壊さないため)。
+    private var isAIProcessing = false
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
 
     public init() {}
 
     public func start() {
+        applyStyle()
+
         let config = interactor.decodeEffectConfig
-        let style = interactor.textLayout
-        titleStyle = style.title
-        artistStyle = style.artist
-        titleColor = style.title.color
-        artistColor = style.artist.color
-        processingColor = config.processingColor
-        artworkSize = interactor.artworkStyle.size
-        artworkOpacity = interactor.artworkStyle.opacity
+        // decode の "タイミング" config (duration/charsets) は起動時にのみ
+        // capture する。config reload の都度ここで DecodeEffectState を
+        // 作り直すと進行中のスクランブル/リビールアニメーションを壊すため、
+        // わざと applyStyle() の対象外にしている。タイミング系の変更は
+        // 次回の decode から反映される（#41 PR2 のスコープ外）。
         titleEffect = DecodeEffectState(config: config)
         artistEffect = DecodeEffectState(config: config)
 
@@ -66,6 +72,15 @@ public final class HeaderPresenter: ObservableObject {
                 self?.receiveArtwork(data)
             }
             .store(in: &cancellables)
+
+        // 購読は起動時に一度だけ張る。config 変更のたびに appStyleChanges が
+        // 発火し applyStyle() を呼ぶだけで、購読自体は張り替えない。
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.applyStyle()
+            }
+            .store(in: &cancellables)
     }
 
     public func stop() {
@@ -73,10 +88,24 @@ public final class HeaderPresenter: ObservableObject {
         titleEffect?.stop()
         artistEffect?.stop()
     }
+
+    /// 冪等に config 値を再反映する。起動時に一度、以降は `appStyleChanges`
+    /// ping の都度呼ばれる。AI 処理中は processingColor を維持する。
+    private func applyStyle() {
+        let style = interactor.textLayout
+        titleStyle = style.title
+        artistStyle = style.artist
+        artworkSize = interactor.artworkStyle.size
+        artworkOpacity = interactor.artworkStyle.opacity
+        processingColor = interactor.decodeEffectConfig.processingColor
+        titleColor = isAIProcessing ? processingColor : style.title.color
+        artistColor = isAIProcessing ? processingColor : style.artist.color
+    }
 }
 
 extension HeaderPresenter {
     private func receive(_ update: TrackUpdate) {
+        isAIProcessing = update.aiResolving
         guard update.aiResolving else {
             revealTitle(update.title)
             revealArtist(update.artist)
