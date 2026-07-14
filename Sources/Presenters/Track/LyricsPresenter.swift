@@ -16,8 +16,10 @@ public final class LyricsPresenter: ObservableObject {
     @Published public private(set) var displayLyricLines: [String] = []
     @Published public private(set) var activeLineIndex: Int?
 
-    public private(set) var lyricStyle: TextAppearance = .init()
-    public private(set) var highlightStyle: TextAppearance = .init()
+    // font / size / color 系は config のホットリロードで再反映されるため
+    // @Published (View の再描画を誘発する) にする (#41 PR2)。
+    @Published public private(set) var lyricStyle: TextAppearance = .init()
+    @Published public private(set) var highlightStyle: TextAppearance = .init()
 
     private var lyricEffects: [DecodeEffectState] = []
     private var decodeConfig: DecodeEffect?
@@ -27,6 +29,7 @@ public final class LyricsPresenter: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
     // Resolved against the dependency context captured at construction, so the
     // injected generator's lifetime matches `interactor`'s. Resolving it inside
     // `start()` instead (as the first #272 cut did) binds to whatever context
@@ -37,10 +40,7 @@ public final class LyricsPresenter: ObservableObject {
     public init() {}
 
     public func start() {
-        let layout = interactor.textLayout
-        decodeConfig = layout.decodeEffect
-        lyricStyle = layout.lyric
-        highlightStyle = layout.highlight
+        applyStyle()
 
         interactor.trackChange
             .receive(on: DispatchQueue.main)
@@ -57,11 +57,33 @@ public final class LyricsPresenter: ObservableObject {
                 self?.latestPlaybackRate = position.playbackRate
             }
             .store(in: &cancellables)
+
+        // 購読は起動時に一度だけ張る。config 変更のたびに appStyleChanges が
+        // 発火し applyStyle() を呼ぶだけで、購読自体は張り替えない。
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.applyStyle()
+            }
+            .store(in: &cancellables)
     }
 
     public func stop() {
         cancellables.removeAll()
         stopEffects()
+    }
+
+    /// 冪等に config 値を再反映する。起動時に一度、以降は `appStyleChanges`
+    /// ping の都度呼ばれる。`decodeConfig` はここで更新されるが、進行中の
+    /// `lyricEffects`（既に構築済みの DecodeEffectState）はやり直さない —
+    /// 現在レンダリング中の行のアニメーションを壊さないため。新しい
+    /// duration/charset は次回の `revealLyrics` 呼び出し（次の曲の歌詞表示）
+    /// から反映される（#41 PR2 のスコープ）。
+    private func applyStyle() {
+        let layout = interactor.textLayout
+        decodeConfig = layout.decodeEffect
+        lyricStyle = layout.lyric
+        highlightStyle = layout.highlight
     }
 
     // MARK: - Column layout
