@@ -1,6 +1,5 @@
 import Combine
 import Dependencies
-import Foundation
 
 public protocol WallpaperInteractor: Sendable {
     /// Playback mode for the configured wallpaper set. Presenter reads this once before subscribing.

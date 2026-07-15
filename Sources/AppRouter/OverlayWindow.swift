@@ -7,6 +7,7 @@ protocol OverlayWindow: AnyObject {
     func show()
     func applyLayout(_ layout: ScreenLayout)
     func attachPlayerLayer(for player: AVPlayer)
+    func detachPlayerLayer()
     func applyWallpaperScale(_ scale: Double)
     func close()
 }

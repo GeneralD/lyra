@@ -62,25 +62,6 @@ extension WallpaperPlaybackController {
         player = nil
     }
 
-    /// Stop playback WITHOUT tearing down the AVPlayer instance. A config
-    /// hot-reload that removes all wallpaper items must clear the video but keep
-    /// the player alive: the OverlayWindow attaches its layer only once, on first
-    /// player availability, so nil-ing the player (as `stop()` does) would blank
-    /// the overlay permanently. Keeping the instance lets a later `play(item:)`
-    /// re-attach to the same, still-layered player.
-    func clearCurrentItem() {
-        guard let player else { return }
-        endTimeObserver.map { player.removeTimeObserver($0) }
-        loopObserver.map(NotificationCenter.default.removeObserver)
-        endTimeObserver = nil
-        loopObserver = nil
-        isSeeking = false
-        seekStart = .zero
-        seekEnd = nil
-        player.pause()
-        player.replaceCurrentItem(with: nil)
-    }
-
     func handleBoundary(at time: CMTime) {
         guard let seekEnd, !isSeeking, time >= seekEnd else { return }
         isSeeking = true

@@ -60,26 +60,24 @@ public final class WallpaperPresenter: ObservableObject {
 
     public func start() {
         observeSleepWake()
-        appliedSource = interactor.wallpaperSource
         configInteractor.appStyleChanges
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.applyStyle() }
             .store(in: &cancellables)
-        loadWallpapers()
+        loadWallpapers(source: interactor.wallpaperSource)
     }
 
     /// Reacts to a config hot-reload ping. Re-resolves the wallpaper only when the
     /// source actually changed, so an unrelated edit leaves the playing video
-    /// untouched (no flicker, no restart). The reload keeps the AVPlayer instance
-    /// alive across the swap, so the overlay never blacks out.
+    /// untouched (no flicker, no restart). A source swap keeps the AVPlayer alive
+    /// (`replaceCurrentItem`), so the overlay never blacks out mid-swap.
     private func applyStyle() {
         let source = interactor.wallpaperSource
         guard source != appliedSource else { return }
-        appliedSource = source
-        loadWallpapers()
+        loadWallpapers(source: source)
     }
 
-    private func loadWallpapers() {
+    private func loadWallpapers(source: WallpaperStyle?) {
         loadTask?.cancel()
         setLoading(true)
         items = []
@@ -98,9 +96,24 @@ public final class WallpaperPresenter: ObservableObject {
                     await activateCurrentItem()
                 }
             }
+            // A newer load superseded this one (cancelled): it already reset
+            // `items`, so falling through to the empty-cleanup below would clear
+            // the still-playing video mid-swap. Bail instead (#41 PR4 review, F9).
+            guard !Task.isCancelled else { return }
             if items.isEmpty {
                 setLoading(false)
-                clearActiveItem()
+                // A genuine removal (nil source) applies and restores transparency.
+                // A configured source that resolved to zero items (transient
+                // download failure, or a file created just after the save) is NOT
+                // marked applied, so re-saving the same value retries resolution
+                // instead of being swallowed by the diff guard (#41 PR4 review, F8).
+                if source == nil {
+                    appliedSource = nil
+                    clearActiveItem()
+                }
+            } else {
+                // Commit the applied source only on a successful resolve.
+                appliedSource = source
             }
         }
     }
@@ -121,16 +134,33 @@ public final class WallpaperPresenter: ObservableObject {
         wallpaperScale = 1.0
     }
 
-    /// Register a side-effect to run once when the player becomes available.
-    /// The wireframe uses this to drive `OverlayWindow.attachPlayerLayer`. Since
-    /// the controller now keeps a stable AVPlayer instance across item swaps,
-    /// the layer only needs to be attached once.
+    /// Register a side-effect to run each time a new AVPlayer instance becomes
+    /// available (nil → non-nil). The controller reuses one instance across item
+    /// swaps, so this fires once per wallpaper *attach*, not per item advance —
+    /// the wireframe drives `OverlayWindow.attachPlayerLayer` here. A hot-reload
+    /// that removes all wallpaper tears the player down (see `onPlayerCleared`);
+    /// a later re-add builds a fresh instance and fires this again to re-attach.
     public func onPlayerAvailable(_ handler: @escaping @MainActor (AVPlayer) -> Void) {
         $player
+            .removeDuplicates { $0 === $1 }
             .compactMap { $0 }
-            .first()
             .receive(on: DispatchQueue.main)
             .sink { player in handler(player) }
+            .store(in: &cancellables)
+    }
+
+    /// Register a side-effect to run when the player is torn down (non-nil → nil),
+    /// i.e. a hot-reload removed all wallpaper. The wireframe uses this to detach
+    /// the `AVPlayerLayer` and restore the transparent no-wallpaper backing, so the
+    /// overlay does not keep a full-screen black surface until restart.
+    public func onPlayerCleared(_ handler: @escaping @MainActor () -> Void) {
+        $player
+            .scan((previous: AVPlayer?.none, cleared: false)) { state, current in
+                (previous: current, cleared: state.previous != nil && current == nil)
+            }
+            .filter(\.cleared)
+            .receive(on: DispatchQueue.main)
+            .sink { _ in handler() }
             .store(in: &cancellables)
     }
 
@@ -160,16 +190,17 @@ extension WallpaperPresenter {
         await controller.play(item: item)
     }
 
-    /// Clears the published wallpaper state and stops playback without destroying
-    /// the AVPlayer, for a hot-reload that removes all wallpaper items. Keeping the
-    /// player alive lets a later reload re-attach to the same, still-layered
-    /// instance instead of blacking out the overlay.
+    /// Clears the published wallpaper state and tears the player down, for a
+    /// hot-reload that removes all wallpaper items. Nil-ing the player fires
+    /// `onPlayerCleared`, which detaches the layer and restores the transparent
+    /// no-wallpaper backing (a kept-alive player would leave a black surface,
+    /// #41 PR4 review, F7). A later re-add builds a fresh player and re-attaches.
     private func clearActiveItem() {
         wallpaperURL = nil
         startTime = nil
         endTime = nil
         wallpaperScale = 1.0
-        controller.clearCurrentItem()
+        controller.stop()
     }
 
     private func handleAdvanceRequest() async {

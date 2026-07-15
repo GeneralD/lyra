@@ -128,9 +128,11 @@ Shared conventions:
   fan-out always includes the ripple/spectrum frame handlers (their enabled
   guard lives inside the handler, #41 PR3). The wallpaper reload diffs the
   source and swaps the video via `replaceCurrentItem` on the same AVPlayer, so
-  the overlay never blacks out; the screen reload re-runs `resolveLayout()` and
-  restarts vacant polling on a new selector/debounce (#41 PR4). Config hot-reload
-  now covers every visual element -- #41 is functionally complete.
+  the overlay never blacks out; removing all wallpaper tears the player down and
+  detaches the layer, restoring the transparent backing rather than leaving a
+  black surface; the screen reload re-runs `resolveLayout()` and restarts vacant
+  polling on a new selector/debounce (#41 PR4). Config hot-reload now covers
+  every visual element -- #41 is functionally complete.
 
 ## Testing Rules
 
