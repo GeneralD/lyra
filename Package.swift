@@ -9,17 +9,20 @@ let package = Package(
         .executable(name: "lyra", targets: ["CLI"]),
         // Library surface for external reuse — e.g. the planned `lyra-screensaver`
         // `.saver` bundle (#325), which reuses lyra's video-wallpaper pipeline rather
-        // than re-implementing it. Bundles the reuse path in one product:
+        // than re-implementing it. The product exposes the single `LyraKit` umbrella
+        // target (below), which `@_exported import`s the reuse surface:
         //   • Entity / Domain — data types + `@Dependency` keys and protocols
         //   • Presenters       — `WallpaperPresenter` / `WallpaperPlaybackController`
         //                        (the AVPlayer loop/trim/cycle engine, NSWindow-free)
         //   • DependencyInjection — liveValue wiring so `@Dependency` resolves to the
         //                        real implementations without the consumer re-registering
         //                        the graph.
-        // A lighter wallpaper-only product (splitting the DI registrations per feature so
-        // a consumer can avoid linking MediaRemote/Audio) is a possible follow-up if the
-        // `.saver` binary needs trimming; see #325.
-        .library(name: "LyraKit", targets: ["Entity", "Domain", "Presenters", "DependencyInjection"]),
+        // Product name ≠ importable module in SwiftPM (target names are the modules), so
+        // the umbrella target lets a consumer write a single `import LyraKit`. A lighter
+        // wallpaper-only product (splitting the DI registrations per feature so a consumer
+        // can avoid linking MediaRemote/Audio) is a possible follow-up if the `.saver`
+        // binary needs trimming; see #325.
+        .library(name: "LyraKit", targets: ["LyraKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
@@ -56,6 +59,19 @@ let package = Package(
                     "-Xlinker", "__info_plist",
                     "-Xlinker", "Sources/CLI/Info.plist",
                 ])
+            ]
+        ),
+
+        // ── LyraKit (umbrella for external reuse, #325) ──
+        // Pure `@_exported import` facade so a consumer of the `LyraKit` product
+        // can `import LyraKit` once instead of importing each re-exported module.
+        .target(
+            name: "LyraKit",
+            dependencies: [
+                "Entity",
+                "Domain",
+                "Presenters",
+                "DependencyInjection",
             ]
         ),
 
