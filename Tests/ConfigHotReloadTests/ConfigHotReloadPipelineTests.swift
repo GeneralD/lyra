@@ -97,6 +97,71 @@ struct ConfigHotReloadPipelineTests {
         invalidCancellable.cancel()
         interactor.stop()
     }
+
+    @Test("optional セクション（[lyrics]）のみ不正な編集は起動時同様に縮退し、有効な wallpaper 編集は反映される (#330)")
+    func lenientOptionalSectionReload() async throws {
+        let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
+        defer { try? xdgConfig.delete() }
+        let lyraDir = try xdgConfig.createSubfolder(named: "lyra")
+        let configFile = try lyraDir.createFile(named: "config.toml")
+        try configFile.write(#"wallpaper = "a.mp4""#)
+
+        let gateway = FakeConfigWatchGateway()
+
+        let (sharedUseCase, interactor): (ConfigUseCaseImpl, ConfigInteractorImpl) = withDependencies {
+            $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            withDependencies {
+                $0.configRepository = ConfigRepositoryImpl()
+            } operation: {
+                let useCase = ConfigUseCaseImpl()
+                let interactor = withDependencies {
+                    $0.configUseCase = useCase
+                    $0.configWatchGateway = gateway
+                } operation: {
+                    ConfigInteractorImpl()
+                }
+                return (useCase, interactor)
+            }
+        }
+
+        #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "a.mp4")
+
+        final class Observed: @unchecked Sendable {
+            var pinged = false
+            var lastInvalid: ConfigReloadFailure?
+        }
+        let observed = Observed()
+        let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
+        let invalidCancellable = interactor.invalidConfig.sink { observed.lastInvalid = $0 }
+        interactor.start()
+
+        // Edit wallpaper to b.mp4 while introducing a structurally invalid [lyrics]
+        // section (a string where an argv array is required). The optional section
+        // must degrade like startup — hot-reload should apply the valid wallpaper
+        // rather than reject the whole edit and keep a.mp4.
+        try configFile.write(
+            """
+            wallpaper = "b.mp4"
+
+            [lyrics]
+            fallback_command = "/not/an/argv/array"
+            """)
+        gateway.fire()
+
+        let deadline = ContinuousClock.now + .seconds(3)
+        while !observed.pinged, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(observed.pinged)
+        #expect(observed.lastInvalid == nil)
+        #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "b.mp4")
+
+        pingCancellable.cancel()
+        invalidCancellable.cancel()
+        interactor.stop()
+    }
 }
 
 // MARK: - Fake

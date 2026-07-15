@@ -30,7 +30,7 @@ struct ConfigDataSourceImplConfigDirTests {
     }
 }
 
-@Suite("ConfigDataSourceImpl.tryDecode — strict optional-section validation")
+@Suite("ConfigDataSourceImpl.tryDecode — optional-section strictness (#330)")
 struct ConfigDataSourceImplTryDecodeTests {
     private func dataSource(withConfig content: String) throws -> (ConfigDataSourceImpl, Folder) {
         let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
@@ -39,29 +39,39 @@ struct ConfigDataSourceImplTryDecodeTests {
         return (ConfigDataSourceImpl(configHome: xdgConfig.path), xdgConfig)
     }
 
-    @Test("a malformed [lyrics] section fails validation instead of passing silently")
-    func malformedLyricsSectionFailsValidation() throws {
-        let (dataSource, folder) = try dataSource(
-            withConfig: """
-                screen = "main"
+    private let malformedLyrics = """
+        screen = "main"
 
-                [lyrics]
-                fallback_command = "/not/an/argv/array"
-                """)
+        [lyrics]
+        fallback_command = "/not/an/argv/array"
+        """
+
+    private let malformedAI = """
+        screen = "main"
+
+        [ai]
+        endpoint = ["not", "a", "string"]
+        """
+
+    @Test("strict mode surfaces a malformed [lyrics] section as a failure (healthcheck)")
+    func malformedLyricsSectionFailsStrictValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedLyrics)
         defer { try? folder.delete() }
 
-        #expect(throws: (any Error).self) { try dataSource.tryDecode() }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
+    }
+
+    @Test("lenient mode tolerates a malformed [lyrics] section — degrades like startup (hot-reload)")
+    func malformedLyricsSectionPassesLenientValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedLyrics)
+        defer { try? folder.delete() }
+
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: false) }
     }
 
     @Test("a malformed [lyrics] section still loads leniently — the rest of the config survives")
     func malformedLyricsSectionLoadsLeniently() throws {
-        let (dataSource, folder) = try dataSource(
-            withConfig: """
-                screen = "main"
-
-                [lyrics]
-                fallback_command = "/not/an/argv/array"
-                """)
+        let (dataSource, folder) = try dataSource(withConfig: malformedLyrics)
         defer { try? folder.delete() }
 
         let loaded = dataSource.load()
@@ -70,22 +80,24 @@ struct ConfigDataSourceImplTryDecodeTests {
         #expect(loaded?.config.screen == .main)
     }
 
-    @Test("a malformed [ai] section fails validation instead of passing silently")
-    func malformedAISectionFailsValidation() throws {
-        let (dataSource, folder) = try dataSource(
-            withConfig: """
-                screen = "main"
-
-                [ai]
-                endpoint = ["not", "a", "string"]
-                """)
+    @Test("strict mode surfaces a malformed [ai] section as a failure (healthcheck)")
+    func malformedAISectionFailsStrictValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedAI)
         defer { try? folder.delete() }
 
-        #expect(throws: (any Error).self) { try dataSource.tryDecode() }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
 
-    @Test("a well-formed [lyrics] section passes validation")
-    func wellFormedLyricsSectionPassesValidation() throws {
+    @Test("lenient mode tolerates a malformed [ai] section — degrades like startup (hot-reload)")
+    func malformedAISectionPassesLenientValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedAI)
+        defer { try? folder.delete() }
+
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: false) }
+    }
+
+    @Test("a well-formed [lyrics] section passes in both modes")
+    func wellFormedLyricsSectionPassesBothModes() throws {
         let (dataSource, folder) = try dataSource(
             withConfig: """
                 screen = "main"
@@ -96,6 +108,18 @@ struct ConfigDataSourceImplTryDecodeTests {
                 """)
         defer { try? folder.delete() }
 
-        #expect(throws: Never.self) { try dataSource.tryDecode() }
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: true) }
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: false) }
+    }
+
+    @Test("a malformed required structure fails even in lenient mode — the required decode always gates")
+    func malformedRequiredStructureFailsEvenInLenientMode() throws {
+        // `wallpaper = [` is an unterminated array: the required decode itself
+        // fails, so lenient mode cannot rescue it (unlike an optional-section error).
+        let (dataSource, folder) = try dataSource(withConfig: "wallpaper = [")
+        defer { try? folder.delete() }
+
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: false) }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
 }

@@ -103,19 +103,22 @@ Shared conventions:
   when nothing validates. See `docs/ARCHITECTURE.md` (Key Design Decisions,
   #308) for full detail.
 - Config hot-reloads without a daemon restart. `ConfigUseCase.reload()` keeps
-  the previous `AppStyle` in effect on any failure (unreadable file, decode
-  error, or a file that resolves to defaults while it still exists) --
-  never regress on a bad edit. The new `ConfigWatchGateway` (Domain) /
+  the previous `AppStyle` in effect when the **required** structure fails to
+  validate (unreadable file, decode error in a core section, or a file that
+  resolves to defaults while it still exists) -- never regress on a bad edit.
+  A malformed **optional** `[ai]`/`[lyrics]` section instead degrades to `nil`
+  like startup and does not block a valid edit; `lyra healthcheck` still
+  reports it (the strictness is the `strictOptionalSections` flag on
+  `validate`/`tryDecode`, #330). The `ConfigWatchGateway` (Domain) /
   `FileWatchGateway` (Support) pair watches the config's *parent directory*
-  (atomic saves rename the file) via `DispatchSource`, and the new
+  (atomic saves rename the file) via `DispatchSource`, and the
   `ConfigInteractor` module debounces watch events before calling
   `reload()` and republishing the outcome over Combine. An invalid reload
   is shown graphically (an amber "destabilized" geodesic sphere via
   `ConfigStatusPresenter`/`ConfigStatusOverlay`) since a daemon has no
   visible stderr. See `.claude/CLAUDE.md` (Key Design Decisions, #41) for
-  full detail. PR1 ships the pipeline + the lyrics `fallback_command`
-  hot-reload only; wiring feature Presenters to re-render on config change
-  is follow-up work.
+  full detail. Header/Lyrics styling now re-renders live; wallpaper source
+  replacement and screen re-selection remain follow-up work.
 
 ## Testing Rules
 

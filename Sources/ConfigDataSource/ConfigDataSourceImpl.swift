@@ -61,13 +61,20 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         findConfigFile()?.parent?.path ?? Folder.home.path
     }
 
-    public func tryDecode() throws -> String {
+    public func tryDecode(strictOptionalSections: Bool) throws -> String {
         guard let file = findConfigFile(),
             let content = try? file.readAsString()
         else { return "" }
         let configDir = file.parent?.path ?? Folder.home.path
+        // The required structure always gates validity — a malformed text /
+        // wallpaper / spectrum section is fatal in either mode.
         try decodeOrThrow(content: content, path: file.path, configDir: configDir)
-        try strictDecodeOptionalSections(content: content, path: file.path, configDir: configDir)
+        // The optional [ai]/[lyrics] sections only gate validity in strict mode.
+        // Hot-reload passes `false` so a malformed enhancement section degrades to
+        // nil (matching startup) rather than discarding valid text/wallpaper edits.
+        if strictOptionalSections {
+            try strictDecodeOptionalSections(content: content, path: file.path, configDir: configDir)
+        }
         return file.path
     }
 }

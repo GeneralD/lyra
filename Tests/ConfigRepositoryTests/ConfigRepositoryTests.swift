@@ -255,7 +255,7 @@ struct ConfigRepositoryTests {
                 $0.configDataSource = StubConfigDataSource(tryDecodeResult: .success(""))
             } operation: {
                 let repo = ConfigRepositoryImpl()
-                let result = repo.validate()
+                let result = repo.validate(strictOptionalSections: true)
                 guard case .defaults = result else {
                     Issue.record("Expected .defaults, got \(result)")
                     return
@@ -269,7 +269,7 @@ struct ConfigRepositoryTests {
                 $0.configDataSource = StubConfigDataSource(tryDecodeResult: .success("/home/user/.config/lyra/config.toml"))
             } operation: {
                 let repo = ConfigRepositoryImpl()
-                let result = repo.validate()
+                let result = repo.validate(strictOptionalSections: true)
                 guard case .loaded(let path) = result else {
                     Issue.record("Expected .loaded, got \(result)")
                     return
@@ -284,7 +284,7 @@ struct ConfigRepositoryTests {
                 $0.configDataSource = StubConfigDataSource(tryDecodeResult: .failure(StubError.decodeFailed))
             } operation: {
                 let repo = ConfigRepositoryImpl()
-                let result = repo.validate()
+                let result = repo.validate(strictOptionalSections: true)
                 guard case .decodeError(let path, _) = result else {
                     Issue.record("Expected .decodeError, got \(result)")
                     return
@@ -399,7 +399,7 @@ private struct StubConfigDataSource: ConfigDataSource {
 
     func load() -> ConfigLoadResult? { loadResult }
 
-    func tryDecode() throws -> String {
+    func tryDecode(strictOptionalSections: Bool) throws -> String {
         try tryDecodeResult.get()
     }
 

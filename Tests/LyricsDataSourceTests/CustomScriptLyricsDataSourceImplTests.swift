@@ -404,7 +404,7 @@ private struct StubConfigDataSource: ConfigDataSource {
         else { return nil }
         return ConfigLoadResult(config: config, configDir: configDir)
     }
-    func tryDecode() throws -> String { "" }
+    func tryDecode(strictOptionalSections: Bool) throws -> String { "" }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }
