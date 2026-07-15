@@ -32,11 +32,15 @@ public final class SpectrumPresenter: ObservableObject {
     }
 
     @Dependency(\.spectrumInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
 
     @Published public private(set) var isAnimating = false
     private var motion: [BarMotion] = []
     private var capturing = false
-    private var cancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
+    /// The enabled flag last applied by `applyStyle()`, used to drive the capture
+    /// lifecycle only on an actual toggle rather than every config ping (#41 PR3).
+    private var appliedEnabled: Bool?
     /// Length of the track the bars distribute along, in points, as the View
     /// last reported it — the overlay width for vertical placements, the
     /// height for the horizontal `left`/`right` ones. The bar count is derived
@@ -58,15 +62,43 @@ public final class SpectrumPresenter: ObservableObject {
     public var style: SpectrumStyle { interactor.spectrumStyle }
 
     public func start() {
-        guard isEnabled else { return }
-        interactor.start()
-        cancellable = interactor.isCapturing
+        // Subscribe once at startup — never rebuilt, so a config change cannot leak
+        // duplicate subscriptions (#41 PR3). The interactor's capturing subject
+        // persists across capture start/stop cycles, so a single sink stays valid.
+        interactor.isCapturing
             .receive(on: DispatchQueue.main)
             .sink { [weak self] value in self?.capturing = value }
+            .store(in: &cancellables)
+
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.applyStyle() }
+            .store(in: &cancellables)
+
+        applyStyle()
+    }
+
+    /// Idempotently reflects the live enabled flag. Called once at startup and for
+    /// each `appStyleChanges` ping: toggling `enabled` starts or stops the capture
+    /// lifecycle so the spectrum appears/disappears without a restart (#41 PR3). Bar
+    /// styling (colors, widths, noise reduction) is already read live each `tick()`.
+    private func applyStyle() {
+        let enabled = interactor.spectrumStyle.enabled
+        guard enabled != appliedEnabled else { return }
+        let wasEnabled = appliedEnabled
+        appliedEnabled = enabled
+        if enabled {
+            interactor.start()
+        } else if wasEnabled == true {
+            // Only tear down a capture that was actually running; the bars then
+            // fall away naturally over the following ticks.
+            interactor.stop()
+            capturing = false
+        }
     }
 
     public func stop() {
-        cancellable = nil
+        cancellables.removeAll()
         interactor.stop()
         capturing = false
     }

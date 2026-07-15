@@ -9,7 +9,9 @@ import Testing
 // MARK: - Fake
 
 private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Sendable {
-    let spectrumStyle: SpectrumStyle
+    // `var` so a hot-reload toggle test can flip enabled after injection; the
+    // presenter reads it live (#41 PR3).
+    var spectrumStyle: SpectrumStyle
     let capturingSubject = CurrentValueSubject<Bool, Never>(false)
     var magnitudesValue: [Float] = []
     private(set) var startCount = 0
@@ -95,6 +97,34 @@ struct SpectrumPresenterTests {
         let presenter = Self.presenter(with: interactor)
         presenter.start()
         presenter.stop()
+        #expect(interactor.stopCount == 1)
+    }
+
+    @MainActor
+    @Test("a config ping toggles the capture lifecycle on enable then disable (#41 PR3)")
+    func togglesCaptureOnConfigPing() async {
+        let interactor = FakeSpectrumInteractor(style: SpectrumStyle(enabled: false))
+        let config = FakeConfigInteractor()
+        let presenter = withDependencies {
+            $0.spectrumInteractor = interactor
+            $0.configInteractor = config
+        } operation: {
+            SpectrumPresenter()
+        }
+
+        presenter.start()
+        #expect(interactor.startCount == 0)  // disabled at startup — inert
+
+        // Enable via config: the ping starts the capture without a restart.
+        interactor.spectrumStyle = Self.enabledStyle
+        config.fire()
+        await flushMainQueue()
+        #expect(interactor.startCount == 1)
+
+        // Disable via config: the ping stops it.
+        interactor.spectrumStyle = SpectrumStyle(enabled: false)
+        config.fire()
+        await flushMainQueue()
         #expect(interactor.stopCount == 1)
     }
 

@@ -16,6 +16,17 @@ private struct StubWallpaperInteractor: WallpaperInteractor {
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
 
+/// Reference-type stub whose `rippleConfig` a test can mutate after injection so
+/// the presenter (which reads it live) observes a config change — used to drive
+/// the hot-reload `applyStyle()` seam (#41 PR3).
+private final class MutableStubWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
+    var rippleConfig: RippleStyle
+    init(rippleConfig: RippleStyle) { self.rippleConfig = rippleConfig }
+    var playbackMode: WallpaperPlaybackMode { .cycle }
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
+}
+
 // Fixed date used for all tests to make RippleState deterministic.
 private let fixedDate = Date(timeIntervalSinceReferenceDate: 0)
 
@@ -379,6 +390,71 @@ struct RipplePresenterTests {
                 #expect(presenter.rippleState?.ripples.isEmpty == true)
                 #expect(!presenter.isAnimating)
             }
+        }
+    }
+
+    @Suite("hot reload toggle (#41 PR3)")
+    struct HotReloadToggle {
+        @MainActor
+        @Test("a config ping that enables ripple rebuilds RippleState")
+        func enableViaConfigPingRebuildsState() async {
+            let interactor = MutableStubWallpaperInteractor(rippleConfig: .init(enabled: false))
+            let config = FakeConfigInteractor()
+            // start() inside the scope so the RippleState it builds captures the
+            // injected date (RippleState reads `@Dependency(\.date)` internally).
+            let presenter = withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                return presenter
+            }
+
+            let disabledState = presenter.rippleState
+            #expect(disabledState != nil)
+            #expect(!presenter.isEnabled)
+
+            // Enable the ripple through config: the ping rebuilds RippleState to a
+            // fresh (enabled) instance and arms the mouse monitor.
+            interactor.rippleConfig = .init(enabled: true)
+            config.fire()
+            await flushMainQueue()
+
+            #expect(presenter.rippleState !== disabledState)
+            #expect(presenter.isEnabled)
+            presenter.stop()
+        }
+
+        @MainActor
+        @Test("a config ping that changes only a live-read field keeps RippleState")
+        func unrelatedConfigPingKeepsState() async {
+            let interactor = MutableStubWallpaperInteractor(
+                rippleConfig: .init(enabled: true, duration: 2.0))
+            let config = FakeConfigInteractor()
+            let presenter = withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                return presenter
+            }
+
+            let state = presenter.rippleState
+            #expect(state != nil)
+
+            // Change only the color — a field read live in drawingContexts, never
+            // frozen into RippleState. applyStyle must not rebuild, so the same
+            // RippleState instance (and any live ripples it holds) survives the edit.
+            interactor.rippleConfig = .init(enabled: true, color: .solid("#123456"), duration: 2.0)
+            config.fire()
+            await flushMainQueue()
+
+            #expect(presenter.rippleState === state)
+            presenter.stop()
         }
     }
 
