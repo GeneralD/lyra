@@ -17,8 +17,9 @@ struct FileWatchGatewayTests {
         #expect(token != nil)
         defer { token?.stop() }
 
-        // Wait briefly before writing so the event source is ready.
-        try await Task.sleep(for: .milliseconds(50))
+        // `watch(...)` resumes the DispatchSource before returning the token,
+        // so the event source is already armed — write immediately and rely
+        // on the poll-until-deadline loop below to wait for delivery.
         try "hello".write(to: dir.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
 
         let deadline = ContinuousClock.now + .seconds(3)
