@@ -40,6 +40,14 @@ public struct ConfigStatusOverlay: View {
         // the intended bottom-right corner. Stretching to fill makes the
         // alignment apply across the full overlay.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        // The inner `.allowsHitTesting(false)` on `ConfigStatusContent` only
+        // covers the small badge itself. Now that this view is stretched to
+        // fill the whole overlay, the expanded (otherwise empty) area must
+        // stay non-interactive too — same placement as `SpectrumView`, which
+        // applies `.allowsHitTesting(false)` after its own full-bounds
+        // `.frame(maxWidth: .infinity, maxHeight: .infinity, alignment:)`
+        // stretch, not just on its drawn content.
+        .allowsHitTesting(false)
         .animation(.easeInOut(duration: 0.4), value: presenter.invalidConfig != nil)
     }
 }
