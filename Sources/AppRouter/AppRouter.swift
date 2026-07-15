@@ -7,9 +7,14 @@ import Views
 /// Wireframe: creates Presenters, builds window, manages lifecycle.
 @MainActor
 public final class AppRouter {
+    @Dependency(\.configInteractor) private var configInteractor
+
     private let bootstrap: AppDependencyBootstrap
     private let windowFactory:
-        @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter)
+        @MainActor (
+            ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter,
+            ConfigStatusPresenter?
+        )
             -> any OverlayWindow
     private let frameSchedulerFactory: @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     private var appPresenter: AppPresenter?
@@ -18,6 +23,7 @@ public final class AppRouter {
     private var wallpaperPresenter: WallpaperPresenter?
     private var ripplePresenter: RipplePresenter?
     private var spectrumPresenter: SpectrumPresenter?
+    private var configStatusPresenter: ConfigStatusPresenter?
 
     private var appWindow: (any OverlayWindow)?
     private var frameScheduler: (any FrameScheduler)?
@@ -31,14 +37,17 @@ public final class AppRouter {
     public convenience init(launchEnvironment: AppLaunchEnvironment = .current) {
         self.init(
             bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
-            windowFactory: { layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter in
+            windowFactory: {
+                layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter,
+                configStatusPresenter in
                 AppWindow(
                     initialLayout: layout,
                     headerPresenter: headerPresenter,
                     lyricsPresenter: lyricsPresenter,
                     ripplePresenter: ripplePresenter,
                     spectrumPresenter: spectrumPresenter,
-                    wallpaperPresenter: wallpaperPresenter
+                    wallpaperPresenter: wallpaperPresenter,
+                    configStatusPresenter: configStatusPresenter
                 )
             },
             frameSchedulerFactory: Self.defaultFrameSchedulerFactory
@@ -49,7 +58,8 @@ public final class AppRouter {
         launchEnvironment: AppLaunchEnvironment,
         windowFactory:
             @escaping @MainActor (
-                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter
+                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter,
+                ConfigStatusPresenter?
             ) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     ) {
@@ -64,7 +74,8 @@ public final class AppRouter {
         bootstrap: AppDependencyBootstrap,
         windowFactory:
             @escaping @MainActor (
-                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter
+                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter,
+                ConfigStatusPresenter?
             ) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     ) {
@@ -93,15 +104,20 @@ public final class AppRouter {
             self.ripplePresenter = ripplePresenter
             let spectrumPresenter = SpectrumPresenter()
             self.spectrumPresenter = spectrumPresenter
+            let configStatusPresenter = ConfigStatusPresenter()
+            self.configStatusPresenter = configStatusPresenter
 
             headerPresenter.start()
             lyricsPresenter.start()
             ripplePresenter.start()
             spectrumPresenter.start()
             wallpaperPresenter.start()
+            configStatusPresenter.start()
+            configInteractor.start()
 
             let window = windowFactory(
-                layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter)
+                layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter,
+                configStatusPresenter)
             appWindow = window
             window.show()
 
@@ -156,6 +172,10 @@ public final class AppRouter {
 
         spectrumPresenter?.stop()
         defer { spectrumPresenter = nil }
+
+        configInteractor.stop()
+        configStatusPresenter?.stop()
+        defer { configStatusPresenter = nil }
 
         frameScheduler?.stop()
         defer { frameScheduler = nil }

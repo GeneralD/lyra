@@ -470,3 +470,45 @@ struct OverlayContentViewLoadingTests {
         )
     }
 }
+
+// MARK: - ConfigStatusOverlay
+
+private final class ConfigStatusStubInteractor: ConfigInteractor, @unchecked Sendable {
+    let invalid: AnyPublisher<ConfigReloadFailure?, Never>
+    init(invalid: AnyPublisher<ConfigReloadFailure?, Never>) { self.invalid = invalid }
+    var appStyleChanges: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
+    var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { invalid }
+    func start() {}
+    func stop() {}
+}
+
+@MainActor
+@Suite("ConfigStatusOverlay rendering")
+struct ConfigStatusOverlayRenderingTests {
+    @Test("invalid 状態で球体が描画される")
+    func rendersWhenInvalid() async {
+        let subject = CurrentValueSubject<ConfigReloadFailure?, Never>(
+            .init(path: "/c.toml", reason: .decode("x")))
+        let presenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(invalid: subject.eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+        presenter.start()
+        defer { presenter.stop() }
+        await waitUntil { presenter.invalidConfig != nil }
+
+        render(ConfigStatusOverlay(presenter: presenter), size: CGSize(width: 800, height: 500))
+        #expect(presenter.invalidConfig != nil)
+    }
+
+    @Test("正常時は空を描画（クラッシュしない）")
+    func rendersEmptyWhenValid() {
+        let presenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(invalid: Just(nil).eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+        render(ConfigStatusOverlay(presenter: presenter), size: CGSize(width: 800, height: 500))
+    }
+}

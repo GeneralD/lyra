@@ -47,13 +47,15 @@ public final class AppWindow: NSWindow {
     ///   - ripplePresenter: Presenter for the ripple effect.
     ///   - spectrumPresenter: Presenter for the spectrum analyzer bars.
     ///   - wallpaperPresenter: Presenter for the wallpaper view.
+    ///   - configStatusPresenter: Presenter for the config-error indicator overlay.
     public init(
         initialLayout: ScreenLayout,
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
         ripplePresenter: RipplePresenter,
         spectrumPresenter: SpectrumPresenter,
-        wallpaperPresenter: WallpaperPresenter
+        wallpaperPresenter: WallpaperPresenter,
+        configStatusPresenter: ConfigStatusPresenter? = nil
     ) {
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
@@ -61,7 +63,8 @@ public final class AppWindow: NSWindow {
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
                 spectrumPresenter: spectrumPresenter,
-                wallpaperPresenter: wallpaperPresenter
+                wallpaperPresenter: wallpaperPresenter,
+                configStatusPresenter: configStatusPresenter
             ))
         hostingView.frame = initialLayout.hostingFrame
         self.hostingView = hostingView

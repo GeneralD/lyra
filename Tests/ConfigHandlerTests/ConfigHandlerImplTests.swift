@@ -388,6 +388,7 @@ private struct StubConfigUseCase: ConfigUseCase {
     var forceTracker: ForceTracker?
 
     var appStyle: AppStyle { .init() }
+    func reload() -> ConfigReloadOutcome { .updated(appStyle) }
     var existingConfigPath: String? { existingPath }
 
     func template(format: ConfigFormat) -> String? { templateResult }

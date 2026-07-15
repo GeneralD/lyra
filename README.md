@@ -107,6 +107,12 @@ Or create `~/.config/lyra/config.toml` (or `config.json`) manually. All fields a
 
 Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 
+### Live reload
+
+Config changes take effect while the daemon is running — no `lyra restart` needed. Edits are debounced briefly to coalesce rapid saves, then applied automatically.
+
+If an edit fails to parse (invalid TOML/JSON, bad values), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
+
 ### Top-level
 
 | Key | Type | Default | Description |

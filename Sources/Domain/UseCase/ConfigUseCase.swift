@@ -2,6 +2,7 @@ import Dependencies
 
 public protocol ConfigUseCase: Sendable {
     var appStyle: AppStyle { get }
+    func reload() -> ConfigReloadOutcome
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
     var existingConfigPath: String? { get }
@@ -20,6 +21,7 @@ extension DependencyValues {
 
 private struct UnimplementedConfigUseCase: ConfigUseCase {
     var appStyle: AppStyle { .init() }
+    func reload() -> ConfigReloadOutcome { .updated(.init()) }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }
