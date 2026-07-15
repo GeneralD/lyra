@@ -96,6 +96,10 @@ Shared conventions:
   metadata sources (LLM/MusicBrainz/Regex) are queried and merged, and every
   lyrics tier (LRCLIB exact match, validated fuzzy search, user
   `fallback_command` script) is tried across all candidates before giving up.
+  An opt-in `[log] lyrics_resolution` trace (#331) records each tier's
+  accept/reject with its reason (title similarity, duration delta) to a local
+  file for diagnosing intermittent misses; it is off by default and
+  behavior-neutral.
   Lyrics are cached (and read back) under the matched candidate's
   title/artist rather than `candidates.first`, and both the GUI
   (`TrackInteractorImpl`) and CLI (`TrackHandlerImpl.infoWithLyrics`) fall

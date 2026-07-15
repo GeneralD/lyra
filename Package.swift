@@ -133,6 +133,15 @@ let package = Package(
             ]
         ),
 
+        // ── LyricsResolutionLog ──
+        .target(
+            name: "LyricsResolutionLog",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // ── BenchmarkHandler ──
         .target(
             name: "BenchmarkHandler",
@@ -232,6 +241,7 @@ let package = Package(
                 "AppKitScreenProvider",
                 "Domain",
                 "RandomSource",
+                "LyricsResolutionLog",
                 "TrackInteractor",
                 "ScreenInteractor",
                 "WallpaperInteractor",
@@ -578,6 +588,14 @@ let package = Package(
         .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
+        .testTarget(
+            name: "LyricsResolutionLogTests",
+            dependencies: [
+                "LyricsResolutionLog",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(
             name: "ProcessHandlerTests",
             dependencies: [

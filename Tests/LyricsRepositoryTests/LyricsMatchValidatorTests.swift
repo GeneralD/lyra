@@ -55,4 +55,34 @@ struct LyricsMatchValidatorTests {
         let result = LyricsResult(trackName: "shape of you", artistName: "Ed Sheeran", duration: 233, plainLyrics: "lyrics")
         #expect(validator.isValid(candidate: candidate, result: result))
     }
+
+    // MARK: - Reason accessors for the debug log (#331)
+
+    @Test("titleSimilarity is 1.0 for identical normalized titles")
+    func titleSimilarityIdentical() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: 125)
+        let result = LyricsResult(trackName: "Yesterday", artistName: "The Beatles", duration: 125)
+        #expect(validator.titleSimilarity(candidate: candidate, result: result) == 1.0)
+    }
+
+    @Test("titleSimilarity is nil when the result carries no title")
+    func titleSimilarityNilWithoutResultTitle() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: 125)
+        let result = LyricsResult(trackName: nil, duration: 125)
+        #expect(validator.titleSimilarity(candidate: candidate, result: result) == nil)
+    }
+
+    @Test("durationDelta reports the absolute difference")
+    func durationDeltaValue() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: 180)
+        let result = LyricsResult(trackName: "Yesterday", artistName: "The Beatles", duration: 125)
+        #expect(validator.durationDelta(candidate: candidate, result: result) == 55)
+    }
+
+    @Test("durationDelta is nil when either side lacks a duration")
+    func durationDeltaNilWhenMissing() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: nil)
+        let result = LyricsResult(trackName: "Yesterday", artistName: "The Beatles", duration: 125)
+        #expect(validator.durationDelta(candidate: candidate, result: result) == nil)
+    }
 }
