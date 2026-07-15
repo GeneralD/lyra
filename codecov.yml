@@ -11,3 +11,4 @@ coverage:
 ignore:
   - "Sources/DependencyInjection/**"
   - "Sources/Domain/**"
+  - "Sources/LyraKit/**"
