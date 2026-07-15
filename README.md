@@ -109,7 +109,9 @@ Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 
 ### Live reload
 
-Config changes take effect while the daemon is running — no `lyra restart` needed. Edits are debounced briefly to coalesce rapid saves, then applied automatically.
+The daemon watches `config.toml` for edits and re-validates on every save — no `lyra restart` needed to pick up a config file change. Saves are debounced briefly to coalesce rapid writes.
+
+Today this covers config validation itself and the lyrics `[lyrics] fallback_command`/`timeout_ms` settings, which are re-read on every fallback invocation. Broader visual re-styling (fonts, colors, layout, wallpaper) while the daemon keeps running is not wired up yet — those changes still require a `lyra restart` to take effect.
 
 If an edit fails to parse (invalid TOML/JSON, bad values), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
 
