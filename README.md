@@ -627,6 +627,19 @@ model = "gpt-4o-mini"
 api_key = "sk-..."
 ```
 
+## Architecture
+
+lyra is built with VIPER + Clean Architecture, with Swift Package targets
+enforcing layer boundaries at compile time:
+
+```text
+View → Presenter → Interactor → UseCase → Repository → DataSource
+```
+
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full module
+dependency graphs, the layer/module breakdown, and the per-decision rationale
+(Key Design Decisions).
+
 ## Use as a library (LyraKit)
 
 <p align="center">

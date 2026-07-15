@@ -8,8 +8,9 @@ corresponding kinds of changes.
 
 ## Read Before Changing
 
-- Architecture, dependency direction, and module responsibilities:
-  `.claude/CLAUDE.md`
+- Architecture, dependency graphs, and module responsibilities:
+  `docs/ARCHITECTURE.md` (canonical; `.claude/CLAUDE.md` keeps a short
+  summary + pointer)
 - Guardrails for layering, CLI boundaries, and test constraints:
   `.claude/rules/architecture-boundaries.md`
 - Module addition and documentation sync checklist:
@@ -99,7 +100,7 @@ Shared conventions:
   title/artist rather than `candidates.first`, and both the GUI
   (`TrackInteractorImpl`) and CLI (`TrackHandlerImpl.infoWithLyrics`) fall
   back to the raw title/artist -- never an unvalidated candidate guess --
-  when nothing validates. See `.claude/CLAUDE.md` (Key Design Decisions,
+  when nothing validates. See `docs/ARCHITECTURE.md` (Key Design Decisions,
   #308) for full detail.
 
 ## Testing Rules
@@ -117,7 +118,8 @@ Shared conventions:
 ## Change Checklist
 
 - When adding or removing modules, update `Package.swift`,
-  `DependencyInjection`, `.claude/CLAUDE.md`, this `AGENTS.md`, and `README.md`.
+  `DependencyInjection`, `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md`, this
+  `AGENTS.md`, and `README.md`.
 - Handler additions also need Entity result types, Domain protocols,
   `StandardOutput` support, CLI wiring, and tests.
 - Do not commit directly to `main`. Use branch -> PR -> merge.

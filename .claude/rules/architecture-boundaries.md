@@ -5,11 +5,11 @@
 | Layer | Owns | Never |
 |---|---|---|
 | **Entity** | Pure data types, enums, Codable structs | Logic, imports beyond Foundation |
-| **Domain** | Protocols, DependencyKeys | Data type definitions; framework imports beyond the documented boundary-shaped exceptions (Combine in Interactor protocols, CoreAudio in `AudioTapGateway` — see CLAUDE.md Key Design Decisions, #313) |
+| **Domain** | Protocols, DependencyKeys | Data type definitions; framework imports beyond the documented boundary-shaped exceptions (Combine in Interactor protocols, CoreAudio in `AudioTapGateway` — see docs/ARCHITECTURE.md Key Design Decisions, #313) |
 | **Handler** | Business/measurement logic, orchestration | Output formatting, UI concerns |
 | **StandardOutput** | Formatting, terminal control (echo, `\r`) | Business logic, handler references |
 | **CLI Command** | Argument parsing, thin glue | Loops, task groups, complex branching |
-| **DataStore** | Persistence/cache of *domain data* — Entity values a Repository reads back (SQLite caches, wallpaper files) | Caching *computational resources* (memoized engines, FFT setups, formatters) — those stay private state of the owning implementation (see CLAUDE.md "Analyzer memoization", #313) |
+| **DataStore** | Persistence/cache of *domain data* — Entity values a Repository reads back (SQLite caches, wallpaper files) | Caching *computational resources* (memoized engines, FFT setups, formatters) — those stay private state of the owning implementation (see docs/ARCHITECTURE.md "Analyzer memoization", #313) |
 
 ## CLI Command Pattern
 
@@ -40,7 +40,7 @@ If a command needs streaming output, iterate the stream and call output methods 
 - **Framework imports only as documented boundary-shaped exceptions** — when
   the boundary's shape IS the contract and plain-type wrapping would cost
   correctness or performance, a framework import is allowed but must be
-  recorded in CLAUDE.md Key Design Decisions. Current exceptions: Combine
+  recorded in docs/ARCHITECTURE.md Key Design Decisions. Current exceptions: Combine
   (Interactor protocols expose reactive streams), CoreAudio
   (`AudioTapGateway` — type-erasing `CATapDescription`/`AudioDeviceIOBlock`
   would force allocation on the RT-safe IOProc path, #313)
