@@ -480,9 +480,10 @@ lyrics_resolution = true
 ```
 
 - `lyrics_resolution` — enable the trace (default `false`).
-- `lyrics_resolution_file` — where to append. Omit to use
-  `${XDG_CACHE_HOME:-~/.cache}/lyra/lyrics-debug.log`. `~` and
-  `$XDG_CACHE_HOME` are honored.
+- `lyrics_resolution_file` — where to append. Omit (or leave blank) to use
+  the default `${XDG_CACHE_HOME:-~/.cache}/lyra/lyrics-debug.log` — this is the
+  only place `$XDG_CACHE_HOME` applies. In an explicit path, `~` is expanded but
+  environment variables are **not** (the value is otherwise used verbatim).
 
 The value is read once at startup, so toggling it takes a `lyra restart`.
 Each resolution appends a block like:

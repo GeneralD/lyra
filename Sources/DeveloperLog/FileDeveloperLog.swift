@@ -1,6 +1,7 @@
 import Dependencies
 import Domain
 import Foundation
+import os
 
 /// Live `DeveloperLog` that appends each block to a file. Enabled state and path are
 /// resolved once at the wiring site and passed in (the config read lives in the DI
@@ -11,6 +12,10 @@ import Foundation
 public struct FileDeveloperLog: Sendable {
     public let isEnabled: Bool
     private let path: String
+    /// Serializes `record` so overlapping resolutions can't interleave their
+    /// `seekToEnd`/`write` and corrupt or reorder trace blocks. Copies of the struct
+    /// share the same underlying lock (the single DI instance is what actually runs).
+    private let writeLock = OSAllocatedUnfairLock()
 
     public init(enabled: Bool, path: String) {
         self.isEnabled = enabled
@@ -39,15 +44,17 @@ extension FileDeveloperLog: DeveloperLog {
         let block = text.hasSuffix("\n") ? text : text + "\n"
         guard let data = block.data(using: .utf8) else { return }
         let url = URL(fileURLWithPath: path)
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard let handle = try? FileHandle(forWritingTo: url) else {
-            // File does not exist yet — create it with this first block.
-            try? data.write(to: url, options: .atomic)
-            return
+        writeLock.withLock {
+            try? FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            guard let handle = try? FileHandle(forWritingTo: url) else {
+                // File does not exist yet — create it with this first block.
+                try? data.write(to: url, options: .atomic)
+                return
+            }
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
         }
-        defer { try? handle.close() }
-        _ = try? handle.seekToEnd()
-        try? handle.write(contentsOf: data)
     }
 }

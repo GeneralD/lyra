@@ -2,6 +2,7 @@ import Dependencies
 import Domain
 import Foundation
 import Testing
+import os
 
 @testable import LyricsRepository
 
@@ -84,10 +85,11 @@ private struct SearchOnlyStub: LyricsDataSource {
     func search(query: String) async -> [LyricsResult]? { searchResult }
 }
 
-private final class SpyResolutionLog: DeveloperLog, @unchecked Sendable {
+private final class SpyResolutionLog: DeveloperLog {
     let enabled: Bool
-    private(set) var records: [String] = []
+    private let recorded = OSAllocatedUnfairLock(initialState: [String]())
     init(enabled: Bool) { self.enabled = enabled }
     var isEnabled: Bool { enabled }
-    func record(_ text: String) { records.append(text) }
+    var records: [String] { recorded.withLock { $0 } }
+    func record(_ text: String) { recorded.withLock { $0.append(text) } }
 }
