@@ -7,11 +7,13 @@ When adding a new module (Handler, UseCase, Repository, DataSource, etc.):
 3. **Documentation updates**:
    - `AGENTS.md` — update Codex-facing summary, commands, and guardrails when the
      change affects project instructions
-   - `CLAUDE.md` — update:
+   - `docs/ARCHITECTURE.md` — update (canonical architecture reference):
      - Mermaid module dependency graph — add node and edges
      - Layer Summary table — update the relevant row
      - Key Design Decisions — add entry if the module has notable design choices
+   - `CLAUDE.md` — update:
      - Build & Test section — add any new CLI commands or Makefile targets
+     - Architecture Overview / pointer — only if the layer chain itself changes
 4. **README.md** — add new CLI commands to the Usage section
 5. **Domain protocol** — add `TestDependencyKey` + `DependencyValues` extension
 6. **StandardOutput** — add `write(_ result:)` overload if the module has a CLI result type
@@ -21,18 +23,21 @@ When adding a new module (Handler, UseCase, Repository, DataSource, etc.):
 - **AGENTS.md must be updated** when build/test commands, workflow rules, or
   architecture boundaries change. Keep Codex-facing instructions aligned with
   the current repository shape.
-- **CLAUDE.md must be updated** when adding/removing modules, changing
-  architecture, or modifying dependency graphs. Specifically check:
+- **docs/ARCHITECTURE.md must be updated** when adding/removing modules,
+  changing architecture, or modifying dependency graphs (it is the canonical
+  architecture reference). Specifically check:
   - Mermaid module dependency graph
   - Layer Summary table
   - Key Design Decisions section
-  - Build & Test commands
+- **CLAUDE.md must be updated** for Build & Test commands, and for the
+  Architecture Overview / pointer only when the layer chain itself changes.
 - **README.md must be updated** when adding/changing/removing CLI commands
   or configuration options. Specifically check:
   - Usage section
   - Configuration section
 
 For Handler modules specifically:
+
 - Entity result type (e.g., `BenchmarkReport.swift`)
 - Domain protocol (e.g., `BenchmarkHandler.swift`)
 - Implementation module (e.g., `BenchmarkHandler/BenchmarkHandlerImpl.swift`)
