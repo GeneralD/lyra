@@ -177,7 +177,7 @@ private struct MockConfigRepository: ConfigRepository {
 
     func loadAppStyle() -> AppStyle { style }
 
-    func validate() -> ConfigValidationResult { validation }
+    func validate(strictOptionalSections: Bool) -> ConfigValidationResult { validation }
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
     var existingConfigPath: String? { configPath }
@@ -193,7 +193,7 @@ private final class CountingConfigRepository: ConfigRepository, @unchecked Senda
         return .init()
     }
 
-    func validate() -> ConfigValidationResult { validation }
+    func validate(strictOptionalSections: Bool) -> ConfigValidationResult { validation }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { pathExists ? "/c.toml" : nil }

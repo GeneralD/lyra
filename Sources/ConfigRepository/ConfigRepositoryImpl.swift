@@ -101,9 +101,9 @@ extension ConfigRepositoryImpl: ConfigRepository {
         dataSource.existingConfigPath
     }
 
-    public func validate() -> ConfigValidationResult {
+    public func validate(strictOptionalSections: Bool) -> ConfigValidationResult {
         do {
-            let path = try dataSource.tryDecode()
+            let path = try dataSource.tryDecode(strictOptionalSections: strictOptionalSections)
             guard !path.isEmpty else { return .defaults }
             return .loaded(path: path)
         } catch {
@@ -116,7 +116,9 @@ extension ConfigRepositoryImpl: HealthCheckable {
     public var serviceName: String { "Config" }
 
     public func healthCheck() async -> HealthCheckResult {
-        switch validate() {
+        // Strict: `lyra healthcheck` must surface a malformed [ai]/[lyrics] section
+        // as a failure rather than let it be silently disabled.
+        switch validate(strictOptionalSections: true) {
         case .loaded(let path):
             return HealthCheckResult(status: .pass, detail: "loaded (\(path))")
         case .defaults:

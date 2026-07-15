@@ -18,7 +18,10 @@ extension ConfigUseCaseImpl: ConfigUseCase {
 
     public func reload() -> ConfigReloadOutcome {
         let fileExists = repository.existingConfigPath != nil
-        switch repository.validate() {
+        // Lenient: a malformed optional [ai]/[lyrics] section degrades to nil (exactly
+        // as startup does) rather than discarding valid text/wallpaper edits. Only a
+        // malformed required structure fails validation and keeps the previous style (#330).
+        switch repository.validate(strictOptionalSections: false) {
         case .loaded:
             let style = repository.loadAppStyle()
             store.withLock { $0 = style }

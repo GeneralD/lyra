@@ -12,7 +12,7 @@ struct TryDecodeTests {
         defer { unsetenv("XDG_CONFIG_HOME") }
 
         let ds = ConfigDataSourceImpl()
-        let result = try ds.tryDecode()
+        let result = try ds.tryDecode(strictOptionalSections: true)
         #expect(result == "")
     }
 
@@ -30,7 +30,7 @@ struct TryDecodeTests {
         defer { unsetenv("XDG_CONFIG_HOME") }
 
         let ds = ConfigDataSourceImpl()
-        let result = try ds.tryDecode()
+        let result = try ds.tryDecode(strictOptionalSections: true)
         #expect(result.hasSuffix("config.toml"))
     }
 
@@ -47,6 +47,6 @@ struct TryDecodeTests {
         defer { unsetenv("XDG_CONFIG_HOME") }
 
         let ds = ConfigDataSourceImpl()
-        #expect(throws: (any Error).self) { try ds.tryDecode() }
+        #expect(throws: (any Error).self) { try ds.tryDecode(strictOptionalSections: true) }
     }
 }

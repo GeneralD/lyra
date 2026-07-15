@@ -113,7 +113,9 @@ The daemon watches `config.toml` for edits and re-validates on every save — no
 
 Today this covers config validation, the header and lyrics styling (fonts, colors, sizes, decode effect, and artwork all re-render live), and the lyrics `[lyrics] fallback_command`/`timeout_ms` settings (re-read on every fallback invocation). Wallpaper source replacement and screen re-selection are not wired up yet — those changes still require a `lyra restart` to take effect.
 
-If an edit fails to parse (invalid TOML/JSON, bad values), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
+If an edit breaks the config's required structure (invalid TOML/JSON, or bad values in the core text/wallpaper/spectrum sections), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
+
+A malformed optional `[ai]` or `[lyrics]` section is tolerated instead of blocking the whole edit: that section is skipped while the rest of the valid config still applies, exactly as it does at startup (so no "shattered" sphere appears for it). `lyra healthcheck` still reports a malformed `[ai]`/`[lyrics]` so the problem stays discoverable.
 
 ### Top-level
 
