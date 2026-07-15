@@ -456,6 +456,46 @@ struct RipplePresenterTests {
             #expect(presenter.rippleState === state)
             presenter.stop()
         }
+
+        @MainActor
+        @Test("a rebuild ping clears the hover flag so idle ripples don't spawn at the origin (#41 PR3 review, F3)")
+        func rebuildPingClearsHoverState() async {
+            let clock = MutableClock(now: fixedDate)
+            let interactor = MutableStubWallpaperInteractor(
+                rippleConfig: .init(enabled: true, duration: 2.0, idle: 1.0))
+            let config = FakeConfigInteractor()
+            let presenter = withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.date = .init { clock.now }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.updateScreenRect(CGRect(x: 0, y: 0, width: 200, height: 200))
+                presenter.start()
+                return presenter
+            }
+
+            // Cursor moves inside the overlay: hover is active on the old state.
+            presenter.handleMouseLocation(CGPoint(x: 100, y: 100))
+
+            // A rebuild-triggering edit (duration change) replaces RippleState with
+            // a fresh instance whose cursor position starts at .zero. The hover flag
+            // must be cleared too, or idle() would spawn idle ripples at the screen
+            // origin until a real mouse move re-establishes the position.
+            interactor.rippleConfig = .init(enabled: true, duration: 3.0, idle: 1.0)
+            config.fire()
+            await flushMainQueue()
+
+            // Advance well past the idle interval and tick idle: with the hover flag
+            // cleared, nothing spawns. Without the F3 fix, an idle ripple would
+            // appear at the origin here.
+            presenter.idle()
+            clock.now = fixedDate.addingTimeInterval(5)
+            presenter.idle()
+
+            #expect(presenter.rippleState?.ripples.isEmpty == true)
+            presenter.stop()
+        }
     }
 
     @Suite("isAnimating")

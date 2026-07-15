@@ -38,9 +38,11 @@ public final class SpectrumPresenter: ObservableObject {
     private var motion: [BarMotion] = []
     private var capturing = false
     private var cancellables: Set<AnyCancellable> = []
-    /// The enabled flag last applied by `applyStyle()`, used to drive the capture
-    /// lifecycle only on an actual toggle rather than every config ping (#41 PR3).
-    private var appliedEnabled: Bool?
+    /// The full spectrum style last applied by `applyStyle()`. Diffed against a
+    /// hot-reload ping so an unrelated config edit is a no-op, an `enabled` toggle
+    /// drives the capture lifecycle, and any styling change republishes to
+    /// re-render the View — each only on an actual change, not every ping (#41 PR3).
+    private var appliedStyle: SpectrumStyle?
     /// Length of the track the bars distribute along, in points, as the View
     /// last reported it — the overlay width for vertical placements, the
     /// height for the horizontal `left`/`right` ones. The bar count is derived
@@ -78,18 +80,26 @@ public final class SpectrumPresenter: ObservableObject {
         applyStyle()
     }
 
-    /// Idempotently reflects the live enabled flag. Called once at startup and for
-    /// each `appStyleChanges` ping: toggling `enabled` starts or stops the capture
-    /// lifecycle so the spectrum appears/disappears without a restart (#41 PR3). Bar
-    /// styling (colors, widths, noise reduction) is already read live each `tick()`.
+    /// Idempotently reflects the live spectrum style. Called once at startup and
+    /// for each `appStyleChanges` ping. Toggling `enabled` starts or stops the
+    /// capture lifecycle so the spectrum appears/disappears without a restart
+    /// (#41 PR3). Any other styling change (colors, placement, bar geometry, band
+    /// settings) republishes via `objectWillChange` so `SpectrumView` — which
+    /// snapshots `presenter.style` in its `body` — re-renders live; the bar
+    /// *heights* are already read live each `tick()`, but the drawing style is
+    /// not, so without this a styling-only edit kept the old look until an
+    /// unrelated invalidation (#41 PR3 review, F2).
     private func applyStyle() {
-        let enabled = interactor.spectrumStyle.enabled
-        guard enabled != appliedEnabled else { return }
-        let wasEnabled = appliedEnabled
-        appliedEnabled = enabled
-        if enabled {
+        let style = interactor.spectrumStyle
+        let previous = appliedStyle
+        guard style != previous else { return }
+        appliedStyle = style
+        objectWillChange.send()
+
+        guard previous?.enabled != style.enabled else { return }
+        if style.enabled {
             interactor.start()
-        } else if wasEnabled == true {
+        } else if previous?.enabled == true {
             // Only tear down a capture that was actually running; the bars then
             // fall away naturally over the following ticks.
             interactor.stop()
