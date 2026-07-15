@@ -50,15 +50,6 @@ public final class HeaderPresenter: ObservableObject {
     public func start() {
         applyStyle()
 
-        let config = interactor.decodeEffectConfig
-        // decode の "タイミング" config (duration/charsets) は起動時にのみ
-        // capture する。config reload の都度ここで DecodeEffectState を
-        // 作り直すと進行中のスクランブル/リビールアニメーションを壊すため、
-        // わざと applyStyle() の対象外にしている。タイミング系の変更は
-        // 次回の decode から反映される（#41 PR2 のスコープ外）。
-        titleEffect = DecodeEffectState(config: config)
-        artistEffect = DecodeEffectState(config: config)
-
         interactor.trackChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] update in
@@ -128,10 +119,10 @@ extension HeaderPresenter {
             displayTitle = " "
             return
         }
-        guard let effect = titleEffect else { return }
         guard titleTarget != text else { return }
         titleTarget = text
         titlePhase = .revealing
+        let effect = makeTitleEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
         }
@@ -148,16 +139,37 @@ extension HeaderPresenter {
             displayArtist = " "
             return
         }
-        guard let effect = artistEffect else { return }
         guard artistTarget != text else { return }
         artistTarget = text
         artistPhase = .revealing
+        let effect = makeArtistEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText
         }
         effect.decode(to: text) { [weak self] in
             self?.artistPhase = .revealed
         }
+    }
+
+    /// `titleEffect`/`artistEffect` を reveal / processing 開始の都度、live config
+    /// から作り直す。`DecodeEffectState` は `duration`/`charsets` を init で `let` と
+    /// して焼き付けるため、`applyStyle()` からいじっても反映されない — reveal の
+    /// dedup guard を通過し新しいアニメの開始が確定した後（進行中のアニメを壊さない
+    /// 地点）で作り直すことで、config.toml の decode_effect 編集が次回の reveal /
+    /// processing から反映されるようにする。`applyStyle()` はこの effect に一切触れ
+    /// ないままなので、進行中のスクランブルは config ping で中断されない。
+    private func makeTitleEffect() -> DecodeEffectState {
+        titleEffect?.stop()
+        let effect = DecodeEffectState(config: interactor.decodeEffectConfig)
+        titleEffect = effect
+        return effect
+    }
+
+    private func makeArtistEffect() -> DecodeEffectState {
+        artistEffect?.stop()
+        let effect = DecodeEffectState(config: interactor.decodeEffectConfig)
+        artistEffect = effect
+        return effect
     }
 }
 
@@ -172,10 +184,11 @@ extension HeaderPresenter {
     }
 
     private func startProcessingTitle(_ text: String?) {
-        guard let effect = titleEffect, let text, !text.isEmpty else { return }
+        guard let text, !text.isEmpty else { return }
         titleTarget = nil
         titleColor = processingColor
         titlePhase = .revealing
+        let effect = makeTitleEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
         }
@@ -183,10 +196,11 @@ extension HeaderPresenter {
     }
 
     private func startProcessingArtist(_ text: String?) {
-        guard let effect = artistEffect, let text, !text.isEmpty else { return }
+        guard let text, !text.isEmpty else { return }
         artistTarget = nil
         artistColor = processingColor
         artistPhase = .revealing
+        let effect = makeArtistEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText
         }

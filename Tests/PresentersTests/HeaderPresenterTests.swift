@@ -425,4 +425,60 @@ struct HeaderPresenterTests {
             }
         }
     }
+
+    @Suite("decode effect rebuild at reveal boundary (Codex review)")
+    struct DecodeEffectRebuildAtRevealBoundary {
+        /// Deterministic stand-in for the default `ZeroRandomSource` test value —
+        /// spelled out explicitly here because this test's whole assertion rests
+        /// on index 0 of the pool always being picked.
+        private struct AlwaysZeroRandomSource: RandomSource {
+            func next(below count: Int) -> Int { 0 }
+        }
+
+        @MainActor
+        @Test("processing 開始のたびに live config の charset で effect を作り直す")
+        func rebuildsEffectOnEachProcessingStart() async {
+            let subject = PassthroughSubject<TrackUpdate, Never>()
+            let appStyleChanges = PassthroughSubject<Void, Never>()
+
+            let trackStub = StubTrackInteractor(
+                trackChangePublisher: subject.eraseToAnyPublisher(),
+                decodeEffectConfig: .init(duration: 0.8, charsets: [.symbols])
+            )
+
+            await withDependencies {
+                $0.trackInteractor = trackStub
+                $0.configInteractor = StubConfigInteractor(
+                    appStyleChanges: appStyleChanges.eraseToAnyPublisher())
+                $0.continuousClock = ImmediateClock()
+                $0.randomSource = AlwaysZeroRandomSource()
+            } operation: {
+                let presenter = HeaderPresenter()
+                presenter.start()
+
+                // charsets = [.symbols] → pool[0] == "†" → placeholderLength 2 → "††".
+                subject.send(
+                    TrackUpdate(title: "XY", artist: nil, lyricsState: .loading, aiResolving: true))
+                await waitUntil { presenter.displayTitle == "††" }
+                #expect(presenter.displayTitle == "††")
+
+                // config.toml edit: charset switches to greek. applyStyle() must NOT
+                // touch the in-flight effect (no interruption of the scramble).
+                trackStub.updateStyle(decodeEffectConfig: .init(duration: 0.8, charsets: [.greek]))
+                appStyleChanges.send(())
+
+                // A fresh aiResolving update re-enters startProcessingTitle (it always
+                // clears titleTarget), which is a reveal/processing boundary — the
+                // effect must be rebuilt from the now-updated live config.
+                subject.send(
+                    TrackUpdate(title: "XY", artist: nil, lyricsState: .loading, aiResolving: true))
+                // charsets = [.greek] → pool[0] == "Α" → "ΑΑ".
+                await waitUntil { presenter.displayTitle == "ΑΑ" }
+
+                #expect(presenter.displayTitle == "ΑΑ")
+
+                presenter.stop()
+            }
+        }
+    }
 }
