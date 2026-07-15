@@ -627,6 +627,35 @@ model = "gpt-4o-mini"
 api_key = "sk-..."
 ```
 
+## Use as a library (LyraKit)
+
+<p align="center">
+  <a href="docs/LyraKit.md"><img src="assets/lyrakit-wordmark.png" alt="LyraKit" width="360"></a>
+</p>
+
+lyra's building blocks are also published as a Swift library, **LyraKit**, so
+you can embed lyra's video-wallpaper pipeline in your own macOS app or
+screensaver instead of re-implementing it. A single `import LyraKit` gives you
+the wallpaper resolver, the ready-made `AVPlayer` engine (`WallpaperPresenter`),
+and the dependency wiring — it reads the same `~/.config/lyra/config.toml`
+`[wallpaper]` set and `~/.cache/lyra/wallpapers/` cache the daemon uses.
+
+```swift
+// Package.swift
+.package(url: "https://github.com/GeneralD/lyra.git", from: "2.22.0"),
+// target dependency:
+.product(name: "LyraKit", package: "lyra"),
+```
+
+```swift
+import LyraKit
+
+let presenter = WallpaperPresenter()   // reads ~/.config/lyra [wallpaper]
+presenter.start()                      // resolves + plays; observe presenter.player
+```
+
+See **[docs/LyraKit.md](docs/LyraKit.md)** for the full integration guide.
+
 ## Requirements
 
 - macOS 14+ (spectrum analyzer requires macOS 14.4+)
