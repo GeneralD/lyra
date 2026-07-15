@@ -85,4 +85,12 @@ struct LyricsMatchValidatorTests {
         let result = LyricsResult(trackName: "Yesterday", artistName: "The Beatles", duration: 125)
         #expect(validator.durationDelta(candidate: candidate, result: result) == nil)
     }
+
+    @Test("titles that normalize to empty (punctuation only) count as identical")
+    func punctuationOnlyTitlesAreIdentical() {
+        // Both titles strip to an empty normalized form, so similarity short-circuits to 1.
+        let candidate = Track(title: "!!!", artist: "X", duration: nil)
+        let result = LyricsResult(trackName: "???", duration: nil)
+        #expect(validator.titleSimilarity(candidate: candidate, result: result) == 1.0)
+    }
 }

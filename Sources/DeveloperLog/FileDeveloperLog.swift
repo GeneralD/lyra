@@ -26,11 +26,20 @@ public struct FileDeveloperLog: Sendable {
     /// `${XDG_CACHE_HOME:-~/.cache}/lyra/<defaultFilename>`. The default filename is a
     /// parameter so this stays general across sinks; the caller names the file.
     public static func resolvedPath(configured: String?, defaultFilename: String) -> String {
+        resolvedPath(
+            configured: configured, defaultFilename: defaultFilename,
+            cacheHome: ProcessInfo.processInfo.environment["XDG_CACHE_HOME"])
+    }
+
+    /// Testable core with the `XDG_CACHE_HOME` value injected, so both the "set" and
+    /// "unset/blank" branches are exercisable without `setenv` (process-global, banned
+    /// in tests) — mirroring `ConfigDataSourceImpl(configHome:)`.
+    static func resolvedPath(configured: String?, defaultFilename: String, cacheHome: String?) -> String {
         if let configured, !configured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return (configured as NSString).expandingTildeInPath
         }
         let base =
-            ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
+            cacheHome
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
             ?? "\(NSHomeDirectory())/.cache"

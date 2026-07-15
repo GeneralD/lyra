@@ -40,6 +40,23 @@ struct FileDeveloperLogTests {
                 .hasSuffix("/lyra/wallpaper-debug.log"))
     }
 
+    @Test("an injected XDG_CACHE_HOME becomes the default base")
+    func injectedCacheHomeIsUsed() {
+        let path = FileDeveloperLog.resolvedPath(
+            configured: nil, defaultFilename: "lyrics-debug.log", cacheHome: "/custom/cache")
+        #expect(path == "/custom/cache/lyra/lyrics-debug.log")
+    }
+
+    @Test("a blank or nil XDG_CACHE_HOME falls back to ~/.cache")
+    func blankOrNilCacheHomeFallsBack() {
+        let fromBlank = FileDeveloperLog.resolvedPath(
+            configured: nil, defaultFilename: "lyrics-debug.log", cacheHome: "   ")
+        let fromNil = FileDeveloperLog.resolvedPath(
+            configured: nil, defaultFilename: "lyrics-debug.log", cacheHome: nil)
+        #expect(fromBlank == "\(NSHomeDirectory())/.cache/lyra/lyrics-debug.log")
+        #expect(fromNil == "\(NSHomeDirectory())/.cache/lyra/lyrics-debug.log")
+    }
+
     @Test("disabled log writes nothing")
     func disabledWritesNothing() {
         let path = Self.tempPath()
