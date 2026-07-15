@@ -37,6 +37,10 @@ extension ConfigInteractorImpl: ConfigInteractor {
         let directory = (path as NSString).deletingLastPathComponent
         let watchedGateway = gateway
         lock.withLock {
+            // Idempotent: a second start() (router restart, test harness, future
+            // lifecycle changes) must not leak the previous DispatchSource/fd or
+            // install a duplicate watch that would double-fire reload events.
+            guard token == nil else { return }
             token = watchedGateway.watch(directory: directory) { [weak self] in self?.scheduleReload() }
         }
     }

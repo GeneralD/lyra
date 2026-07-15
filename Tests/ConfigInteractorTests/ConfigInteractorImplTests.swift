@@ -73,6 +73,26 @@ struct ConfigInteractorImplTests {
         pingCancellable.cancel()
         interactor.stop()
     }
+
+    @Test("start() を複数回呼んでも watch は一度しか張られない（冪等性）")
+    func startIsIdempotent() {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(outcome: .updated(.init(configDir: "/x")))
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+        interactor.start()
+        interactor.start()
+
+        #expect(gateway.watchCallCount == 1)
+        interactor.stop()
+    }
 }
 
 // MARK: - Fakes / Stubs
@@ -80,9 +100,15 @@ struct ConfigInteractorImplTests {
 private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     private let lock = NSLock()
     private var handler: (@Sendable () -> Void)?
+    private var _watchCallCount = 0
+
+    var watchCallCount: Int { lock.withLock { _watchCallCount } }
 
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
-        lock.withLock { handler = onChange }
+        lock.withLock {
+            handler = onChange
+            _watchCallCount += 1
+        }
         return FakeConfigWatchToken()
     }
 
