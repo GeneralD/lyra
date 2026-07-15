@@ -109,7 +109,7 @@ Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 
 ### Live reload
 
-The daemon watches `config.toml` for edits and re-validates on every save — no `lyra restart` needed to pick up a config file change. Saves are debounced briefly to coalesce rapid writes, then applied automatically.
+The daemon watches the config directory for edits and re-validates on every save — no `lyra restart` needed to pick up a config file change. Saves are debounced briefly to coalesce rapid writes, then applied automatically. The watch arms even when no config file exists yet, so a config created after the daemon starts (via `lyra config init` or a manual save) is picked up without a restart, as long as its directory (`~/.config/lyra`) already exists.
 
 Today this covers config validation, the header and lyrics styling (fonts, colors, sizes, decode effect, and artwork all re-render live), and the lyrics `[lyrics] fallback_command`/`timeout_ms` settings (re-read on every fallback invocation). Wallpaper source replacement and screen re-selection are not wired up yet — those changes still require a `lyra restart` to take effect.
 

@@ -6,14 +6,18 @@ import Testing
 
 @Suite("ConfigDataSourceImpl.configDir")
 struct ConfigDataSourceImplConfigDirTests {
-    @Test("configDir falls back to home directory when no config file exists")
-    func fallsBackToHomeWhenMissing() throws {
+    @Test("configDir points at the expected config dir (not home) when no config file exists (#329)")
+    func fallsBackToExpectedDirWhenMissing() throws {
         let emptyXdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
         defer { try? emptyXdgConfig.delete() }
 
         let dataSource = ConfigDataSourceImpl(configHome: emptyXdgConfig.path)
 
-        #expect(dataSource.configDir == Folder.home.path)
+        // Not home — the watcher must arm on where the file *would* be created so a
+        // config added after daemon start is picked up without a restart (#329).
+        #expect(dataSource.configDir != Folder.home.path)
+        #expect(dataSource.configDir.hasSuffix("/lyra"))
+        #expect(dataSource.configDir.hasPrefix(emptyXdgConfig.path))
     }
 
     @Test("configDir matches the discovered config file's parent directory")
