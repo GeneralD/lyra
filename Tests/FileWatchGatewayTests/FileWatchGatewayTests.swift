@@ -17,7 +17,7 @@ struct FileWatchGatewayTests {
         #expect(token != nil)
         defer { token?.stop() }
 
-        // イベントが確実に届くよう少し待ってから書込
+        // Wait briefly before writing so the event source is ready.
         try await Task.sleep(for: .milliseconds(50))
         try "hello".write(to: dir.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
 

@@ -28,7 +28,7 @@ struct ConfigInteractorImplTests {
         let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
         let invalidCancellable = interactor.invalidConfig.sink { observed.lastInvalid = $0 }
         interactor.start()
-        gateway.fire()  // 監視イベント発火
+        gateway.fire()  // Emit a watch event.
 
         let deadline = ContinuousClock.now + .seconds(2)
         while !observed.pinged, ContinuousClock.now < deadline {
@@ -102,5 +102,5 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     func reload() -> ConfigReloadOutcome { outcome }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
-    var existingConfigPath: String? { "/tmp/config.toml" }  // watch dir 解決に非nilが要る
+    var existingConfigPath: String? { "/tmp/config.toml" }  // Required to resolve the watched directory.
 }

@@ -1,15 +1,16 @@
 import Dependencies
 
-/// 停止可能な監視ハンドル。
+/// A stoppable watch handle.
 public protocol ConfigWatchToken: Sendable {
     func stop()
 }
 
-/// config ディレクトリを監視し、変更のたびに `onChange` を呼ぶ OS 境界。
-/// 実体は DispatchSource（fake 注入でテスト可能、AudioTapGateway と同じ正当化）。
+/// An OS boundary that watches the config directory and calls `onChange` for each change.
+/// The live implementation uses DispatchSource and supports fake injection for testing,
+/// following the same boundary justification as AudioTapGateway.
 public protocol ConfigWatchGateway: Sendable {
-    /// `directory` を監視開始。イベント毎に `onChange` を任意キューで呼ぶ。
-    /// 監視を張れない場合は nil。
+    /// Starts watching `directory` and calls `onChange` on an arbitrary queue for each event.
+    /// Returns nil when a watch cannot be established.
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)?
 }
 

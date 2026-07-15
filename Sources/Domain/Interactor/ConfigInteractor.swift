@@ -1,16 +1,17 @@
 import Combine
 import Dependencies
 
-/// config ファイルの変更を監視し、reload の結果を配信する Interactor。
+/// Watches the config file for changes and publishes reload results.
 ///
-/// `ConfigWatchGateway` で親ディレクトリの変更を検知し、debounce の後
-/// `ConfigUseCase.reload()` を呼ぶ。`.updated` は Presenter への Void ping
-/// (`appStyleChanges`) として、`.invalid` は最新値を保持するストリーム
-/// (`invalidConfig`) としてエラーオーバーレイへ流す。
+/// Detects changes to the parent directory through `ConfigWatchGateway`, then calls
+/// `ConfigUseCase.reload()` after debouncing. An `.updated` result becomes a Void ping
+/// to Presenters through `appStyleChanges`; an `.invalid` result flows to the error
+/// overlay through the latest-value `invalidConfig` stream.
 public protocol ConfigInteractor: Sendable {
-    /// reload が新しい AppStyle を適用した時に発火する Void ping。
+    /// Emits a Void ping when a reload applies a new AppStyle.
     var appStyleChanges: AnyPublisher<Void, Never> { get }
-    /// 現在の不正状態（nil=正常、非nil=前回値保持中）。最新値を replay。
+    /// The current invalid state. Nil means valid; non-nil means the previous value is retained.
+    /// Replays the latest value.
     var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { get }
     func start()
     func stop()

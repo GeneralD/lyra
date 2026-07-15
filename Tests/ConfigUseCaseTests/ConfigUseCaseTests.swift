@@ -78,8 +78,8 @@ struct ConfigUseCaseTests {
             $0.configRepository = counter
         } operation: {
             let useCase = ConfigUseCaseImpl()
-            _ = useCase.appStyle  // 初回ロード（count 1）
-            let outcome = useCase.reload()  // 再ロード（count 2）
+            _ = useCase.appStyle  // Initial load (count 1).
+            let outcome = useCase.reload()  // Reload from disk (count 2).
             #expect(counter.callCount == 2)
             guard case .updated = outcome else {
                 Issue.record("expected .updated")
@@ -97,7 +97,7 @@ struct ConfigUseCaseTests {
         } operation: {
             let useCase = ConfigUseCaseImpl()
             _ = useCase.appStyle  // count 1
-            let outcome = useCase.reload()  // validate 失敗 → loadAppStyle 呼ばない（count 1 のまま）
+            let outcome = useCase.reload()  // Validation fails; loadAppStyle is not called (count remains 1).
             #expect(counter.callCount == 1)
             guard case .invalid(let f) = outcome else {
                 Issue.record("expected .invalid")
