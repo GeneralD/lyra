@@ -118,6 +118,12 @@ public final class RipplePresenter: ObservableObject {
             || previous!.duration != config.duration
         if framesDiffer {
             rippleState = RippleState(config: config)
+            // The fresh state's cursor position starts at `.zero`, so clear the
+            // hover flag too: otherwise, with the cursor still inside the overlay,
+            // the per-frame `idle()` would spawn idle ripples at the screen origin
+            // until a new mouse move re-establishes the position (#41 PR3 review,
+            // F3). A real mouse move re-sets both together.
+            mouseInScreen = false
         }
 
         guard previous?.enabled != config.enabled else { return }

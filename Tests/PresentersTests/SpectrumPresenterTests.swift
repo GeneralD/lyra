@@ -129,6 +129,42 @@ struct SpectrumPresenterTests {
     }
 
     @MainActor
+    @Test("a styling-only config ping republishes so the View re-renders (#41 PR3 review, F2)")
+    func stylingPingRepublishes() async {
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        let config = FakeConfigInteractor()
+        let presenter = withDependencies {
+            $0.spectrumInteractor = interactor
+            $0.configInteractor = config
+        } operation: {
+            SpectrumPresenter()
+        }
+        presenter.start()
+
+        final class Counter: @unchecked Sendable { var count = 0 }
+        let counter = Counter()
+        let cancellable = presenter.objectWillChange.sink { counter.count += 1 }
+        defer { cancellable.cancel() }
+
+        // Change only styling (bar color); enabled stays true. SpectrumView
+        // snapshots presenter.style in its body, so applyStyle must republish
+        // even though no capture toggle occurs — otherwise the overlay keeps the
+        // old look until an unrelated invalidation.
+        interactor.spectrumStyle = SpectrumStyle(
+            enabled: true, stereo: false, barColor: .solid("#abcdef"),
+            barWidth: 1, barSpacing: 0, noiseReduction: 0)
+        config.fire()
+        await flushMainQueue()
+        #expect(counter.count == 1)
+        #expect(interactor.startCount == 1)  // a styling edit does not restart capture
+
+        // An identical ping (no style change) must not republish.
+        config.fire()
+        await flushMainQueue()
+        #expect(counter.count == 1)
+    }
+
+    @MainActor
     @Test("ticks while capturing surface the magnitudes and animate")
     func capturingTickPublishesBars() async {
         let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
