@@ -33,7 +33,8 @@ struct ConfigStatusPresenterTests {
     func stopUnsubscribes() async {
         let subject = CurrentValueSubject<ConfigReloadFailure?, Never>(nil)
         let cancelBox = CancelBox()
-        let publisher = subject
+        let publisher =
+            subject
             .handleEvents(receiveCancel: { cancelBox.markCancelled() })
             .eraseToAnyPublisher()
         let presenter = withDependencies {
