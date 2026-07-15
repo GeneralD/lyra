@@ -84,7 +84,7 @@ private struct SearchOnlyStub: LyricsDataSource {
     func search(query: String) async -> [LyricsResult]? { searchResult }
 }
 
-private final class SpyResolutionLog: LyricsResolutionLog, @unchecked Sendable {
+private final class SpyResolutionLog: DeveloperLog, @unchecked Sendable {
     let enabled: Bool
     private(set) var records: [String] = []
     init(enabled: Bool) { self.enabled = enabled }

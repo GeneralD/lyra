@@ -133,9 +133,9 @@ let package = Package(
             ]
         ),
 
-        // ── LyricsResolutionLog ──
+        // ── DeveloperLog ──
         .target(
-            name: "LyricsResolutionLog",
+            name: "DeveloperLog",
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -241,7 +241,7 @@ let package = Package(
                 "AppKitScreenProvider",
                 "Domain",
                 "RandomSource",
-                "LyricsResolutionLog",
+                "DeveloperLog",
                 "TrackInteractor",
                 "ScreenInteractor",
                 "WallpaperInteractor",
@@ -589,9 +589,9 @@ let package = Package(
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
         .testTarget(
-            name: "LyricsResolutionLogTests",
+            name: "DeveloperLogTests",
             dependencies: [
-                "LyricsResolutionLog",
+                "DeveloperLog",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]

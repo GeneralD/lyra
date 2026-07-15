@@ -2,30 +2,25 @@ import Dependencies
 import Domain
 import Foundation
 
-/// Live `LyricsResolutionLog` that appends the trace to a file. Enabled state and
-/// path are read once from `[log]` at construction (mirroring
-/// `CustomScriptLyricsDataSourceImpl`); toggling the trace therefore takes a daemon
-/// restart, which is the intended coarse control for a debug facility. Writing our
-/// own file keeps behavior identical across brew service / self-installed LaunchAgent
-/// / foreground `lyra daemon`, none of which redirect stdout the same way.
-public struct FileLyricsResolutionLog: Sendable {
+/// Live `DeveloperLog` that appends each block to a file. Enabled state and path are
+/// resolved once at the wiring site and passed in (the config read lives in the DI
+/// registration, keeping this type purpose-agnostic and unit-testable); toggling
+/// therefore takes a daemon restart, the intended coarse control for a debug facility.
+/// Writing our own file keeps behavior identical across brew service / self-installed
+/// LaunchAgent / foreground `lyra daemon`, none of which redirect stdout the same way.
+public struct FileDeveloperLog: Sendable {
     public let isEnabled: Bool
     private let path: String
 
-    public init() {
-        @Dependency(\.configDataSource) var configDataSource
-        let developer = configDataSource.load()?.config.developer
-        self.init(
-            enabled: developer?.lyricsResolution ?? false,
-            path: Self.resolvedPath(configured: developer?.lyricsResolutionFile))
-    }
-
-    init(enabled: Bool, path: String) {
+    public init(enabled: Bool, path: String) {
         self.isEnabled = enabled
         self.path = path
     }
 
-    static func resolvedPath(configured: String?) -> String {
+    /// Resolve a configured path (tilde-expanded) or fall back to
+    /// `${XDG_CACHE_HOME:-~/.cache}/lyra/<defaultFilename>`. The default filename is a
+    /// parameter so this stays general across sinks; the caller names the file.
+    public static func resolvedPath(configured: String?, defaultFilename: String) -> String {
         if let configured, !configured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return (configured as NSString).expandingTildeInPath
         }
@@ -34,11 +29,11 @@ public struct FileLyricsResolutionLog: Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
             ?? "\(NSHomeDirectory())/.cache"
-        return "\(base)/lyra/lyrics-debug.log"
+        return "\(base)/lyra/\(defaultFilename)"
     }
 }
 
-extension FileLyricsResolutionLog: LyricsResolutionLog {
+extension FileDeveloperLog: DeveloperLog {
     public func record(_ text: String) {
         guard isEnabled else { return }
         let block = text.hasSuffix("\n") ? text : text + "\n"
