@@ -8,7 +8,7 @@ public final class ConfigUseCaseImpl: @unchecked Sendable {
 
     public init() {
         @Dependency(\.configRepository) var repository
-        // 起動時に一度ロード（従来の lazy 初回ロードと同挙動、ただし可変 store に保持）
+        // Load once at startup, preserving the previous single-load behavior in mutable storage.
         store = OSAllocatedUnfairLock(initialState: repository.loadAppStyle())
     }
 }
@@ -28,7 +28,8 @@ extension ConfigUseCaseImpl: ConfigUseCase {
             store.withLock { $0 = style }
             return .updated(style)
         case .defaults:
-            // ファイルは在るが tryDecode が "" を返した = 読取失敗（atomic-save 中等）→ 前回値保持
+            // An empty tryDecode result for an existing file indicates a read failure,
+            // such as during an atomic save. Retain the previous value.
             return .invalid(.init(path: repository.existingConfigPath ?? "", reason: .unreadable))
         case .unreadable(let path):
             return .invalid(.init(path: path, reason: .unreadable))

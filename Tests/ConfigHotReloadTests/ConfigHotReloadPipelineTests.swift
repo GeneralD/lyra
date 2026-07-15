@@ -10,10 +10,10 @@ import Files
 import Foundation
 import Testing
 
-/// 実 `ConfigUseCaseImpl` + 実 `ConfigInteractorImpl` + 実 `ConfigRepositoryImpl` +
-/// 実 `ConfigDataSourceImpl(configHome:)` を temp config ファイル上で結線し、
-/// fake の `ConfigWatchGateway` を手動 fire してホットリロードの in-process
-/// パイプライン全体を検証する E2E テスト（issue #41）。
+/// Wires real `ConfigUseCaseImpl`, `ConfigInteractorImpl`, `ConfigRepositoryImpl`, and
+/// `ConfigDataSourceImpl(configHome:)` instances against a temporary config file, then
+/// manually fires a fake `ConfigWatchGateway` to verify the complete in-process
+/// hot-reload pipeline for issue #41.
 @Suite("Config Hot Reload — in-process pipeline E2E")
 struct ConfigHotReloadPipelineTests {
     @Test("初期状態は config A、B へ書換 + fire でホットリロード成立、不正 config は前回値保持")
@@ -26,14 +26,14 @@ struct ConfigHotReloadPipelineTests {
 
         let gateway = FakeConfigWatchGateway()
 
-        // すべて operation クロージャ内で構築（swift-dependencies のコンテキスト捕捉のため）。
-        // ConfigInteractorImpl は sharedUseCase をそのまま configUseCase として受け取るので、
-        // テストが観測する appStyle と interactor が reload() する対象は同一インスタンス。
+        // Construct everything inside operation closures so swift-dependencies captures the context.
+        // ConfigInteractorImpl receives sharedUseCase as its configUseCase, so the appStyle observed
+        // by the test and the instance reloaded by the interactor are identical.
         //
-        // withDependencies の「update values」クロージャはまだ ambient(TaskLocal)に反映される
-        // 前に評価されるため、依存を持つ型（ConfigRepositoryImpl 等）をそこで構築すると自身の
-        // @Dependency が override 前の default を捕まえてしまう。次段の operation クロージャに
-        // 入って初めて ambient に反映されるので、依存を持つ型は一段深い operation 内で構築する。
+        // The withDependencies update closure runs before its overrides enter the ambient TaskLocal.
+        // Constructing dependency-owning types such as ConfigRepositoryImpl there would capture the
+        // defaults instead. The overrides become ambient inside the operation closure, so construct
+        // dependency-owning types one operation level deeper.
         let (sharedUseCase, interactor): (ConfigUseCaseImpl, ConfigInteractorImpl) = withDependencies {
             $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
             $0.continuousClock = ImmediateClock()
@@ -52,7 +52,7 @@ struct ConfigHotReloadPipelineTests {
             }
         }
 
-        // 1. 初期状態で configUseCase.appStyle が config A を反映
+        // 1. Verify that config A is initially reflected in configUseCase.appStyle.
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "a.mp4")
 
         final class Observed: @unchecked Sendable {
@@ -64,7 +64,7 @@ struct ConfigHotReloadPipelineTests {
         let invalidCancellable = interactor.invalidConfig.sink { observed.lastInvalid = $0 }
         interactor.start()
 
-        // 2. config を B に書き換え → gateway.fire() → appStyleChanges が発火し appStyle が B を反映
+        // 2. Write config B, fire the gateway, and verify appStyleChanges emits and appStyle reflects B.
         try configFile.write(#"wallpaper = "b.mp4""#)
         gateway.fire()
 
@@ -76,8 +76,8 @@ struct ConfigHotReloadPipelineTests {
         #expect(observed.lastInvalid == nil)
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "b.mp4")
 
-        // 3. config を不正な TOML に書き換え → gateway.fire() → invalidConfig に failure が流れ、
-        //    appStyle は B のまま（前回値保持）
+        // 3. Write invalid TOML, fire the gateway, and verify invalidConfig emits a failure
+        //    while appStyle retains config B.
         observed.pinged = false
         try configFile.write("wallpaper = [")
         gateway.fire()

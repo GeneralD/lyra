@@ -3,11 +3,11 @@ import Dependencies
 import Domain
 import Foundation
 
-/// config ファイルの親ディレクトリを監視し、変更を debounce したうえで
-/// `ConfigUseCase.reload()` を呼び、結果を配信する Interactor の実装。
+/// Watches the config file's parent directory, debounces changes, then calls
+/// `ConfigUseCase.reload()` and publishes the result.
 ///
-/// 監視トークンと debounce Task が可変状態として存在するため `final class` +
-/// `@unchecked Sendable`（swift-conventions の class 正当化基準を満たす）。
+/// The watch token and debounce task require mutable state, so this implementation
+/// is a `final class` with `@unchecked Sendable`, as required by the Swift conventions.
 public final class ConfigInteractorImpl: @unchecked Sendable {
     @Dependency(\.configWatchGateway) private var gateway
     @Dependency(\.configUseCase) private var configUseCase
@@ -32,7 +32,7 @@ extension ConfigInteractorImpl: ConfigInteractor {
     public var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { invalidSubject.eraseToAnyPublisher() }
 
     public func start() {
-        // config ファイルが在るときだけ、その親ディレクトリを監視。
+        // Watch the parent directory only when the config file exists.
         guard let path = configUseCase.existingConfigPath else { return }
         let directory = (path as NSString).deletingLastPathComponent
         let watchedGateway = gateway
@@ -50,7 +50,7 @@ extension ConfigInteractorImpl: ConfigInteractor {
         }
     }
 
-    // 監視イベントを debounce（連続イベント・巨大書込を coalesce）してから reload。
+    // Debounce watch events to coalesce bursts and large writes before reloading.
     private func scheduleReload() {
         lock.withLock {
             debounceTask?.cancel()
