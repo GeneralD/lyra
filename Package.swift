@@ -6,7 +6,20 @@ let package = Package(
     name: "Lyra",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "lyra", targets: ["CLI"])
+        .executable(name: "lyra", targets: ["CLI"]),
+        // Library surface for external reuse — e.g. the planned `lyra-screensaver`
+        // `.saver` bundle (#325), which reuses lyra's video-wallpaper pipeline rather
+        // than re-implementing it. Bundles the reuse path in one product:
+        //   • Entity / Domain — data types + `@Dependency` keys and protocols
+        //   • Presenters       — `WallpaperPresenter` / `WallpaperPlaybackController`
+        //                        (the AVPlayer loop/trim/cycle engine, NSWindow-free)
+        //   • DependencyInjection — liveValue wiring so `@Dependency` resolves to the
+        //                        real implementations without the consumer re-registering
+        //                        the graph.
+        // A lighter wallpaper-only product (splitting the DI registrations per feature so
+        // a consumer can avoid linking MediaRemote/Audio) is a possible follow-up if the
+        // `.saver` binary needs trimming; see #325.
+        .library(name: "LyraKit", targets: ["Entity", "Domain", "Presenters", "DependencyInjection"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),

@@ -63,6 +63,11 @@ Shared conventions:
 - `Presenters` own display state.
 - `Views` stay declarative and rendering-focused.
 - `StandardOutput` owns terminal formatting.
+- `Package.swift` exposes a `LyraKit` library product
+  (`Entity` / `Domain` / `Presenters` / `DependencyInjection`) beside the
+  `lyra` executable, so sibling repos — e.g. the planned `lyra-screensaver`
+  `.saver` (#325) — can reuse the video-wallpaper pipeline over SPM. It is an
+  internal-reuse surface, not a stability-guaranteed public API.
 
 ## Non-Negotiable Rules
 
