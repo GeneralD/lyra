@@ -16,8 +16,8 @@ public final class LyricsPresenter: ObservableObject {
     @Published public private(set) var displayLyricLines: [String] = []
     @Published public private(set) var activeLineIndex: Int?
 
-    // font / size / color 系は config のホットリロードで再反映されるため
-    // @Published (View の再描画を誘発する) にする (#41 PR2)。
+    // These font, size, and color properties are @Published because hot reload
+    // reapplies them and the View must redraw (#41 PR2).
     @Published public private(set) var lyricStyle: TextAppearance = .init()
     @Published public private(set) var highlightStyle: TextAppearance = .init()
 
@@ -58,8 +58,8 @@ public final class LyricsPresenter: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // 購読は起動時に一度だけ張る。config 変更のたびに appStyleChanges が
-        // 発火し applyStyle() を呼ぶだけで、購読自体は張り替えない。
+        // Subscribe once at startup. Each config change emits appStyleChanges and calls
+        // applyStyle() without replacing the subscription.
         configInteractor.appStyleChanges
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
@@ -73,12 +73,10 @@ public final class LyricsPresenter: ObservableObject {
         stopEffects()
     }
 
-    /// 冪等に config 値を再反映する。起動時に一度、以降は `appStyleChanges`
-    /// ping の都度呼ばれる。`decodeConfig` はここで更新されるが、進行中の
-    /// `lyricEffects`（既に構築済みの DecodeEffectState）はやり直さない —
-    /// 現在レンダリング中の行のアニメーションを壊さないため。新しい
-    /// duration/charset は次回の `revealLyrics` 呼び出し（次の曲の歌詞表示）
-    /// から反映される（#41 PR2 のスコープ）。
+    /// Idempotently reapplies config values. Called once at startup and for each
+    /// `appStyleChanges` ping. Updates `decodeConfig` but leaves in-flight `lyricEffects`
+    /// unchanged so animations for the current lines are not interrupted. New duration and
+    /// charset values apply on the next `revealLyrics` call for the next track (#41 PR2).
     private func applyStyle() {
         let layout = interactor.textLayout
         decodeConfig = layout.decodeEffect

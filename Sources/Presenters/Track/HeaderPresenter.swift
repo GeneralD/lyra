@@ -23,8 +23,8 @@ public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var titleColor: ColorStyle = .solid("#FFFFFFD9")
     @Published public private(set) var artistColor: ColorStyle = .solid("#FFFFFFD9")
 
-    // font / size / color 系は config のホットリロードで再反映されるため
-    // @Published (View の再描画を誘発する) にする (#41 PR2)。
+    // These font, size, and color properties are @Published because hot reload
+    // reapplies them and the View must redraw (#41 PR2).
     @Published public private(set) var titleStyle: TextAppearance = .init()
     @Published public private(set) var artistStyle: TextAppearance = .init()
     @Published public private(set) var artworkSize: Double = 96
@@ -36,9 +36,9 @@ public final class HeaderPresenter: ObservableObject {
     private var artistTarget: String?
     private var artworkData: Data?
     private var processingColor: ColorStyle = .solid("#4ADE80FF")
-    // AI 処理中（scramble 中）かどうか。applyStyle() が titleColor/artistColor を
-    // 再適用する際、処理中は processingColor を維持し、通常時は configured color に
-    // 戻すために必要 (#57 の色を config ホットリロードで壊さないため)。
+    // Tracks whether AI processing is active. applyStyle() preserves processingColor
+    // while scrambling and restores the configured colors otherwise, preventing config
+    // hot reload from breaking the color state introduced in #57.
     private var isAIProcessing = false
     private var cancellables: Set<AnyCancellable> = []
 
@@ -64,8 +64,8 @@ public final class HeaderPresenter: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // 購読は起動時に一度だけ張る。config 変更のたびに appStyleChanges が
-        // 発火し applyStyle() を呼ぶだけで、購読自体は張り替えない。
+        // Subscribe once at startup. Each config change emits appStyleChanges and calls
+        // applyStyle() without replacing the subscription.
         configInteractor.appStyleChanges
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
@@ -80,8 +80,8 @@ public final class HeaderPresenter: ObservableObject {
         artistEffect?.stop()
     }
 
-    /// 冪等に config 値を再反映する。起動時に一度、以降は `appStyleChanges`
-    /// ping の都度呼ばれる。AI 処理中は processingColor を維持する。
+    /// Idempotently reapplies config values. Called once at startup and for each
+    /// `appStyleChanges` ping. Preserves processingColor during AI processing.
     private func applyStyle() {
         let style = interactor.textLayout
         titleStyle = style.title
@@ -151,13 +151,12 @@ extension HeaderPresenter {
         }
     }
 
-    /// `titleEffect`/`artistEffect` を reveal / processing 開始の都度、live config
-    /// から作り直す。`DecodeEffectState` は `duration`/`charsets` を init で `let` と
-    /// して焼き付けるため、`applyStyle()` からいじっても反映されない — reveal の
-    /// dedup guard を通過し新しいアニメの開始が確定した後（進行中のアニメを壊さない
-    /// 地点）で作り直すことで、config.toml の decode_effect 編集が次回の reveal /
-    /// processing から反映されるようにする。`applyStyle()` はこの effect に一切触れ
-    /// ないままなので、進行中のスクランブルは config ping で中断されない。
+    /// Recreates `titleEffect` and `artistEffect` from live config whenever a reveal or
+    /// processing cycle begins. `DecodeEffectState` captures `duration` and `charsets` as
+    /// immutable values at initialization, so `applyStyle()` cannot update an existing effect.
+    /// Rebuilding only after the reveal dedup guard accepts a new animation applies
+    /// `config.toml` decode-effect edits to the next cycle without disturbing one in progress.
+    /// `applyStyle()` never touches these effects, so config pings cannot interrupt a scramble.
     private func makeTitleEffect() -> DecodeEffectState {
         titleEffect?.stop()
         let effect = DecodeEffectState(config: interactor.decodeEffectConfig)
