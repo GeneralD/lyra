@@ -61,6 +61,7 @@ private struct FixtureWallpaperInteractor: WallpaperInteractor {
     var rippleConfig: RippleStyle = .init(enabled: false)
 
     var playbackMode: WallpaperPlaybackMode { wallpaperState.mode }
+    var wallpaperSource: WallpaperStyle? { nil }
 
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         let items = wallpaperState.items
@@ -657,6 +658,7 @@ struct AccessibilityHooksTests {
     private struct EnabledRippleWallpaperInteractor: WallpaperInteractor {
         var rippleConfig: RippleStyle { .init(enabled: true) }
         var playbackMode: WallpaperPlaybackMode { .cycle }
+        var wallpaperSource: WallpaperStyle? { nil }
         func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
         var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
     }

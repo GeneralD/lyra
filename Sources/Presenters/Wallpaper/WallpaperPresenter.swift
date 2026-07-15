@@ -24,6 +24,10 @@ public final class WallpaperPresenter: ObservableObject {
     private(set) var items: [ResolvedWallpaperItem] = []
     private var mode: WallpaperPlaybackMode = .cycle
     private var currentIndex: Int = 0
+    /// The wallpaper source last applied. `applyStyle()` diffs the live source
+    /// against this so an unrelated config edit never re-resolves (and restarts)
+    /// the playing video; only a real source change reloads.
+    private var appliedSource: WallpaperStyle?
 
     let controller = WallpaperPlaybackController()
     private var loadTask: Task<Void, Never>?
@@ -32,6 +36,7 @@ public final class WallpaperPresenter: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.wallpaperInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
     @Dependency(\.randomSource) private var randomSource
     @Dependency(\.continuousClock) private var clock
 
@@ -54,13 +59,33 @@ public final class WallpaperPresenter: ObservableObject {
     }
 
     public func start() {
+        observeSleepWake()
+        appliedSource = interactor.wallpaperSource
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.applyStyle() }
+            .store(in: &cancellables)
+        loadWallpapers()
+    }
+
+    /// Reacts to a config hot-reload ping. Re-resolves the wallpaper only when the
+    /// source actually changed, so an unrelated edit leaves the playing video
+    /// untouched (no flicker, no restart). The reload keeps the AVPlayer instance
+    /// alive across the swap, so the overlay never blacks out.
+    private func applyStyle() {
+        let source = interactor.wallpaperSource
+        guard source != appliedSource else { return }
+        appliedSource = source
+        loadWallpapers()
+    }
+
+    private func loadWallpapers() {
         loadTask?.cancel()
         setLoading(true)
         items = []
         currentIndex = 0
         wallpaperScale = 1.0
         mode = interactor.playbackMode
-        observeSleepWake()
         let stream = interactor.resolvedWallpapers()
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -75,6 +100,7 @@ public final class WallpaperPresenter: ObservableObject {
             }
             if items.isEmpty {
                 setLoading(false)
+                clearActiveItem()
             }
         }
     }
@@ -132,6 +158,18 @@ extension WallpaperPresenter {
         endTime = item.end
         wallpaperScale = item.scale
         await controller.play(item: item)
+    }
+
+    /// Clears the published wallpaper state and stops playback without destroying
+    /// the AVPlayer, for a hot-reload that removes all wallpaper items. Keeping the
+    /// player alive lets a later reload re-attach to the same, still-layered
+    /// instance instead of blacking out the overlay.
+    private func clearActiveItem() {
+        wallpaperURL = nil
+        startTime = nil
+        endTime = nil
+        wallpaperScale = 1.0
+        controller.clearCurrentItem()
     }
 
     private func handleAdvanceRequest() async {

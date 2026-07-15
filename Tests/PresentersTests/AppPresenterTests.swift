@@ -337,4 +337,74 @@ struct AppPresenterTests {
         presenter.stop()
         // No assertion — exercises the cancellables.removeAll() branch.
     }
+
+    @MainActor
+    @Test("config ping re-resolves the layout (screen re-selection hot-reload)")
+    func configPingReResolvesLayout() async {
+        let initial = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let updated = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 3840, height: 2160))
+
+        let screen = MutableInteractor(layout: initial)
+        let config = FakeConfigInteractor()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = screen
+            $0.configInteractor = config
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        await waitUntil { presenter.layout.windowFrame == initial.windowFrame }
+
+        // A config reload changed the screen selector — the interactor now resolves
+        // a different display. The ping must re-resolve without a restart.
+        screen.layoutToReturn = updated
+        config.fire()
+        await flushMainQueue()
+        await waitUntil { presenter.layout.windowFrame == updated.windowFrame }
+
+        #expect(presenter.layout.windowFrame == updated.windowFrame)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("config ping that switches selector to vacant starts polling")
+    func configPingStartsVacantPolling() async {
+        let initial = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let polled = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 2560, height: 1440))
+
+        // Starts in .main (no polling). A config reload switches to .vacant.
+        let screen = MutableInteractor(layout: initial, selector: .main, debounce: 1)
+        let config = FakeConfigInteractor()
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = screen
+            $0.configInteractor = config
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        await waitUntil { presenter.layout.windowFrame == initial.windowFrame }
+
+        // Switch to vacant via reload. layoutToReturn is still `initial`, so the
+        // immediate re-resolve does not change the layout — only polling can.
+        screen.screenSelector = .vacant
+        config.fire()
+        await flushMainQueue()
+        #expect(presenter.layout.windowFrame == initial.windowFrame)
+
+        // Polling is now armed: a later layout change is picked up on the next tick.
+        screen.layoutToReturn = polled
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await waitUntil { presenter.layout.windowFrame == polled.windowFrame }
+
+        #expect(presenter.layout.windowFrame == polled.windowFrame)
+        presenter.stop()
+    }
 }

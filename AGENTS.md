@@ -121,12 +121,16 @@ Shared conventions:
   is shown graphically (an amber "destabilized" geodesic sphere via
   `ConfigStatusPresenter`/`ConfigStatusOverlay`) since a daemon has no
   visible stderr. See `.claude/CLAUDE.md` (Key Design Decisions, #41) for
-  full detail. Header/Lyrics styling and the ripple/spectrum overlays
-  (styling plus the `enabled` toggle) now re-render live -- each Presenter
-  subscribes once to `appStyleChanges` and reflects the change in an idempotent
-  `applyStyle()`, and the DisplayLink fan-out always includes the ripple/spectrum
-  frame handlers (their enabled guard lives inside the handler, #41 PR3).
-  Wallpaper source replacement and screen re-selection remain follow-up work.
+  full detail. Header/Lyrics styling, the ripple/spectrum overlays (styling
+  plus the `enabled` toggle), the wallpaper source, and the screen selection
+  now all re-render live -- each Presenter subscribes once to `appStyleChanges`
+  and reflects the change in an idempotent `applyStyle()`, and the DisplayLink
+  fan-out always includes the ripple/spectrum frame handlers (their enabled
+  guard lives inside the handler, #41 PR3). The wallpaper reload diffs the
+  source and swaps the video via `replaceCurrentItem` on the same AVPlayer, so
+  the overlay never blacks out; the screen reload re-runs `resolveLayout()` and
+  restarts vacant polling on a new selector/debounce (#41 PR4). Config hot-reload
+  now covers every visual element -- #41 is functionally complete.
 
 ## Testing Rules
 
