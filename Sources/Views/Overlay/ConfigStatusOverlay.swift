@@ -33,6 +33,13 @@ public struct ConfigStatusOverlay: View {
                     .transition(.scale(scale: 0.82).combined(with: .opacity))
             }
         }
+        // Without this, the ZStack only sizes to its (small) badge content,
+        // so `.bottomTrailing` above only aligns the badge within its own
+        // intrinsic box instead of the overlay window — the badge renders
+        // centered inside `OverlayContentView`'s outer ZStack instead of in
+        // the intended bottom-right corner. Stretching to fill makes the
+        // alignment apply across the full overlay.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .animation(.easeInOut(duration: 0.4), value: presenter.invalidConfig != nil)
     }
 }

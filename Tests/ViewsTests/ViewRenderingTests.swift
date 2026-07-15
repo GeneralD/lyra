@@ -482,6 +482,38 @@ private final class ConfigStatusStubInteractor: ConfigInteractor, @unchecked Sen
     func stop() {}
 }
 
+/// Renders `view` at `size` and returns the resulting `CGImage`, used to
+/// assert *where* content actually lands (not just that rendering doesn't
+/// crash). `scale` is pinned to 1 so pixel coordinates match `size` exactly.
+@MainActor
+private func renderedImage<Content: View>(_ view: Content, size: CGSize) -> CGImage? {
+    let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
+    renderer.scale = 1
+    return renderer.cgImage
+}
+
+/// Highest alpha found within `rect` (sparsely sampled for speed), so a
+/// caller can assert a region is empty/non-empty without depending on exactly
+/// which pixel a thin stroke happens to land on.
+@MainActor
+private func maxAlpha(in image: CGImage, rect: CGRect, sampleStride: Int = 3) -> CGFloat {
+    let bitmap = NSBitmapImageRep(cgImage: image)
+    let minX = max(0, Int(rect.minX))
+    let maxX = min(bitmap.pixelsWide, Int(rect.maxX))
+    let minY = max(0, Int(rect.minY))
+    let maxY = min(bitmap.pixelsHigh, Int(rect.maxY))
+    guard minX < maxX, minY < maxY else { return 0 }
+    var peak: CGFloat = 0
+    for y in Swift.stride(from: minY, to: maxY, by: sampleStride) {
+        for x in Swift.stride(from: minX, to: maxX, by: sampleStride) {
+            if let color = bitmap.colorAt(x: x, y: y) {
+                peak = max(peak, color.alphaComponent)
+            }
+        }
+    }
+    return peak
+}
+
 @MainActor
 @Suite("ConfigStatusOverlay rendering")
 struct ConfigStatusOverlayRenderingTests {
@@ -510,5 +542,36 @@ struct ConfigStatusOverlayRenderingTests {
             ConfigStatusPresenter()
         }
         render(ConfigStatusOverlay(presenter: presenter), size: CGSize(width: 800, height: 500))
+    }
+
+    @Test("invalid 状態のバッジは画面中央ではなく隅に寄って描画される（コーナーアンカー回帰テスト）")
+    func badgeIsCornerAnchoredNotCentered() async {
+        let subject = CurrentValueSubject<ConfigReloadFailure?, Never>(
+            .init(path: "/c.toml", reason: .decode("x")))
+        let presenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(invalid: subject.eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+        presenter.start()
+        defer { presenter.stop() }
+        await waitUntil { presenter.invalidConfig != nil }
+
+        let size = CGSize(width: 800, height: 500)
+        guard let image = renderedImage(ConfigStatusOverlay(presenter: presenter), size: size) else {
+            Issue.record("failed to render ConfigStatusOverlay to a CGImage")
+            return
+        }
+
+        // Sanity: something is actually drawn (guards against a trivially
+        // empty pass masking a broken assertion below).
+        #expect(maxAlpha(in: image, rect: CGRect(origin: .zero, size: size)) > 0)
+
+        // The badge must not render at the canvas center — `ZStack(alignment:
+        // .bottomTrailing)` without a full-window frame only applies that
+        // alignment inside the badge's own intrinsic box, so it renders
+        // centered instead of corner-anchored (the bug this test catches).
+        let centerRegion = CGRect(x: size.width / 2 - 20, y: size.height / 2 - 20, width: 40, height: 40)
+        #expect(maxAlpha(in: image, rect: centerRegion) == 0)
     }
 }
