@@ -14,10 +14,10 @@ public struct FileLyricsResolutionLog: Sendable {
 
     public init() {
         @Dependency(\.configDataSource) var configDataSource
-        let log = configDataSource.load()?.config.log
+        let developer = configDataSource.load()?.config.developer
         self.init(
-            enabled: log?.lyricsResolution ?? false,
-            path: Self.resolvedPath(configured: log?.file))
+            enabled: developer?.lyricsResolution ?? false,
+            path: Self.resolvedPath(configured: developer?.lyricsResolutionFile))
     }
 
     init(enabled: Bool, path: String) {
