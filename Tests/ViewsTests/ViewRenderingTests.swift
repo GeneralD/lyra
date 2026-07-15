@@ -25,7 +25,10 @@ private func render<Content: View>(_ view: Content, size: CGSize) {
 
 @MainActor
 private func waitUntil(
-    timeout: Duration = .seconds(3),
+    // 5s default (not 3s): the wallpaper loading-indicator test polls
+    // `showLoadingIndicator`, which flips inside a detached `Task { @MainActor }`
+    // whose scheduling can slip past 3s under CI parallel + coverage load.
+    timeout: Duration = .seconds(5),
     condition: @escaping @MainActor () -> Bool
 ) async {
     let deadline = ContinuousClock.now + timeout
