@@ -101,10 +101,10 @@ graph TD
     style App fill:#4c78a8,stroke:#333,color:#fff
     style AppRouter fill:#6a5,stroke:#333,color:#fff
     style Views fill:#6a5,stroke:#333,color:#fff
-    style Presenters fill:#6a5,stroke:#333,color:#fff
-    style DependencyInjection fill:#c44,stroke:#333,color:#fff
-    style Entity fill:#4a9,stroke:#333,color:#fff
-    style Domain fill:#38b,stroke:#333,color:#fff
+    style Presenters fill:#6a5,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style DependencyInjection fill:#c44,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style Entity fill:#4a9,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style Domain fill:#38b,stroke:#E9B84C,stroke-width:3px,color:#fff
     style Interactor fill:#7b5,stroke:#333,color:#fff
     style UseCase fill:#59c,stroke:#333,color:#fff
     style Repository fill:#86c,stroke:#333,color:#fff
@@ -112,6 +112,11 @@ graph TD
     style Support fill:#d57,stroke:#333,color:#fff
     style DataStore fill:#a75,stroke:#333,color:#fff
 ```
+
+> The four **gold-bordered** nodes (`Entity`, `Domain`, `Presenters`,
+> `DependencyInjection`) are what the `LyraKit` library product re-exports for
+> external reuse (#325). They span four layers, so see the grouped LyraKit
+> diagram under Key Design Decisions for the single-rectangle view.
 
 #### Implementation Modules
 
@@ -271,6 +276,39 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 ### Key Design Decisions
 
 **Library products for external reuse (#325)**: `Package.swift` exposes a `LyraKit` **library product** alongside the `lyra` executable, so a sibling package — the planned `lyra-screensaver` `.saver` bundle (#325) — can depend on lyra over SPM and **reuse** the video-wallpaper pipeline (`WallpaperPresenter` / `WallpaperPlaybackController` playback, NSWindow-free) rather than re-implementing it. Because SwiftPM makes *target* names importable (not *product* names), the product exposes a single **`LyraKit` umbrella target** (`Sources/LyraKit/LyraKit.swift`, a pure `@_exported import` facade over `Entity` / `Domain` / `Presenters` / `DependencyInjection`) so a consumer writes one `import LyraKit` instead of importing each module. `DependencyInjection` is included so `@Dependency` resolves to the real `liveValue`s in the consumer without re-registering the graph; the trade-off is that the consumer links the whole implementation graph (including MediaRemote / Audio). A lighter wallpaper-only product — achievable by splitting the DI registrations per feature — is a possible follow-up if the `.saver` binary needs trimming. The umbrella target is a re-export facade (coverage-ignored), and the library surface is for lyra's own sibling repos, not a stability-guaranteed public API.
+
+<p align="center">
+  <img src="../assets/lyrakit-wordmark.png" alt="LyraKit" width="300">
+</p>
+
+The four modules the `LyraKit` product re-exports, grouped. In the Layer Overview
+above these same four carry a **gold border** — but they live in four different
+layer subgraphs, and mermaid puts a node in only one subgraph, so they cannot be
+enclosed in a single `LyraKit` rectangle there without breaking the layer
+grouping. This dedicated view is that rectangle:
+
+```mermaid
+graph TD
+    Consumer["lyra-screensaver (.saver)"]
+    LyraKit["LyraKit umbrella target<br/>(@_exported import facade)"]
+    subgraph LyraKitProduct["LyraKit library product (#325)"]
+        direction TB
+        Entity2[Entity]
+        Domain2[Domain]
+        Presenters2[Presenters]
+        DependencyInjection2[DependencyInjection]
+    end
+    Consumer -. import LyraKit .-> LyraKit
+    LyraKit --> Entity2 & Domain2 & Presenters2 & DependencyInjection2
+
+    style LyraKitProduct fill:#2a2410,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style LyraKit fill:#E9B84C,stroke:#141A3C,color:#141A3C
+    style Consumer fill:#555,stroke:#333,color:#fff
+    style Entity2 fill:#4a9,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style Domain2 fill:#38b,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style Presenters2 fill:#6a5,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style DependencyInjection2 fill:#c44,stroke:#E9B84C,stroke-width:3px,color:#fff
+```
 
 **MediaRemoteDataSource via swift-interpret helper**: `MediaRemote.framework` is a private framework, and `MRMediaRemoteGetNowPlayingInfo` only returns data when the **host process** carries an Apple-internal entitlement (`com.apple.private.tcc.allow` family). Apple-signed binaries — including `/usr/bin/swift` — qualify; any third-party binary (Developer ID, ad-hoc, anything notarized outside Apple) does **not**, because AMFI strips Apple-private entitlements from non-Apple-signed Mach-Os at load time. The helper Swift source (`Resources/media-remote-helper.swift`) is therefore spawned via the **absolute path** `/usr/bin/swift <src>` so that the Apple-signed `xcode_select` tool-shim is unconditionally the host process. **Never go through `/usr/bin/env swift`** — `env` respects `$PATH` and a developer with a Homebrew / swift.org / asdf swift earlier in `PATH` would silently fall into a non-Apple-signed binary, reintroducing the same regression. **Never pre-compile the helper with `swiftc`** — the resulting binary becomes the host, loses the entitlement, and `MRMediaRemoteGetNowPlayingInfo` silently returns no info on macOS 26+ (regression tracked in #261). The helper runs as a persistent subprocess and streams JSON over a pipe, using `MRMediaRemoteRegisterForNowPlayingNotifications` for event-driven updates. The 1–2 s `swift-frontend -interpret` cost on first launch is the price of admission; there is no Apple-supported alternative for third parties. **Artwork emission is scoped to track changes (#255)**: each JSON line carries an `event` tag (`"track-change"` for notification-driven + initial fetches, `"tick"` for the 3 s periodic snapshot). Base64-encoding the cover (hundreds of KB–several MB) on every tick pegged daemon CPU for no benefit, so `artwork_base64` is sent only on `track-change`; `MediaRemoteDataSourceImpl` backfills the cached cover on ticks and clears it when a `track-change` arrives cover-less. This composes with the daemon-side decode memoization (`lastArtworkBase64`/`lastArtworkData`, #270): #270 avoids re-*decoding* an unchanged payload, #255 avoids re-*transmitting* it.
 
