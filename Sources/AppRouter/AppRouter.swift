@@ -173,7 +173,12 @@ public final class AppRouter {
         spectrumPresenter?.stop()
         defer { spectrumPresenter = nil }
 
-        configInteractor.stop()
+        // configInteractor is a `@Dependency`, not a stored instance like the
+        // presenters above, so it must be resolved inside the same bootstrap
+        // scope that start() used — otherwise a custom/test bootstrap's
+        // override never gets stopped and the process-wide default gets
+        // stopped instead (a different, possibly-never-started instance).
+        withBootstrap { configInteractor.stop() }
         configStatusPresenter?.stop()
         defer { configStatusPresenter = nil }
 

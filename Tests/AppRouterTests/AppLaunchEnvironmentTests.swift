@@ -434,12 +434,11 @@ struct AppRouterTests {
 
         router.stop()
 
-        // stop()'s configInteractor.stop() call runs outside the bootstrap
-        // scope, so @Dependency resolution falls back to the process-wide
-        // default rather than this test's spy (a scoping quirk of
-        // swift-dependencies, harmless in production since ConfigInteractor's
-        // liveValue is itself a singleton). Assert stop-side teardown via the
-        // presenter's lifecycle instead of the spy's stopCallCount.
+        // stop()'s configInteractor.stop() call now runs inside the same
+        // bootstrap scope as start(), so @Dependency resolution consistently
+        // resolves this test's spy — the exact scoped instance that was
+        // started is the one that gets stopped.
+        #expect(spy.stopCallCount == 1)
         #expect(!hasValue(named: "configStatusPresenter", from: router))
     }
 
