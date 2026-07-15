@@ -118,11 +118,19 @@ resolves. Read `wallpaper.playbackMode` first to decide how to advance.
 
 ## What LyraKit does _not_ include
 
-The umbrella deliberately excludes the CLI, the AppKit foreground lifecycle
-(`App`), the overlay window (`Views` / `AppWindow`), and the lyrics / metadata
-overlay stack — a `.saver` or embedding host supplies its own window and only
-needs the wallpaper engine. If you need a lighter, wallpaper-only slice (to
-avoid linking MediaRemote / Audio), see [#325]: splitting the DI registrations
-per feature is a tracked follow-up.
+The umbrella excludes only the top of the stack: the CLI (`CLI`), the AppKit
+foreground lifecycle (`App`), and the overlay **views** (`Views` / `AppWindow`).
+A `.saver` or embedding host supplies its own window, so it never links the
+SwiftUI rendering layer or the executable entry point.
+
+It does **not** trim below that. `Presenters` is re-exported whole, so the
+track / lyrics / spectrum / ripple presenters come along even in a
+wallpaper-only host — they are one module, and you simply don't instantiate the
+ones you don't use. And because `DependencyInjection` registers the full live
+graph, a consumer transitively links the entire implementation (MediaRemote /
+Audio included) even when it only ever drives the wallpaper path. So LyraKit is
+about single-`import` reuse, not a minimal binary. If you need a lighter,
+wallpaper-only slice, see [#325]: splitting the DI registrations per feature is
+a tracked follow-up.
 
 [#325]: https://github.com/GeneralD/lyra/issues/325
