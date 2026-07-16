@@ -175,6 +175,12 @@ private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Senda
         return FakeConfigWatchToken()
     }
 
+    // The pipeline tests drive reloads through the directory event only; the
+    // file-level watch is exercised in ConfigInteractorImplTests.
+    func watch(file: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        FakeConfigWatchToken()
+    }
+
     func fire() {
         lock.withLock { handler }?()
     }

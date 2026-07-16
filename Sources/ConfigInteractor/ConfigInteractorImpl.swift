@@ -17,12 +17,14 @@ public final class ConfigInteractorImpl: @unchecked Sendable {
     private let invalidSubject = CurrentValueSubject<ConfigReloadFailure?, Never>(nil)
     private let lock = NSLock()
     private var token: (any ConfigWatchToken)?
+    private var fileToken: (any ConfigWatchToken)?
     private var debounceTask: Task<Void, Never>?
 
     public init() {}
 
     deinit {
         token?.stop()
+        fileToken?.stop()
         debounceTask?.cancel()
     }
 }
@@ -45,6 +47,7 @@ extension ConfigInteractorImpl: ConfigInteractor {
             // install a duplicate watch that would double-fire reload events.
             guard token == nil else { return }
             token = watchedGateway.watch(directory: directory) { [weak self] in self?.scheduleReload() }
+            armFileWatchLocked()
         }
     }
 
@@ -52,6 +55,8 @@ extension ConfigInteractorImpl: ConfigInteractor {
         lock.withLock {
             token?.stop()
             token = nil
+            fileToken?.stop()
+            fileToken = nil
             debounceTask?.cancel()
             debounceTask = nil
         }
@@ -82,6 +87,22 @@ extension ConfigInteractorImpl: ConfigInteractor {
             case .invalid(let failure):
                 invalidSubject.send(failure)
             }
+            // An atomic save renamed a fresh inode into place (killing the old
+            // file fd), or the file just appeared for the first time (#329) —
+            // re-arm the file-level watch on the current path so the next
+            // in-place overwrite is still observed.
+            armFileWatchLocked()
         }
+    }
+
+    /// Arms the file-level watch on the config file's current path (no-op when
+    /// the file does not exist). The directory watch alone misses in-place
+    /// overwrites — editors that save without renaming, `cp`, appends — because
+    /// a directory vnode only fires on entry changes. Caller must hold `lock`.
+    private func armFileWatchLocked() {
+        fileToken?.stop()
+        fileToken = nil
+        guard let path = configUseCase.existingConfigPath else { return }
+        fileToken = gateway.watch(file: path) { [weak self] in self?.scheduleReload() }
     }
 }

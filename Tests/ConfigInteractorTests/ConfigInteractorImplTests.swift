@@ -144,6 +144,110 @@ struct ConfigInteractorImplTests {
         // No config file yet, but the directory watch is still armed (early-return removed).
         #expect(gateway.watchCallCount == 1)
         #expect(gateway.watchedDirectory == "/tmp/lyra")
+        // The file-level watch has nothing to attach to yet.
+        #expect(gateway.watchFileCallCount == 0)
+        interactor.stop()
+    }
+
+    @Test("start() で directory と file の両方の watch が張られる")
+    func armsBothWatchesOnStart() {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(outcome: .updated(.init(configDir: "/x")))
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+
+        #expect(gateway.watchCallCount == 1)
+        #expect(gateway.watchFileCallCount == 1)
+        #expect(gateway.watchedFile == "/tmp/config.toml")
+        interactor.stop()
+    }
+
+    @Test("file イベント（in-place 上書き保存）でも reload が走る")
+    func reloadsOnFileEvent() async {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(outcome: .updated(.init(configDir: "/x")))
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        final class Observed: @unchecked Sendable {
+            var pinged = false
+        }
+        let observed = Observed()
+        let cancellable = interactor.appStyleChanges.sink { observed.pinged = true }
+        interactor.start()
+        gateway.fireFile()  // In-place overwrite: only the file-level watch sees it.
+
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !observed.pinged, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(observed.pinged)
+        cancellable.cancel()
+        interactor.stop()
+    }
+
+    @Test("reload 後に file watch が再アームされる（atomic save で fd が無効化されるため）")
+    func rearmsFileWatchAfterReload() async {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(outcome: .updated(.init(configDir: "/x")))
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+        #expect(gateway.watchFileCallCount == 1)
+        gateway.fire()  // Atomic save: directory event, old file fd is now dead.
+
+        let deadline = ContinuousClock.now + .seconds(2)
+        while gateway.watchFileCallCount < 2, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(gateway.watchFileCallCount == 2)
+        interactor.stop()
+    }
+
+    @Test("file 不在で start 後、作成を reload で拾って file watch が armed される（#329）")
+    func armsFileWatchOnceConfigAppears() async {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(
+            outcome: .updated(.init(configDir: "/x")),
+            existingConfigPath: nil)
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+        #expect(gateway.watchFileCallCount == 0)
+
+        useCase.pathBox.path = "/tmp/config.toml"  // `lyra config init` created the file.
+        gateway.fire()  // The directory watch reports the creation.
+
+        let deadline = ContinuousClock.now + .seconds(2)
+        while gateway.watchFileCallCount < 1, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(gateway.watchFileCallCount == 1)
+        #expect(gateway.watchedFile == "/tmp/config.toml")
         interactor.stop()
     }
 }
@@ -153,11 +257,16 @@ struct ConfigInteractorImplTests {
 private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     private let lock = NSLock()
     private var handler: (@Sendable () -> Void)?
+    private var fileHandler: (@Sendable () -> Void)?
     private var _watchCallCount = 0
+    private var _watchFileCallCount = 0
     private var _watchedDirectory: String?
+    private var _watchedFile: String?
 
     var watchCallCount: Int { lock.withLock { _watchCallCount } }
+    var watchFileCallCount: Int { lock.withLock { _watchFileCallCount } }
     var watchedDirectory: String? { lock.withLock { _watchedDirectory } }
+    var watchedFile: String? { lock.withLock { _watchedFile } }
 
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
@@ -168,8 +277,21 @@ private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Senda
         return FakeConfigWatchToken()
     }
 
+    func watch(file: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        lock.withLock {
+            fileHandler = onChange
+            _watchFileCallCount += 1
+            _watchedFile = file
+        }
+        return FakeConfigWatchToken()
+    }
+
     func fire() {
         lock.withLock { handler }?()
+    }
+
+    func fireFile() {
+        lock.withLock { fileHandler }?()
     }
 }
 
@@ -177,11 +299,34 @@ private struct FakeConfigWatchToken: ConfigWatchToken {
     func stop() {}
 }
 
+/// Reference box so a test can change the stub's `existingConfigPath` after the
+/// interactor captured the (value-type) stub — models a config file created later.
+private final class PathBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _path: String?
+    init(_ path: String?) { _path = path }
+    var path: String? {
+        get { lock.withLock { _path } }
+        set { lock.withLock { _path = newValue } }
+    }
+}
+
 private struct StubConfigUseCase: ConfigUseCase, Sendable {
     let outcome: ConfigReloadOutcome
-    var existingConfigPath: String? = "/tmp/config.toml"
-    var configDir: String = "/tmp/lyra"  // The watched directory — resolved regardless of file existence (#329).
+    let pathBox: PathBox
+    let configDir: String  // The watched directory — resolved regardless of file existence (#329).
 
+    init(
+        outcome: ConfigReloadOutcome,
+        existingConfigPath: String? = "/tmp/config.toml",
+        configDir: String = "/tmp/lyra"
+    ) {
+        self.outcome = outcome
+        self.pathBox = PathBox(existingConfigPath)
+        self.configDir = configDir
+    }
+
+    var existingConfigPath: String? { pathBox.path }
     var appStyle: AppStyle { .init() }
     func reload() -> ConfigReloadOutcome { outcome }
     func template(format: ConfigFormat) -> String? { nil }
