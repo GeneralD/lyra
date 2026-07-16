@@ -90,13 +90,7 @@ private func waitForLyricsSuccess(_ presenter: LyricsPresenter, timeout: Duratio
     }
 }
 
-@MainActor
-private func waitUntil(timeout: Duration = .seconds(3), _ condition: @MainActor () -> Bool) async {
-    let deadline = ContinuousClock.now + timeout
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
+// Uses shared `waitUntil(timeout:condition:)` helper from Tests/PresentersTests/TestSupport/WaitUntil.swift.
 
 // MARK: - Tests
 
