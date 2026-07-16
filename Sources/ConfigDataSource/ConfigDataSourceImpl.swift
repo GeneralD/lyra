@@ -58,7 +58,9 @@ extension ConfigDataSourceImpl: ConfigDataSource {
     }
 
     public var configDir: String {
-        findConfigFile()?.parent?.path ?? Folder.home.path
+        // When the file exists, its parent; otherwise the directory where the config
+        // *would* live, so the watcher can arm on it before the file is created (#329).
+        findConfigFile()?.parent?.path ?? expectedConfigDirectory
     }
 
     public func tryDecode(strictOptionalSections: Bool) throws -> String {
@@ -109,15 +111,22 @@ extension ConfigDataSourceImpl {
         }.first
     }
 
-    func lyraConfigFolder() throws -> Folder {
-        let home = Folder.home
+    // The directory where the config file lives or would live: `$XDG_CONFIG_HOME/lyra`,
+    // falling back to `~/.config/lyra`. A pure path computation that never creates the
+    // directory — the single source of truth shared by `configDir`'s file-absent fallback
+    // (the watch target, #329) and `lyraConfigFolder()`'s create-and-open.
+    var expectedConfigDirectory: String {
         let explicit =
             configHomeOverride
             ?? ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
                 in: .whitespacesAndNewlines)
         let xdgConfigPath =
-            (explicit?.isEmpty == false) ? explicit! : "\(home.path).config"
-        let lyraPath = "\(xdgConfigPath)/lyra"
+            (explicit?.isEmpty == false) ? explicit! : "\(Folder.home.path).config"
+        return "\(xdgConfigPath)/lyra"
+    }
+
+    func lyraConfigFolder() throws -> Folder {
+        let lyraPath = expectedConfigDirectory
         try FileManager.default.createDirectory(atPath: lyraPath, withIntermediateDirectories: true)
         return try Folder(path: lyraPath)
     }

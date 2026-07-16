@@ -32,9 +32,12 @@ extension ConfigInteractorImpl: ConfigInteractor {
     public var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { invalidSubject.eraseToAnyPublisher() }
 
     public func start() {
-        // Watch the parent directory only when the config file exists.
-        guard let path = configUseCase.existingConfigPath else { return }
-        let directory = (path as NSString).deletingLastPathComponent
+        // Watch the config directory whether or not the file exists yet, so a config
+        // created after daemon start (`lyra config init`, a manual save) is picked up
+        // as the initial load without a restart (#329). The gateway watches the
+        // directory — not the file — for atomic-save rename resilience, so an absent
+        // file inside an existing directory still arms correctly.
+        let directory = configUseCase.configDir
         let watchedGateway = gateway
         lock.withLock {
             // Idempotent: a second start() (router restart, test harness, future

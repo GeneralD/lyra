@@ -10,6 +10,14 @@ public protocol ConfigRepository: Sendable {
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
     var existingConfigPath: String? { get }
+    /// The directory the config file lives in, or would live in when absent —
+    /// the hot-reload watch target (#329). Defaults to empty; only the live
+    /// implementation resolves a real path, so unrelated test stubs need not.
+    var configDir: String { get }
+}
+
+extension ConfigRepository {
+    public var configDir: String { "" }
 }
 
 public enum ConfigRepositoryKey: TestDependencyKey {

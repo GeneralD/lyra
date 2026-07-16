@@ -93,6 +93,29 @@ struct ConfigInteractorImplTests {
         #expect(gateway.watchCallCount == 1)
         interactor.stop()
     }
+
+    @Test("config ファイルが無くても configDir を監視する（初回作成をホットリロードで拾う #329）")
+    func armsWatchOnConfigDirectoryWhenFileAbsent() {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(
+            outcome: .updated(.init(configDir: "/x")),
+            existingConfigPath: nil,
+            configDir: "/tmp/lyra")
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+
+        // No config file yet, but the directory watch is still armed (early-return removed).
+        #expect(gateway.watchCallCount == 1)
+        #expect(gateway.watchedDirectory == "/tmp/lyra")
+        interactor.stop()
+    }
 }
 
 // MARK: - Fakes / Stubs
@@ -101,13 +124,16 @@ private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Senda
     private let lock = NSLock()
     private var handler: (@Sendable () -> Void)?
     private var _watchCallCount = 0
+    private var _watchedDirectory: String?
 
     var watchCallCount: Int { lock.withLock { _watchCallCount } }
+    var watchedDirectory: String? { lock.withLock { _watchedDirectory } }
 
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
             handler = onChange
             _watchCallCount += 1
+            _watchedDirectory = directory
         }
         return FakeConfigWatchToken()
     }
@@ -123,10 +149,11 @@ private struct FakeConfigWatchToken: ConfigWatchToken {
 
 private struct StubConfigUseCase: ConfigUseCase, Sendable {
     let outcome: ConfigReloadOutcome
+    var existingConfigPath: String? = "/tmp/config.toml"
+    var configDir: String = "/tmp/lyra"  // The watched directory — resolved regardless of file existence (#329).
 
     var appStyle: AppStyle { .init() }
     func reload() -> ConfigReloadOutcome { outcome }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
-    var existingConfigPath: String? { "/tmp/config.toml" }  // Required to resolve the watched directory.
 }

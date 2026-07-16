@@ -111,7 +111,11 @@ Shared conventions:
   reports it (the strictness is the `strictOptionalSections` flag on
   `validate`/`tryDecode`, #330). The `ConfigWatchGateway` (Domain) /
   `FileWatchGateway` (Support) pair watches the config's *parent directory*
-  (atomic saves rename the file) via `DispatchSource`, and the
+  (atomic saves rename the file) via `DispatchSource` -- armed via
+  `ConfigUseCase.configDir` whether or not the file exists yet, so a config
+  created after the daemon starts (`lyra config init`, a manual save) is
+  picked up as the initial load without a restart, as long as the config
+  directory exists at start (#329). The
   `ConfigInteractor` module debounces watch events before calling
   `reload()` and republishing the outcome over Combine. An invalid reload
   is shown graphically (an amber "destabilized" geodesic sphere via

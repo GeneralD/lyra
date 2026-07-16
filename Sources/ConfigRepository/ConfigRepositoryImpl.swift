@@ -101,6 +101,10 @@ extension ConfigRepositoryImpl: ConfigRepository {
         dataSource.existingConfigPath
     }
 
+    public var configDir: String {
+        dataSource.configDir
+    }
+
     public func validate(strictOptionalSections: Bool) -> ConfigValidationResult {
         do {
             let path = try dataSource.tryDecode(strictOptionalSections: strictOptionalSections)
