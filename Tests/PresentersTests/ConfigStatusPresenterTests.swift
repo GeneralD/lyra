@@ -3,6 +3,7 @@ import Dependencies
 import Domain
 import Foundation
 import Testing
+import os
 
 @testable import Presenters
 
@@ -54,6 +55,27 @@ struct ConfigStatusPresenterTests {
         await Task.yield()
         #expect(presenter.invalidConfig == nil)
     }
+
+    @Test("start()/stop() が ConfigInteractor の watch lifecycle を駆動する")
+    func ownsInteractorLifecycle() {
+        // The presenter fronts the interactor so the AppRouter wireframe never
+        // reaches into the Interactor layer directly: start() arms the watch,
+        // stop() disarms it.
+        let interactor = StubConfigInteractor()
+        let presenter = withDependencies {
+            $0.configInteractor = interactor
+        } operation: {
+            ConfigStatusPresenter()
+        }
+
+        #expect(interactor.startCount == 0)
+        presenter.start()
+        #expect(interactor.startCount == 1)
+        #expect(interactor.stopCount == 0)
+
+        presenter.stop()
+        #expect(interactor.stopCount == 1)
+    }
 }
 
 private final class CancelBox: @unchecked Sendable {
@@ -65,9 +87,14 @@ private final class CancelBox: @unchecked Sendable {
 
 private final class StubConfigInteractor: ConfigInteractor, @unchecked Sendable {
     let invalid: AnyPublisher<ConfigReloadFailure?, Never>
-    init(invalid: AnyPublisher<ConfigReloadFailure?, Never>) { self.invalid = invalid }
+    private let counts = OSAllocatedUnfairLock(initialState: (start: 0, stop: 0))
+    init(invalid: AnyPublisher<ConfigReloadFailure?, Never> = Empty().eraseToAnyPublisher()) {
+        self.invalid = invalid
+    }
     var appStyleChanges: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
     var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { invalid }
-    func start() {}
-    func stop() {}
+    var startCount: Int { counts.withLock { $0.start } }
+    var stopCount: Int { counts.withLock { $0.stop } }
+    func start() { counts.withLock { $0.start += 1 } }
+    func stop() { counts.withLock { $0.stop += 1 } }
 }

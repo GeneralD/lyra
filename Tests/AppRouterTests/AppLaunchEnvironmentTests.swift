@@ -427,18 +427,17 @@ struct AppRouterTests {
 
         router.start()
 
-        // Reliably observable inside the bootstrap scope: start() calls
-        // configInteractor.start() from within withBootstrap, so the spy
-        // injected via AppDependencyBootstrap is the one actually resolved.
+        // ConfigStatusPresenter (created inside the bootstrap scope) owns the
+        // ConfigInteractor lifecycle now, so its start() arms the injected spy
+        // — the wireframe no longer touches the Interactor layer directly.
         #expect(spy.startCallCount == 1)
         #expect(hasValue(named: "configStatusPresenter", from: router))
 
         router.stop()
 
-        // stop()'s configInteractor.stop() call now runs inside the same
-        // bootstrap scope as start(), so @Dependency resolution consistently
-        // resolves this test's spy — the exact scoped instance that was
-        // started is the one that gets stopped.
+        // configStatusPresenter.stop() disarms the same spy: because the
+        // presenter captured the interactor in the bootstrap scope at
+        // construction, the exact instance that was started is the one stopped.
         #expect(spy.stopCallCount == 1)
         #expect(!hasValue(named: "configStatusPresenter", from: router))
     }

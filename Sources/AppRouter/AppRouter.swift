@@ -7,8 +7,6 @@ import Views
 /// Wireframe: creates Presenters, builds window, manages lifecycle.
 @MainActor
 public final class AppRouter {
-    @Dependency(\.configInteractor) private var configInteractor
-
     private let bootstrap: AppDependencyBootstrap
     private let windowFactory:
         @MainActor (
@@ -112,8 +110,11 @@ public final class AppRouter {
             ripplePresenter.start()
             spectrumPresenter.start()
             wallpaperPresenter.start()
+            // ConfigStatusPresenter owns the ConfigInteractor lifecycle
+            // (arming the config-file watch); it is started last so every
+            // `appStyleChanges` subscriber above is live before the initial
+            // reload fires.
             configStatusPresenter.start()
-            configInteractor.start()
 
             let window = windowFactory(
                 layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter,
@@ -176,12 +177,10 @@ public final class AppRouter {
         spectrumPresenter?.stop()
         defer { spectrumPresenter = nil }
 
-        // configInteractor is a `@Dependency`, not a stored instance like the
-        // presenters above, so it must be resolved inside the same bootstrap
-        // scope that start() used — otherwise a custom/test bootstrap's
-        // override never gets stopped and the process-wide default gets
-        // stopped instead (a different, possibly-never-started instance).
-        withBootstrap { configInteractor.stop() }
+        // ConfigStatusPresenter owns the ConfigInteractor lifecycle: its
+        // stop() disarms the watch. Because the presenter was constructed
+        // inside the bootstrap scope in start(), its `@Dependency` resolves the
+        // same interactor instance here without a manual `withBootstrap` wrap.
         configStatusPresenter?.stop()
         defer { configStatusPresenter = nil }
 
