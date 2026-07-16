@@ -29,8 +29,12 @@ extension FileWatchGateway: ConfigWatchGateway {
     private func watchPath(_ path: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return nil }
+        // `.attrib` is load-bearing: shrinking a file via ftruncate posts only
+        // NOTE_ATTRIB, never NOTE_WRITE, so a truncate-based in-place save would
+        // otherwise go unseen. Spurious attrib events (chmod, touch) are absorbed
+        // by the caller's debounce + idempotent reload.
         let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename], queue: .global())
+            fileDescriptor: fd, eventMask: [.write, .extend, .attrib, .delete, .rename], queue: .global())
         source.setEventHandler { onChange() }
         source.setCancelHandler { close(fd) }
         source.resume()
