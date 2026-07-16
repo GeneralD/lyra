@@ -16,29 +16,31 @@ public final class ConfigUseCaseImpl: @unchecked Sendable {
 extension ConfigUseCaseImpl: ConfigUseCase {
     public var appStyle: AppStyle { store.withLock { $0 } }
 
-    public func reload() -> ConfigReloadOutcome {
-        let fileExists = repository.existingConfigPath != nil
-        // Lenient: a malformed optional [ai]/[lyrics] section degrades to nil (exactly
-        // as startup does) rather than discarding valid text/wallpaper edits. Only a
-        // malformed required structure fails validation and keeps the previous style (#330).
-        switch repository.validate(strictOptionalSections: false) {
-        case .loaded:
-            let style = repository.loadAppStyle()
-            store.withLock { $0 = style }
-            return .updated(style)
-        case .defaults where !fileExists:
-            let style = repository.loadAppStyle()
-            store.withLock { $0 = style }
-            return .updated(style)
-        case .defaults:
-            // An empty tryDecode result for an existing file indicates a read failure,
-            // such as during an atomic save. Retain the previous value.
-            return .invalid(.init(path: repository.existingConfigPath ?? "", reason: .unreadable))
-        case .unreadable(let path):
-            return .invalid(.init(path: path, reason: .unreadable))
-        case .decodeError(let path, let error):
-            return .invalid(.init(path: path, reason: .decode(error)))
-        }
+public func reload() -> ConfigReloadOutcome {
+    let existingPath = repository.existingConfigPath
+    let fileExists = existingPath != nil
+    // Lenient: a malformed optional [ai]/[lyrics] section degrades to nil (exactly
+    // as startup does) rather than discarding valid text/wallpaper edits. Only a
+    // malformed required structure fails validation and keeps the previous style (#330).
+    switch repository.validate(strictOptionalSections: false) {
+    case .loaded:
+        let style = repository.loadAppStyle()
+        store.withLock { $0 = style }
+        return .updated(style)
+    case .defaults where !fileExists:
+        let style = repository.loadAppStyle()
+        store.withLock { $0 = style }
+        return .updated(style)
+    case .defaults:
+        // An empty tryDecode result for an existing file indicates a read failure,
+        // such as during an atomic save. Retain the previous value.
+        return .invalid(.init(path: existingPath ?? "", reason: .unreadable))
+    case .unreadable(let path):
+        return .invalid(.init(path: path, reason: .unreadable))
+    case .decodeError(let path, let error):
+        return .invalid(.init(path: path, reason: .decode(error)))
+    }
+}
     }
 
     public func template(format: ConfigFormat) -> String? {
