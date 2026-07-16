@@ -24,10 +24,18 @@ public final class WallpaperPresenter: ObservableObject {
     private(set) var items: [ResolvedWallpaperItem] = []
     private var mode: WallpaperPlaybackMode = .cycle
     private var currentIndex: Int = 0
-    /// The wallpaper source last applied. `applyStyle()` diffs the live source
-    /// against this so an unrelated config edit never re-resolves (and restarts)
-    /// the playing video; only a real source change reloads.
+    /// The wallpaper source last *successfully* applied — committed only when a
+    /// load resolves at least one item (or a genuine removal lands).
     private var appliedSource: WallpaperStyle?
+    /// The wallpaper source most recently handed to `loadWallpapers` — the
+    /// pending source while a load is in flight. `applyStyle()` diffs against
+    /// this, not `appliedSource`, so repeated config pings during a slow
+    /// resolution (remote download, yt-dlp) don't cancel and restart the
+    /// in-flight load, and a revert to the still-applied source mid-load is
+    /// seen as a change and cancels the pending swap. Rolled back to
+    /// `appliedSource` when a configured source resolves to zero items, so
+    /// re-saving the same value retries (#41 PR4 review, F8).
+    private var targetSource: WallpaperStyle?
 
     let controller = WallpaperPlaybackController()
     private var loadTask: Task<Void, Never>?
@@ -73,47 +81,55 @@ public final class WallpaperPresenter: ObservableObject {
     /// (`replaceCurrentItem`), so the overlay never blacks out mid-swap.
     private func applyStyle() {
         let source = interactor.wallpaperSource
-        guard source != appliedSource else { return }
+        guard source != targetSource else { return }
         loadWallpapers(source: source)
     }
 
     private func loadWallpapers(source: WallpaperStyle?) {
         loadTask?.cancel()
         setLoading(true)
-        items = []
-        currentIndex = 0
-        wallpaperScale = 1.0
+        targetSource = source
         mode = interactor.playbackMode
         let stream = interactor.resolvedWallpapers()
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            // The old playlist (and its published scale) stays live until the
+            // replacement's first item is ready — an eager reset would snap the
+            // still-playing video to scale 1.0 and, if the new source resolved
+            // empty, strand it unable to advance through its own playlist.
+            var replaced = false
             for await resolved in stream {
-                let wasEmpty = items.isEmpty
-                items.append(resolved)
-                if wasEmpty {
-                    setLoading(false)
+                if replaced {
+                    items.append(resolved)
+                } else {
+                    replaced = true
+                    items = [resolved]
                     currentIndex = 0
+                    setLoading(false)
                     await activateCurrentItem()
                 }
             }
-            // A newer load superseded this one (cancelled): it already reset
-            // `items`, so falling through to the empty-cleanup below would clear
-            // the still-playing video mid-swap. Bail instead (#41 PR4 review, F9).
+            // A newer load superseded this one (cancelled): the pending target
+            // now belongs to that load, so neither the commit nor the empty
+            // cleanup below may run for this stale one (#41 PR4 review, F9).
             guard !Task.isCancelled else { return }
-            if items.isEmpty {
-                setLoading(false)
-                // A genuine removal (nil source) applies and restores transparency.
-                // A configured source that resolved to zero items (transient
-                // download failure, or a file created just after the save) is NOT
-                // marked applied, so re-saving the same value retries resolution
-                // instead of being swallowed by the diff guard (#41 PR4 review, F8).
-                if source == nil {
-                    appliedSource = nil
-                    clearActiveItem()
-                }
-            } else {
+            if replaced {
                 // Commit the applied source only on a successful resolve.
                 appliedSource = source
+            } else {
+                setLoading(false)
+                if source == nil {
+                    // A genuine removal applies and restores transparency.
+                    appliedSource = nil
+                    clearActiveItem()
+                } else {
+                    // A configured source that resolved to zero items (transient
+                    // download failure, or a file created just after the save)
+                    // keeps the old wallpaper playing; rolling the target back
+                    // means re-saving the same value retries resolution instead
+                    // of being swallowed by the diff guard (#41 PR4 review, F8).
+                    targetSource = appliedSource
+                }
             }
         }
     }
@@ -196,6 +212,8 @@ extension WallpaperPresenter {
     /// no-wallpaper backing (a kept-alive player would leave a black surface,
     /// #41 PR4 review, F7). A later re-add builds a fresh player and re-attaches.
     private func clearActiveItem() {
+        items = []
+        currentIndex = 0
         wallpaperURL = nil
         startTime = nil
         endTime = nil
