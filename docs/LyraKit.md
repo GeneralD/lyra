@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/lyrakit-icon-transparent.png" alt="LyraKit" width="200">
+  <img src="../assets/lyrakit-wordmark.png" alt="LyraKit" width="600">
 </p>
 
 # LyraKit — Reuse lyra as a Swift library

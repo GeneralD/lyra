@@ -152,15 +152,17 @@ extension ConfigDataSourceImpl {
         try? decodeOrThrow(content: content, path: path, configDir: configDir)
     }
 
-    // [ai] and [lyrics] decode leniently at runtime (AppConfig.init wraps them in
-    // try? so a malformed optional enhancement section degrades to nil instead of
+    // [ai], [lyrics], and [developer] decode leniently at runtime (AppConfig.init
+    // wraps them in try? so a malformed optional section degrades to nil instead of
     // taking down the user's entire visual config), which hides their shape errors
-    // from decodeOrThrow. Validation must still surface them: probe the two sections
-    // strictly so `lyra healthcheck` reports a malformed [lyrics]/[ai] instead of
-    // the feature being silently disabled.
+    // from decodeOrThrow. Validation must still surface them: probe the sections
+    // strictly so `lyra healthcheck` reports a malformed [lyrics]/[ai]/[developer]
+    // instead of the feature being silently disabled — e.g. `lyrics_resolution = "true"`
+    // (string, not bool) would otherwise leave the trace quietly off.
     private struct StrictOptionalSections: Decodable {
         let ai: AIConfig?
         let lyrics: LyricsConfig?
+        let developer: DeveloperConfig?
     }
 
     func strictDecodeOptionalSections(content: String, path: String, configDir: String) throws {

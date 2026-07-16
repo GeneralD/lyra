@@ -141,6 +141,15 @@ let package = Package(
             ]
         ),
 
+        // ── DeveloperLog ──
+        .target(
+            name: "DeveloperLog",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // ── BenchmarkHandler ──
         .target(
             name: "BenchmarkHandler",
@@ -240,6 +249,7 @@ let package = Package(
                 "AppKitScreenProvider",
                 "Domain",
                 "RandomSource",
+                "DeveloperLog",
                 "TrackInteractor",
                 "ScreenInteractor",
                 "ConfigInteractor",
@@ -607,6 +617,14 @@ let package = Package(
         .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
+        .testTarget(
+            name: "DeveloperLogTests",
+            dependencies: [
+                "DeveloperLog",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(
             name: "ProcessHandlerTests",
             dependencies: [

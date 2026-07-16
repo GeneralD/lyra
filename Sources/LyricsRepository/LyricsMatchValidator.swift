@@ -12,6 +12,20 @@ struct LyricsMatchValidator {
     func isValid(candidate: Track, result: LyricsResult) -> Bool {
         titleMatches(candidate: candidate, result: result) && durationMatches(candidate: candidate, result: result)
     }
+
+    // Reason accessors for the resolution debug log (#331) — expose *why* a candidate
+    // matched or not, not just the boolean. `nil` means the corresponding check does
+    // not apply (empty result title, or a missing duration on either side), matching
+    // `isValid`'s skip semantics.
+    func titleSimilarity(candidate: Track, result: LyricsResult) -> Double? {
+        guard let resultTitle = result.trackName, !resultTitle.isEmpty else { return nil }
+        return Self.similarity(Self.normalized(candidate.title), Self.normalized(resultTitle))
+    }
+
+    func durationDelta(candidate: Track, result: LyricsResult) -> Double? {
+        guard let candidateDuration = candidate.duration, let resultDuration = result.duration else { return nil }
+        return abs(candidateDuration - resultDuration)
+    }
 }
 
 extension LyricsMatchValidator {

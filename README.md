@@ -474,6 +474,42 @@ own subprocess timeout so one dead endpoint cannot eat the whole budget,
 and remember that `timeout_ms` covers the entire `fallback_command` run —
 budget it above your per-source timeout with headroom.
 
+### `[developer]` — diagnostic toggles (optional)
+
+Off by default. A home for opt-in developer/debug toggles — currently the
+lyrics-resolution trace. When a song's lyrics fail to appear (or the wrong
+lyrics show), turn it on to record exactly *why* each attempt was accepted or
+rejected — the generated candidates, and for every tier (LRCLIB exact match,
+validated fuzzy search, custom script) the title-similarity score and
+duration delta behind each accept/reject.
+
+```toml
+[developer]
+lyrics_resolution = true
+# lyrics_resolution_file = "~/my-lyra-trace.log"   # optional; default is below
+```
+
+- `lyrics_resolution` — enable the trace (default `false`).
+- `lyrics_resolution_file` — where to append. Omit (or leave blank) to use
+  the default `${XDG_CACHE_HOME:-~/.cache}/lyra/lyrics-debug.log` — this is the
+  only place `$XDG_CACHE_HOME` applies. In an explicit path, `~` is expanded but
+  environment variables are **not** (the value is otherwise used verbatim).
+
+The value is read once at startup, so toggling it takes a `lyra restart`.
+Each resolution appends a block like:
+
+```text
+=== lyrics resolve  candidates=4 ===
+candidates: Yesterday/The Beatles/180s | Yesterday/The Beatles/125s | ...
+tierA Yesterday/The Beatles/180s get -> miss
+tierB Yesterday/The Beatles/180s search '...' -> found Yesterday/The Beatles/125s [synced] REJECT [titleSim=1.00 durΔ=55s]
+result: none
+```
+
+The trace contains the titles and artists you play (i.e. your listening
+history), so it stays a local file and is never uploaded anywhere — share
+excerpts by hand only.
+
 ### Screen selection
 
 | Value | Behavior |

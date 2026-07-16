@@ -126,4 +126,49 @@ struct ConfigDataSourceImplTryDecodeTests {
         #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: false) }
         #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
+
+    @Test("a malformed [developer] section fails validation instead of silently disabling the trace")
+    func malformedDeveloperSectionFailsValidation() throws {
+        let (dataSource, folder) = try dataSource(
+            withConfig: """
+                screen = "main"
+
+                [developer]
+                lyrics_resolution = "true"
+                """)
+        defer { try? folder.delete() }
+
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
+    }
+
+    @Test("a malformed [developer] section still loads leniently — the rest of the config survives")
+    func malformedDeveloperSectionLoadsLeniently() throws {
+        let (dataSource, folder) = try dataSource(
+            withConfig: """
+                screen = "main"
+
+                [developer]
+                lyrics_resolution = "true"
+                """)
+        defer { try? folder.delete() }
+
+        let loaded = dataSource.load()
+        #expect(loaded != nil)
+        #expect(loaded?.config.developer == nil)
+        #expect(loaded?.config.screen == .main)
+    }
+
+    @Test("a well-formed [developer] section passes validation")
+    func wellFormedDeveloperSectionPassesValidation() throws {
+        let (dataSource, folder) = try dataSource(
+            withConfig: """
+                screen = "main"
+
+                [developer]
+                lyrics_resolution = true
+                """)
+        defer { try? folder.delete() }
+
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: true) }
+    }
 }
