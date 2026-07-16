@@ -133,18 +133,18 @@ public final class AppRouter {
                 window?.applyWallpaperScale(scale)
             }
 
-            // Only enabled features pay a per-frame cost: each optional
-            // handler is included in the frame fan-out only when its feature
-            // is on, so a disabled ripple/spectrum adds zero work per tick.
+            // Ripple and spectrum handlers are always installed so enabling either
+            // at runtime resumes its per-frame work without rebuilding the fan-out
+            // (#41 PR3). Each bails cheaply while its feature is inactive —
+            // `idle()` on an enabled guard, `tick()` on its capturing/residue guard
+            // — so a disabled feature still adds no real per-frame cost (#252/#258).
             let frameHandlers: [@MainActor @Sendable (Double) -> Void] = [
-                ripplePresenter.isEnabled
-                    ? { @MainActor @Sendable [weak self] _ in self?.ripplePresenter?.idle() } : nil,
-                spectrumPresenter.isEnabled
-                    ? { @MainActor @Sendable [weak self] interval in
-                        self?.spectrumPresenter?.tick(frameInterval: interval)
-                    } : nil,
+                { @MainActor @Sendable [weak self] _ in self?.ripplePresenter?.idle() },
+                { @MainActor @Sendable [weak self] interval in
+                    self?.spectrumPresenter?.tick(frameInterval: interval)
+                },
                 { @MainActor @Sendable [weak self] _ in self?.lyricsPresenter?.updateActiveLineTick() },
-            ].compactMap { $0 }
+            ]
             let onFrame: @MainActor @Sendable (Double) -> Void = { interval in
                 for handler in frameHandlers { handler(interval) }
             }
