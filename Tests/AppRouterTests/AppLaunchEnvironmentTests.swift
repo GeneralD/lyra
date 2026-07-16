@@ -365,6 +365,12 @@ struct AppRouterTests {
         }
 
         #expect(window is AppWindow)
+
+        // Drive the instance-level player wrappers on the real window: the
+        // static layer plumbing is covered via SpyOverlayWindowSurface, and
+        // this exercises the thin forwarding added for hot reload (#41 PR4).
+        window.attachPlayerLayer(for: AVPlayer())
+        window.detachPlayerLayer()
     }
 
     @Test("start applies bootstrap fixture graph and stop tears it down")
