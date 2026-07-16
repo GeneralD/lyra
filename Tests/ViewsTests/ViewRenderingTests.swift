@@ -25,7 +25,10 @@ private func render<Content: View>(_ view: Content, size: CGSize) {
 
 @MainActor
 private func waitUntil(
-    timeout: Duration = .seconds(3),
+    // 5s default (not 3s): the wallpaper loading-indicator test polls
+    // `showLoadingIndicator`, which flips inside a detached `Task { @MainActor }`
+    // whose scheduling can slip past 3s under CI parallel + coverage load.
+    timeout: Duration = .seconds(5),
     condition: @escaping @MainActor () -> Bool
 ) async {
     let deadline = ContinuousClock.now + timeout
@@ -47,6 +50,7 @@ private struct IdleTrackInteractor: TrackInteractor, @unchecked Sendable {
 
 private struct DisabledRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle { .init(enabled: false) }
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
@@ -54,6 +58,7 @@ private struct DisabledRippleInteractor: WallpaperInteractor {
 
 private struct EnabledRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle { .init(enabled: true) }
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
@@ -61,6 +66,7 @@ private struct EnabledRippleInteractor: WallpaperInteractor {
 
 private struct PolygonRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle {
         .init(enabled: true, shape: .polygon(sides: 6, angle: 15))
     }
@@ -375,6 +381,7 @@ struct LyricsColumnViewRenderingTests {
 
 private struct PendingWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle { .init(enabled: false) }
     /// Stream that never yields and never finishes — keeps WallpaperPresenter.isLoading == true.
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {

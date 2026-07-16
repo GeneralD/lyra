@@ -135,6 +135,39 @@ struct AppWindowTests {
         #expect(playerLayer?.affineTransform().d == 1.25)
     }
 
+    @Test("detachPlayer removes the player layer and restores the transparent backing")
+    func detachPlayerRestoresTransparentBacking() {
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 500)
+        )
+        surface.contentView = hostingView
+        AppWindow.attachPlayer(AVPlayer(), to: surface, hostingView: hostingView)
+        #expect(surface.contentView !== hostingView)
+
+        AppWindow.detachPlayer(from: surface, hostingView: hostingView)
+
+        // Hosting view is restored as the direct content view; no player layer left.
+        #expect(surface.contentView === hostingView)
+        #expect(surface.overlayBackgroundColor == .clear)
+        #expect(surface.isOpaque == false)
+        let playerLayer = surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
+        #expect(playerLayer == nil)
+    }
+
+    @Test("detachPlayer is a no-op when no player layer is attached")
+    func detachPlayerNoOpWithoutLayer() {
+        let hostingView = NSView()
+        let surface = SpyOverlayWindowSurface(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 500)
+        )
+        surface.contentView = hostingView
+
+        AppWindow.detachPlayer(from: surface, hostingView: hostingView)
+
+        #expect(surface.contentView === hostingView)
+    }
+
     @Test("apply skips window setFrame when the surface frame already matches (loop safety)")
     func applySkipsMatchingWindowFrame() {
         let layout = ScreenLayout(

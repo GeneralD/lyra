@@ -61,6 +61,7 @@ private struct FixtureWallpaperInteractor: WallpaperInteractor {
     var rippleConfig: RippleStyle = .init(enabled: false)
 
     var playbackMode: WallpaperPlaybackMode { wallpaperState.mode }
+    var wallpaperSource: WallpaperStyle? { nil }
 
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         let items = wallpaperState.items
@@ -577,6 +578,7 @@ struct AppRouterTests {
     final class SpyWindow: OverlayWindow {
         var showCallCount = 0
         var closeCallCount = 0
+        var detachCallCount = 0
         var appliedLayouts: [ScreenLayout] = []
         var attachedPlayers: [AVPlayer] = []
         var appliedWallpaperScales: [Double] = []
@@ -591,6 +593,10 @@ struct AppRouterTests {
 
         func attachPlayerLayer(for player: AVPlayer) {
             attachedPlayers.append(player)
+        }
+
+        func detachPlayerLayer() {
+            detachCallCount += 1
         }
 
         func applyWallpaperScale(_ scale: Double) {
@@ -657,6 +663,7 @@ struct AccessibilityHooksTests {
     private struct EnabledRippleWallpaperInteractor: WallpaperInteractor {
         var rippleConfig: RippleStyle { .init(enabled: true) }
         var playbackMode: WallpaperPlaybackMode { .cycle }
+        var wallpaperSource: WallpaperStyle? { nil }
         func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
         var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
     }

@@ -129,6 +129,9 @@ public final class AppRouter {
                 window?.attachPlayerLayer(for: player)
                 window?.applyWallpaperScale(wallpaperPresenter?.wallpaperScale ?? 1.0)
             }
+            wallpaperPresenter.onPlayerCleared { [weak window] in
+                window?.detachPlayerLayer()
+            }
             wallpaperPresenter.onWallpaperScaleChange { [weak window] scale in
                 window?.applyWallpaperScale(scale)
             }
