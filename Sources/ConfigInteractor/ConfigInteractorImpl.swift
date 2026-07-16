@@ -63,19 +63,25 @@ extension ConfigInteractorImpl: ConfigInteractor {
             debounceTask?.cancel()
             debounceTask = Task { [weak self, clock] in
                 try? await clock.sleep(for: .milliseconds(150))
-                guard !Task.isCancelled else { return }
                 self?.applyReload()
             }
         }
     }
 
     private func applyReload() {
-        switch configUseCase.reload() {
-        case .updated:
-            invalidSubject.send(nil)
-            appStyleSubject.send(())
-        case .invalid(let failure):
-            invalidSubject.send(failure)
+        // Both teardown signals are checked under the same lock stop() takes, and
+        // the reload + publishes stay inside it: a debounce task that already woke
+        // can't slip a reload or a spurious UI update past a concurrent stop() —
+        // once stop() returns, nothing further is emitted.
+        lock.withLock {
+            guard token != nil, !Task.isCancelled else { return }
+            switch configUseCase.reload() {
+            case .updated:
+                invalidSubject.send(nil)
+                appStyleSubject.send(())
+            case .invalid(let failure):
+                invalidSubject.send(failure)
+            }
         }
     }
 }

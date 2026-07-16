@@ -94,6 +94,36 @@ struct ConfigInteractorImplTests {
         interactor.stop()
     }
 
+    @Test("stop() 後に pending の debounce が発火しても publish されない（teardown race）")
+    func stopSuppressesPendingReload() async {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(outcome: .updated(.init(configDir: "/x")))
+        let testClock = TestClock()
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = testClock
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        final class Observed: @unchecked Sendable {
+            var pinged = false
+        }
+        let observed = Observed()
+        let cancellable = interactor.appStyleChanges.sink { observed.pinged = true }
+
+        interactor.start()
+        gateway.fire()  // The debounce task is now pending on clock.sleep.
+        interactor.stop()  // Cancels: the sleep throws and the task still reaches applyReload.
+
+        // The woken task must bail on the armed/cancelled guard instead of
+        // publishing a spurious update after teardown.
+        for _ in 0..<20 { await Task.yield() }
+        #expect(!observed.pinged)
+        cancellable.cancel()
+    }
+
     @Test("config ファイルが無くても configDir を監視する（初回作成をホットリロードで拾う #329）")
     func armsWatchOnConfigDirectoryWhenFileAbsent() {
         let gateway = FakeConfigWatchGateway()
