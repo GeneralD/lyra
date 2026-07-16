@@ -58,6 +58,26 @@ struct WallpaperInteractorImplTests {
         #expect(interactor.playbackMode == .cycle)
     }
 
+    @Test("wallpaperSource exposes the config's wallpaper style (nil when absent)")
+    func wallpaperSourceReflectsConfig() {
+        let wallpaper = WallpaperStyle(location: "bg.mp4", start: 10, end: 180, scale: 1.25)
+        let configured = withDependencies {
+            $0.configUseCase = StubConfigUseCase(style: AppStyle(wallpaper: wallpaper, configDir: "/config"))
+            $0.wallpaperUseCase = StubWallpaperUseCase()
+        } operation: {
+            WallpaperInteractorImpl()
+        }
+        let unconfigured = withDependencies {
+            $0.configUseCase = StubConfigUseCase()
+            $0.wallpaperUseCase = StubWallpaperUseCase()
+        } operation: {
+            WallpaperInteractorImpl()
+        }
+
+        #expect(configured.wallpaperSource == wallpaper)
+        #expect(unconfigured.wallpaperSource == nil)
+    }
+
     @Test("resolvedWallpapers emits single item for legacy single-location config")
     func singleItem() async throws {
         let resolved = URL(fileURLWithPath: "/resolved/bg.mp4")

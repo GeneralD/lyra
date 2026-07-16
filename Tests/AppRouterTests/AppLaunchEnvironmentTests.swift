@@ -88,12 +88,42 @@ private struct FixtureSpectrumInteractor: SpectrumInteractor {
 private final class SpyConfigInteractor: ConfigInteractor, @unchecked Sendable {
     var startCallCount = 0
     var stopCallCount = 0
+    private let appStyleSubject = PassthroughSubject<Void, Never>()
 
-    var appStyleChanges: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
+    var appStyleChanges: AnyPublisher<Void, Never> { appStyleSubject.eraseToAnyPublisher() }
     var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { Just(nil).eraseToAnyPublisher() }
 
     func start() { startCallCount += 1 }
     func stop() { stopCallCount += 1 }
+
+    func ping() { appStyleSubject.send(()) }
+}
+
+/// Wallpaper fake whose source and resolve results can change between config
+/// reloads, so router tests can drive the "wallpaper removed by hot reload"
+/// transition end-to-end.
+private final class MutableSourceWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
+    var source: WallpaperStyle?
+    var items: [ResolvedWallpaperItem]
+
+    init(source: WallpaperStyle?, items: [ResolvedWallpaperItem]) {
+        self.source = source
+        self.items = items
+    }
+
+    var wallpaperSource: WallpaperStyle? { source }
+    var playbackMode: WallpaperPlaybackMode { .cycle }
+    var rippleConfig: RippleStyle { .init(enabled: false) }
+
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        let items = items
+        return AsyncStream { continuation in
+            for item in items { continuation.yield(item) }
+            continuation.finish()
+        }
+    }
+
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
 
 private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
@@ -308,6 +338,35 @@ struct AppRouterTests {
         #expect(frameScheduler is DisplayLinkDriver)
     }
 
+    @Test("default window factory creates AppWindow")
+    func defaultFactoryCreatesAppWindow() {
+        let bootstrap = AppDependencyBootstrap(
+            launchEnvironment: .init(environment: [.uiTestMode: "true"])
+        )
+        let layout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+            hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+            screenOrigin: .zero
+        )
+
+        let window = withDependencies {
+            bootstrap.apply(to: &$0)
+            $0.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+        } operation: {
+            AppRouter.defaultWindowFactory(
+                layout: layout,
+                headerPresenter: HeaderPresenter(),
+                lyricsPresenter: LyricsPresenter(),
+                ripplePresenter: RipplePresenter(),
+                spectrumPresenter: SpectrumPresenter(),
+                wallpaperPresenter: WallpaperPresenter(),
+                configStatusPresenter: nil
+            )
+        }
+
+        #expect(window is AppWindow)
+    }
+
     @Test("start applies bootstrap fixture graph and stop tears it down")
     func startAndStop() async {
         let window = SpyWindow()
@@ -494,6 +553,58 @@ struct AppRouterTests {
 
         #expect(window.appliedLayouts.count == 1)
         #expect(sameLayout(window.appliedLayouts.last, updatedLayout))
+    }
+
+    @Test("config reload that removes the wallpaper detaches the player from the window")
+    func wallpaperRemovalDetachesPlayer() async {
+        let wallpaperInteractor = MutableSourceWallpaperInteractor(
+            source: WallpaperStyle(
+                items: [WallpaperItem(location: "/tmp/router-wallpaper.mp4", scale: 1.0)],
+                mode: .cycle
+            ),
+            items: [.init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"), scale: 1.0)]
+        )
+        let configInteractor = SpyConfigInteractor()
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = MutableScreenInteractor(
+                    layout: ScreenLayout(
+                        windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        screenOrigin: .zero
+                    )
+                )
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = wallpaperInteractor
+                dependencies.configInteractor = configInteractor
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        defer { router.stop() }
+
+        await waitUntil { window.attachedPlayers.count == 1 }
+        #expect(window.attachedPlayers.count == 1)
+
+        // The reload removed [wallpaper]: the source is now nil and the resolve
+        // stream is empty, so the presenter clears the player and the router
+        // must forward that to the window as a layer detach.
+        wallpaperInteractor.source = nil
+        wallpaperInteractor.items = []
+        configInteractor.ping()
+
+        await waitUntil { window.detachCallCount == 1 }
+        #expect(window.detachCallCount == 1)
     }
 
     @Test("frame scheduler tick runs through ripple-enabled callback branch (#278)")

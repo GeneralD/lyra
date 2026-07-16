@@ -476,6 +476,54 @@ struct OverlayContentViewLoadingTests {
             size: CGSize(width: 800, height: 500)
         )
     }
+
+    @Test("renders the config status branch when a presenter is provided")
+    func rendersWithConfigStatusPresenter() async {
+        let headerPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            HeaderPresenter()
+        }
+        let lyricsPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            LyricsPresenter()
+        }
+        let ripplePresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+            $0.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+        } operation: {
+            RipplePresenter()
+        }
+        let wallpaperPresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+        } operation: {
+            WallpaperPresenter()
+        }
+        let configStatusPresenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(
+                invalid: Just(.init(path: "/c.toml", reason: .decode("x"))).eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+
+        configStatusPresenter.start()
+        defer { configStatusPresenter.stop() }
+        await waitUntil { configStatusPresenter.invalidConfig != nil }
+
+        render(
+            OverlayContentView(
+                headerPresenter: headerPresenter,
+                lyricsPresenter: lyricsPresenter,
+                ripplePresenter: ripplePresenter,
+                spectrumPresenter: SpectrumPresenter(),
+                wallpaperPresenter: wallpaperPresenter,
+                configStatusPresenter: configStatusPresenter
+            ),
+            size: CGSize(width: 800, height: 500)
+        )
+        #expect(configStatusPresenter.invalidConfig != nil)
+    }
 }
 
 // MARK: - ConfigStatusOverlay

@@ -126,6 +126,26 @@ struct ConfigUseCaseTests {
         }
     }
 
+    @Test("validate の .unreadable は .invalid(.unreadable) として前回値保持")
+    func reloadSurfacesUnreadableValidation() {
+        let counter = CountingConfigRepository()
+        counter.validation = .unreadable(path: "/c.toml")
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            let outcome = useCase.reload()  // Validation fails; loadAppStyle is not called (count remains 1).
+            #expect(counter.callCount == 1)
+            guard case .invalid(let f) = outcome else {
+                Issue.record("expected .invalid")
+                return
+            }
+            #expect(f.path == "/c.toml")
+            #expect(f.reason == .unreadable)
+        }
+    }
+
     @Test("ファイル不在の .defaults は正当なデフォルト適用として .updated")
     func reloadAppliesDefaultsWhenNoFile() {
         let counter = CountingConfigRepository()

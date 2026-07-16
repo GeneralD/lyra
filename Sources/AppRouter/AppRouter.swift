@@ -32,22 +32,30 @@ public final class AppRouter {
         DisplayLinkDriver(onFrame: onFrame)
     }
 
+    static func defaultWindowFactory(
+        layout: ScreenLayout,
+        headerPresenter: HeaderPresenter,
+        lyricsPresenter: LyricsPresenter,
+        ripplePresenter: RipplePresenter,
+        spectrumPresenter: SpectrumPresenter,
+        wallpaperPresenter: WallpaperPresenter,
+        configStatusPresenter: ConfigStatusPresenter?
+    ) -> any OverlayWindow {
+        AppWindow(
+            initialLayout: layout,
+            headerPresenter: headerPresenter,
+            lyricsPresenter: lyricsPresenter,
+            ripplePresenter: ripplePresenter,
+            spectrumPresenter: spectrumPresenter,
+            wallpaperPresenter: wallpaperPresenter,
+            configStatusPresenter: configStatusPresenter
+        )
+    }
+
     public convenience init(launchEnvironment: AppLaunchEnvironment = .current) {
         self.init(
             bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
-            windowFactory: {
-                layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter,
-                configStatusPresenter in
-                AppWindow(
-                    initialLayout: layout,
-                    headerPresenter: headerPresenter,
-                    lyricsPresenter: lyricsPresenter,
-                    ripplePresenter: ripplePresenter,
-                    spectrumPresenter: spectrumPresenter,
-                    wallpaperPresenter: wallpaperPresenter,
-                    configStatusPresenter: configStatusPresenter
-                )
-            },
+            windowFactory: Self.defaultWindowFactory,
             frameSchedulerFactory: Self.defaultFrameSchedulerFactory
         )
     }
