@@ -172,3 +172,72 @@ struct ConfigDataSourceImplTryDecodeTests {
         #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
 }
+
+// Per-call readers ([lyrics] fallback, [ai] endpoint) re-read the config on every
+// lookup. While an invalid edit sits on disk, `reload()` keeps the previous style —
+// `load()` must honor the same contract and serve the last accepted config instead
+// of silently degrading those features to defaults (#337 review).
+@Suite("ConfigDataSourceImpl.load — last-good retention across invalid states")
+struct ConfigDataSourceImplLastGoodLoadTests {
+    private func dataSource(withConfig content: String) throws -> (ConfigDataSourceImpl, Folder, File) {
+        let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
+        let lyraDir = try xdgConfig.createSubfolder(named: "lyra")
+        let file = try lyraDir.createFile(named: "config.toml")
+        try file.write(content)
+        return (ConfigDataSourceImpl(configHome: xdgConfig.path), xdgConfig, file)
+    }
+
+    @Test("an invalid on-disk state serves the last successfully decoded config")
+    func invalidStateServesLastGood() throws {
+        let (dataSource, folder, file) = try dataSource(withConfig: "screen = \"main\"")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load()?.config.screen == .main)
+
+        // `wallpaper = [` is an unterminated array — the required decode fails.
+        try file.write("wallpaper = [")
+
+        #expect(dataSource.load()?.config.screen == .main)
+    }
+
+    @Test("an invalid config with no prior successful load returns nil")
+    func invalidWithoutPriorGoodReturnsNil() throws {
+        let (dataSource, folder, _) = try dataSource(withConfig: "wallpaper = [")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load() == nil)
+    }
+
+    @Test("deleting the config file clears the last-good fallback — removal means defaults")
+    func deletingFileClearsLastGood() throws {
+        let (dataSource, folder, file) = try dataSource(withConfig: "screen = \"main\"")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load() != nil)
+
+        let parent = try Folder(path: file.parent?.path ?? "")
+        try file.delete()
+
+        #expect(dataSource.load() == nil)
+
+        // Recreate the file with broken content: the pre-deletion value must not
+        // resurface — the deletion cleared the fallback, so the invalid state has
+        // nothing to fall back to. (Without the clear, `screen = .main` would leak.)
+        try parent.createFile(named: "config.toml").write("wallpaper = [")
+        #expect(dataSource.load() == nil)
+    }
+
+    @Test("fixing the config replaces the last-good fallback with the fresh values")
+    func fixedConfigServesFreshValues() throws {
+        let (dataSource, folder, file) = try dataSource(withConfig: "screen = \"main\"")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load()?.config.screen == .main)
+
+        try file.write("wallpaper = [")
+        #expect(dataSource.load()?.config.screen == .main)
+
+        try file.write("screen = \"largest\"")
+        #expect(dataSource.load()?.config.screen == .largest)
+    }
+}

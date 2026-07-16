@@ -365,6 +365,44 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(await captured.executable == "/usr/bin/scriptB")
         #expect(await captured.timeoutMs == 2000)
     }
+
+    // While a rejected edit (broken required structure) sits on disk, `reload()`
+    // keeps the previous style — and the per-call config read here must keep the
+    // previous [lyrics] values too, not silently disable the Tier C fallback until
+    // the user fixes the file (#337 review).
+    @Test("get() keeps the last accepted fallback_command while an invalid config sits on disk")
+    func keepsFallbackAcrossRejectedEdit() async throws {
+        let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
+        defer { try? xdgConfig.delete() }
+        let lyraDir = try xdgConfig.createSubfolder(named: "lyra")
+        let configFile = try lyraDir.createFile(named: "config.toml")
+        try configFile.write(
+            """
+            [lyrics]
+            fallback_command = ["/usr/bin/scriptA"]
+            """)
+
+        let captured = CapturedInvocation()
+        let dataSource = withDependencies {
+            $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
+        } operation: {
+            CustomScriptLyricsDataSourceImpl(processRunner: { executable, arguments, environment, timeoutMs in
+                await captured.record(executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
+                return (status: 0, stdout: #"{"track_name": "T", "plain_lyrics": "L"}"#, stderr: "")
+            })
+        }
+
+        let primed = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(primed != nil)
+
+        // A broken required structure lands on disk: reload() rejects it and keeps
+        // the previous config in effect — the fallback must keep running too.
+        try configFile.write("wallpaper = [")
+
+        let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+        #expect(result != nil)
+        #expect(await captured.executable == "/usr/bin/scriptA")
+    }
 }
 
 /// Builds a `CustomScriptLyricsDataSourceImpl` with `[lyrics]` config values supplied via

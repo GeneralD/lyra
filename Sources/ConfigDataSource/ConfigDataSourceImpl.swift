@@ -2,9 +2,22 @@ import Domain
 import Files
 import Foundation
 import TOMLKit
+import os
 
 public struct ConfigDataSourceImpl: Sendable {
     private let configHomeOverride: String?
+    /// The last successfully decoded load, shared across value copies of this
+    /// struct (the DI `liveValue` is a single long-lived instance). `load()`
+    /// falls back to it while the on-disk config fails the *required* decode
+    /// (broken TOML, malformed text/wallpaper section), so consumers that
+    /// deliberately re-read per call — `[lyrics]` fallback_command, `[ai]`
+    /// endpoint — keep honoring the last accepted config across a rejected
+    /// hot-reload edit, mirroring `ConfigUseCase.reload()`'s keep-previous-style
+    /// contract instead of silently degrading to defaults (#337 review).
+    /// A malformed optional `[ai]`/`[lyrics]`/`[developer]` section alone is NOT
+    /// protected: the lenient decode degrades it to `nil` and still succeeds, so
+    /// the cache is overwritten — matching what `reload()` accepts (#330).
+    private let lastGoodLoad = LastGoodLoadBox()
 
     public init(configHome: String? = nil) {
         configHomeOverride = configHome?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -13,12 +26,24 @@ public struct ConfigDataSourceImpl: Sendable {
 
 extension ConfigDataSourceImpl: ConfigDataSource {
     public func load() -> ConfigLoadResult? {
-        guard let file = findConfigFile(),
-            let content = try? file.readAsString()
-        else { return nil }
+        guard let file = findConfigFile() else {
+            // No config file at all: a deliberate removal means defaults, so the
+            // last-good fallback must not outlive the file it came from.
+            lastGoodLoad.value = nil
+            return nil
+        }
         let configDir = file.parent?.path ?? Folder.home.path
-        guard let config = decode(content: content, path: file.path, configDir: configDir) else { return nil }
-        return ConfigLoadResult(config: config, configDir: configDir)
+        guard let content = try? file.readAsString(),
+            let config = decode(content: content, path: file.path, configDir: configDir)
+        else {
+            // The file exists but is unreadable or undecodable right now (a
+            // rejected mid-edit state, or an atomic-save window): serve the last
+            // accepted config so per-call readers keep working until it's fixed.
+            return lastGoodLoad.value
+        }
+        let result = ConfigLoadResult(config: config, configDir: configDir)
+        lastGoodLoad.value = result
+        return result
     }
 
     public func template(format: ConfigFormat) -> String? {
@@ -78,6 +103,18 @@ extension ConfigDataSourceImpl: ConfigDataSource {
             try strictDecodeOptionalSections(content: content, path: file.path, configDir: configDir)
         }
         return file.path
+    }
+}
+
+/// Reference-type backing for the last-good load so every value copy of
+/// `ConfigDataSourceImpl` shares one cache. `@unchecked Sendable`: all access
+/// goes through the unfair lock.
+private final class LastGoodLoadBox: @unchecked Sendable {
+    private let state = OSAllocatedUnfairLock<ConfigLoadResult?>(initialState: nil)
+
+    var value: ConfigLoadResult? {
+        get { state.withLock { $0 } }
+        set { state.withLock { $0 = newValue } }
     }
 }
 
