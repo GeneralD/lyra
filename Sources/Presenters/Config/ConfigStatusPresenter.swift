@@ -29,6 +29,7 @@ public final class ConfigStatusPresenter: ObservableObject {
             .store(in: &cancellables)
         // Arm the watch only after the invalid-state subscription is live, and after AppRouter has
         // started the other `appStyleChanges` subscribers, so no reload events are missed.
+        interactor.start()
     }
 
     public func stop() {
