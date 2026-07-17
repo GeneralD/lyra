@@ -115,16 +115,19 @@ Shared conventions:
   reports it (the strictness is the `strictOptionalSections` flag on
   `validate`/`tryDecode`, #330). The `ConfigWatchGateway` (Domain) /
   `FileWatchGateway` (Support) pair watches the config's *parent directory*
-  (atomic saves rename the file) plus a re-armed file tier via
-  `DispatchSource`. The gateway is consumed at the **DataSource layer**:
+  (atomic saves rename the file) plus a file tier via `DispatchSource`; both
+  tiers are re-armed from disk on every event, since a renamed file and a
+  replaced directory each leave their fd on a dead vnode. The gateway is consumed at the **DataSource layer**:
   `ConfigDataSourceImpl.watchChanges(onChange:)` owns target resolution
   (config file, `includes`, foreign include parents) and per-event re-arming,
   and the watch reaches the interactor only through `ConfigRepository` /
   `ConfigUseCase` pass-throughs -- adjacent layers only, no layer skipping.
   The directory watch arms whether or not the file exists yet, so a config
   created after the daemon starts (`lyra config init`, a manual save) is
-  picked up as the initial load without a restart, as long as the config
-  directory exists at start (#329). The
+  picked up as the initial load without a restart (#329); a missing config
+  *directory* parks the watch on its nearest existing ancestor and promotes
+  it (firing the initial load) once the directory appears, demoting back
+  the same way if it is deleted while running (#338). The
   `ConfigInteractor` module debounces watch events before calling
   `reload()` and republishing the outcome over Combine. An invalid reload
   is shown graphically (an amber "destabilized" geodesic sphere via

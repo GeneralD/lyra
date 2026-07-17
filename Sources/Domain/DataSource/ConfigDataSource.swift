@@ -19,8 +19,11 @@ public protocol ConfigDataSource: Sendable {
     /// calling `onChange` on an arbitrary queue for every change until the
     /// returned token is stopped. The watched set is resolved (and re-armed)
     /// from the on-disk config by the implementation, so it can never drift
-    /// from what decode actually merges. Returns nil when the config directory
-    /// cannot be watched. Defaults to nil; only the live implementation arms a
+    /// from what decode actually merges. A config directory that does not
+    /// exist yet parks the watch on its nearest existing ancestor and promotes
+    /// it once the directory appears, firing `onChange` as the initial load
+    /// (#338) — so nil is returned only when nothing on that chain is
+    /// watchable either. Defaults to nil; only the live implementation arms a
     /// real watch, so unrelated test stubs need not.
     func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)?
 }
