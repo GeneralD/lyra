@@ -94,6 +94,29 @@ struct RipplePresenterTests {
                 presenter.stop()
             }
         }
+
+        @MainActor
+        @Test("stop then start rebuilds RippleState — the applied-config sentinel does not survive teardown")
+        func restartAfterStopRebuildsState() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                let firstState = presenter.rippleState
+                #expect(firstState != nil)
+
+                presenter.stop()
+                // The enabled config is unchanged across the restart: applyStyle
+                // must treat it as a fresh apply (rebuilding state and re-attaching
+                // the monitor), not diff it against the pre-stop sentinel.
+                presenter.start()
+                #expect(presenter.rippleState != nil)
+                #expect(presenter.rippleState !== firstState)
+                presenter.stop()
+            }
+        }
     }
 
     @Suite("idle")

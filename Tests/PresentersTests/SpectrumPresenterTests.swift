@@ -101,6 +101,33 @@ struct SpectrumPresenterTests {
     }
 
     @MainActor
+    @Test("stop then start restarts the capture — the applied-style sentinel does not survive teardown")
+    func restartAfterStopRestartsCapture() {
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        let presenter = Self.presenter(with: interactor)
+        presenter.start()
+        #expect(interactor.startCount == 1)
+
+        presenter.stop()
+        #expect(interactor.stopCount == 1)
+
+        // The enabled config is unchanged across the restart: applyStyle must
+        // treat it as a fresh apply, not a no-change diff, and restart capture.
+        presenter.start()
+        #expect(interactor.startCount == 2)
+    }
+
+    @MainActor
+    @Test("a second start() without stop() is idempotent")
+    func duplicateStartIsIdempotent() {
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        let presenter = Self.presenter(with: interactor)
+        presenter.start()
+        presenter.start()
+        #expect(interactor.startCount == 1)
+    }
+
+    @MainActor
     @Test("a config ping toggles the capture lifecycle on enable then disable (#41 PR3)")
     func togglesCaptureOnConfigPing() async {
         let interactor = FakeSpectrumInteractor(style: SpectrumStyle(enabled: false))

@@ -64,6 +64,9 @@ public final class SpectrumPresenter: ObservableObject {
     public var style: SpectrumStyle { interactor.spectrumStyle }
 
     public func start() {
+        // Idempotent: a second start() without an intervening stop() must not
+        // stack duplicate subscriptions on the shared publishers.
+        guard cancellables.isEmpty else { return }
         // Subscribe once at startup — never rebuilt, so a config change cannot leak
         // duplicate subscriptions (#41 PR3). The interactor's capturing subject
         // persists across capture start/stop cycles, so a single sink stays valid.
@@ -111,6 +114,10 @@ public final class SpectrumPresenter: ObservableObject {
         cancellables.removeAll()
         interactor.stop()
         capturing = false
+        // Clear the applied-style sentinel so a restart re-applies from scratch:
+        // retained, an unchanged enabled config would diff as "no change" and
+        // never restart the capture this stop() just tore down.
+        appliedStyle = nil
     }
 
     /// The View reports the length of the bar track (overlay width for

@@ -76,6 +76,26 @@ struct ConfigStatusPresenterTests {
         presenter.stop()
         #expect(interactor.stopCount == 1)
     }
+
+    @Test("二重 start() は購読も interactor.start() も重複しない（冪等性）")
+    func duplicateStartIsIdempotent() {
+        let interactor = StubConfigInteractor()
+        let presenter = withDependencies {
+            $0.configInteractor = interactor
+        } operation: {
+            ConfigStatusPresenter()
+        }
+
+        presenter.start()
+        presenter.start()
+        #expect(interactor.startCount == 1)
+
+        // A stop()/start() cycle still restarts cleanly after the guard.
+        presenter.stop()
+        presenter.start()
+        #expect(interactor.startCount == 2)
+        presenter.stop()
+    }
 }
 
 private final class CancelBox: @unchecked Sendable {

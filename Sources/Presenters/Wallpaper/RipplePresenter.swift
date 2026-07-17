@@ -89,6 +89,9 @@ public final class RipplePresenter: ObservableObject {
     }
 
     public func start() {
+        // Idempotent: a second start() without an intervening stop() must not
+        // stack duplicate subscriptions on the shared publisher.
+        guard cancellables.isEmpty else { return }
         applyStyle()
 
         // Subscribe once at startup. Each config change emits a Void ping and calls
@@ -180,6 +183,10 @@ public final class RipplePresenter: ObservableObject {
     public func stop() {
         cancellables.removeAll()
         detachMouseMonitor()
+        // Clear the applied-config sentinel so a restart re-attaches from
+        // scratch: retained, an unchanged enabled config would diff as "no
+        // change" and never re-attach the monitor this stop() just detached.
+        appliedRipple = nil
     }
 
     /// Called from DisplayLink at frame rate. The handler is always installed now

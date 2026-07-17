@@ -23,6 +23,10 @@ public final class ConfigStatusPresenter: ObservableObject {
     public init() {}
 
     public func start() {
+        // Idempotent: a second start() without an intervening stop() must not
+        // stack a duplicate invalid-state subscription. (The interactor's own
+        // start() already guards its watch arming separately.)
+        guard cancellables.isEmpty else { return }
         interactor.invalidConfig
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.invalidConfig = $0 }
