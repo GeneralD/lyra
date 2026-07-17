@@ -1,10 +1,15 @@
 import Combine
 import Dependencies
-import Foundation
 
 public protocol WallpaperInteractor: Sendable {
     /// Playback mode for the configured wallpaper set. Presenter reads this once before subscribing.
     var playbackMode: WallpaperPlaybackMode { get }
+    /// The current wallpaper source config (items + mode). The Presenter diffs this
+    /// across config hot-reload pings to decide whether the wallpaper actually
+    /// changed — an unrelated edit (e.g. header font) leaves the playing video
+    /// untouched, while a real source change triggers a re-resolve. Nil when no
+    /// wallpaper is configured.
+    var wallpaperSource: WallpaperStyle? { get }
     /// Resolves configured wallpaper items and yields them as they become available.
     /// - For `.cycle`: emits in configured order (buffers out-of-order completions).
     /// - For `.shuffle`: emits as-completed — first successful resolution plays first.
@@ -30,6 +35,7 @@ extension DependencyValues {
 
 private struct UnimplementedWallpaperInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         AsyncStream { $0.finish() }
     }

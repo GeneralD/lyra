@@ -8,16 +8,73 @@ import Testing
 
 // MARK: - Stub
 
+/// Reference-type backing for the style fields so a single `StubTrackInteractor`
+/// value (copied on every `@Dependency` access, per swift-dependencies) can still
+/// report updated config after `presenter.start()` — mutating the box is visible
+/// through every copy that shares it.
+private final class StubTrackInteractorStyleBox: @unchecked Sendable {
+    var decodeEffectConfig: DecodeEffect
+    var textLayout: TextLayout
+    var artworkStyle: ArtworkStyle
+
+    init(decodeEffectConfig: DecodeEffect, textLayout: TextLayout, artworkStyle: ArtworkStyle) {
+        self.decodeEffectConfig = decodeEffectConfig
+        self.textLayout = textLayout
+        self.artworkStyle = artworkStyle
+    }
+}
+
 private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
-    var trackChangePublisher: AnyPublisher<TrackUpdate, Never> = Empty().eraseToAnyPublisher()
-    var playbackPositionPublisher: AnyPublisher<PlaybackPosition, Never> = Empty().eraseToAnyPublisher()
-    var decodeEffectConfig: DecodeEffect = .init(duration: 0)
-    var textLayout: TextLayout = .init()
-    var artworkStyle: ArtworkStyle = .init()
+    var trackChangePublisher: AnyPublisher<TrackUpdate, Never>
+    var playbackPositionPublisher: AnyPublisher<PlaybackPosition, Never>
+    private let styleBox: StubTrackInteractorStyleBox
+
+    init(
+        trackChangePublisher: AnyPublisher<TrackUpdate, Never> = Empty().eraseToAnyPublisher(),
+        playbackPositionPublisher: AnyPublisher<PlaybackPosition, Never> = Empty().eraseToAnyPublisher(),
+        decodeEffectConfig: DecodeEffect = .init(duration: 0),
+        textLayout: TextLayout = .init(),
+        artworkStyle: ArtworkStyle = .init()
+    ) {
+        self.trackChangePublisher = trackChangePublisher
+        self.playbackPositionPublisher = playbackPositionPublisher
+        self.styleBox = StubTrackInteractorStyleBox(
+            decodeEffectConfig: decodeEffectConfig, textLayout: textLayout, artworkStyle: artworkStyle)
+    }
+
+    var decodeEffectConfig: DecodeEffect { styleBox.decodeEffectConfig }
+    var textLayout: TextLayout { styleBox.textLayout }
+    var artworkStyle: ArtworkStyle { styleBox.artworkStyle }
+
+    /// Replaces one or more style fields on the shared box, simulating a config
+    /// reload landing after `start()` already ran.
+    func updateStyle(
+        textLayout: TextLayout? = nil, artworkStyle: ArtworkStyle? = nil,
+        decodeEffectConfig: DecodeEffect? = nil
+    ) {
+        if let textLayout { styleBox.textLayout = textLayout }
+        if let artworkStyle { styleBox.artworkStyle = artworkStyle }
+        if let decodeEffectConfig { styleBox.decodeEffectConfig = decodeEffectConfig }
+    }
 
     var trackChange: AnyPublisher<TrackUpdate, Never> { trackChangePublisher }
     var artwork: AnyPublisher<Data?, Never> { Empty().eraseToAnyPublisher() }
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { playbackPositionPublisher }
+}
+
+/// Stub `ConfigInteractor` whose `appStyleChanges` ping is externally controlled
+/// via the injected subject, so tests can fire it after mutating the track stub.
+private final class StubConfigInteractor: ConfigInteractor, @unchecked Sendable {
+    private let appStyleChangesPublisher: AnyPublisher<Void, Never>
+
+    init(appStyleChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()) {
+        self.appStyleChangesPublisher = appStyleChanges
+    }
+
+    var appStyleChanges: AnyPublisher<Void, Never> { appStyleChangesPublisher }
+    var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { Just(nil).eraseToAnyPublisher() }
+    func start() {}
+    func stop() {}
 }
 
 // MARK: - Helpers
@@ -32,6 +89,8 @@ private func waitForLyricsSuccess(_ presenter: LyricsPresenter, timeout: Duratio
         }
     }
 }
+
+// Uses shared `waitUntil(timeout:condition:)` helper from Tests/PresentersTests/TestSupport/WaitUntil.swift.
 
 // MARK: - Tests
 
@@ -56,6 +115,47 @@ struct LyricsPresenterTests {
                 #expect(presenter.lyricStyle.fontSize == 16)
                 #expect(presenter.lyricStyle.fontWeight == "bold")
                 #expect(presenter.highlightStyle.color == .solid("#FFD700"))
+            }
+        }
+    }
+
+    @Suite("config hot reload")
+    struct HotReload {
+        @MainActor
+        @Test("appStyleChanges 発火で lyricStyle/highlightStyle が新値に更新される")
+        func appliesUpdatedStyleOnPing() async {
+            let initialLayout = TextLayout(
+                lyric: TextAppearance(fontSize: 16, fontWeight: "regular"),
+                highlight: TextAppearance(fontSize: 16, color: .solid("#111111FF"))
+            )
+            let updatedLayout = TextLayout(
+                lyric: TextAppearance(fontSize: 20, fontWeight: "bold"),
+                highlight: TextAppearance(fontSize: 20, color: .solid("#FFD700FF"))
+            )
+            let trackStub = StubTrackInteractor(textLayout: initialLayout)
+            let appStyleChanges = PassthroughSubject<Void, Never>()
+
+            await withDependencies {
+                $0.trackInteractor = trackStub
+                $0.configInteractor = StubConfigInteractor(
+                    appStyleChanges: appStyleChanges.eraseToAnyPublisher())
+            } operation: {
+                let presenter = LyricsPresenter()
+                presenter.start()
+
+                #expect(presenter.lyricStyle.fontSize == 16)
+                #expect(presenter.highlightStyle.color == .solid("#111111FF"))
+
+                // Subscription must not be re-wired — only the shared style stub
+                // mutates, then the ping alone drives the refresh.
+                trackStub.updateStyle(textLayout: updatedLayout)
+                appStyleChanges.send(())
+
+                await waitUntil { presenter.lyricStyle.fontSize == 20 }
+
+                #expect(presenter.lyricStyle.fontSize == 20)
+                #expect(presenter.lyricStyle.fontWeight == "bold")
+                #expect(presenter.highlightStyle.color == .solid("#FFD700FF"))
             }
         }
     }

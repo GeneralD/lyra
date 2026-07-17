@@ -25,7 +25,10 @@ private func render<Content: View>(_ view: Content, size: CGSize) {
 
 @MainActor
 private func waitUntil(
-    timeout: Duration = .seconds(3),
+    // 5s default (not 3s): the wallpaper loading-indicator test polls
+    // `showLoadingIndicator`, which flips inside a detached `Task { @MainActor }`
+    // whose scheduling can slip past 3s under CI parallel + coverage load.
+    timeout: Duration = .seconds(5),
     condition: @escaping @MainActor () -> Bool
 ) async {
     let deadline = ContinuousClock.now + timeout
@@ -47,6 +50,7 @@ private struct IdleTrackInteractor: TrackInteractor, @unchecked Sendable {
 
 private struct DisabledRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle { .init(enabled: false) }
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
@@ -54,6 +58,7 @@ private struct DisabledRippleInteractor: WallpaperInteractor {
 
 private struct EnabledRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle { .init(enabled: true) }
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
     var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
@@ -61,6 +66,7 @@ private struct EnabledRippleInteractor: WallpaperInteractor {
 
 private struct PolygonRippleInteractor: WallpaperInteractor {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle {
         .init(enabled: true, shape: .polygon(sides: 6, angle: 15))
     }
@@ -375,6 +381,7 @@ struct LyricsColumnViewRenderingTests {
 
 private struct PendingWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
     var playbackMode: WallpaperPlaybackMode { .cycle }
+    var wallpaperSource: WallpaperStyle? { nil }
     var rippleConfig: RippleStyle { .init(enabled: false) }
     /// Stream that never yields and never finishes — keeps WallpaperPresenter.isLoading == true.
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
@@ -468,5 +475,158 @@ struct OverlayContentViewLoadingTests {
             ),
             size: CGSize(width: 800, height: 500)
         )
+    }
+
+    @Test("renders the config status branch when a presenter is provided")
+    func rendersWithConfigStatusPresenter() async {
+        let headerPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            HeaderPresenter()
+        }
+        let lyricsPresenter = withDependencies {
+            $0.trackInteractor = IdleTrackInteractor()
+        } operation: {
+            LyricsPresenter()
+        }
+        let ripplePresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+            $0.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+        } operation: {
+            RipplePresenter()
+        }
+        let wallpaperPresenter = withDependencies {
+            $0.wallpaperInteractor = DisabledRippleInteractor()
+        } operation: {
+            WallpaperPresenter()
+        }
+        let configStatusPresenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(
+                invalid: Just(.init(path: "/c.toml", reason: .decode("x"))).eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+
+        configStatusPresenter.start()
+        defer { configStatusPresenter.stop() }
+        await waitUntil { configStatusPresenter.invalidConfig != nil }
+
+        render(
+            OverlayContentView(
+                headerPresenter: headerPresenter,
+                lyricsPresenter: lyricsPresenter,
+                ripplePresenter: ripplePresenter,
+                spectrumPresenter: SpectrumPresenter(),
+                wallpaperPresenter: wallpaperPresenter,
+                configStatusPresenter: configStatusPresenter
+            ),
+            size: CGSize(width: 800, height: 500)
+        )
+        #expect(configStatusPresenter.invalidConfig != nil)
+    }
+}
+
+// MARK: - ConfigStatusOverlay
+
+private final class ConfigStatusStubInteractor: ConfigInteractor, @unchecked Sendable {
+    let invalid: AnyPublisher<ConfigReloadFailure?, Never>
+    init(invalid: AnyPublisher<ConfigReloadFailure?, Never>) { self.invalid = invalid }
+    var appStyleChanges: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
+    var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { invalid }
+    func start() {}
+    func stop() {}
+}
+
+/// Renders `view` at `size` and returns the resulting `CGImage`, used to
+/// assert *where* content actually lands (not just that rendering doesn't
+/// crash). `scale` is pinned to 1 so pixel coordinates match `size` exactly.
+@MainActor
+private func renderedImage<Content: View>(_ view: Content, size: CGSize) -> CGImage? {
+    let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
+    renderer.scale = 1
+    return renderer.cgImage
+}
+
+/// Highest alpha found within `rect` (sparsely sampled for speed), so a
+/// caller can assert a region is empty/non-empty without depending on exactly
+/// which pixel a thin stroke happens to land on.
+@MainActor
+private func maxAlpha(in image: CGImage, rect: CGRect, sampleStride: Int = 3) -> CGFloat {
+    let bitmap = NSBitmapImageRep(cgImage: image)
+    let minX = max(0, Int(rect.minX))
+    let maxX = min(bitmap.pixelsWide, Int(rect.maxX))
+    let minY = max(0, Int(rect.minY))
+    let maxY = min(bitmap.pixelsHigh, Int(rect.maxY))
+    guard minX < maxX, minY < maxY else { return 0 }
+    var peak: CGFloat = 0
+    for y in Swift.stride(from: minY, to: maxY, by: sampleStride) {
+        for x in Swift.stride(from: minX, to: maxX, by: sampleStride) {
+            if let color = bitmap.colorAt(x: x, y: y) {
+                peak = max(peak, color.alphaComponent)
+            }
+        }
+    }
+    return peak
+}
+
+@MainActor
+@Suite("ConfigStatusOverlay rendering")
+struct ConfigStatusOverlayRenderingTests {
+    @Test("invalid 状態で球体が描画される")
+    func rendersWhenInvalid() async {
+        let subject = CurrentValueSubject<ConfigReloadFailure?, Never>(
+            .init(path: "/c.toml", reason: .decode("x")))
+        let presenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(invalid: subject.eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+        presenter.start()
+        defer { presenter.stop() }
+        await waitUntil { presenter.invalidConfig != nil }
+
+        render(ConfigStatusOverlay(presenter: presenter), size: CGSize(width: 800, height: 500))
+        #expect(presenter.invalidConfig != nil)
+    }
+
+    @Test("正常時は空を描画（クラッシュしない）")
+    func rendersEmptyWhenValid() {
+        let presenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(invalid: Just(nil).eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+        render(ConfigStatusOverlay(presenter: presenter), size: CGSize(width: 800, height: 500))
+    }
+
+    @Test("invalid 状態のバッジは画面中央ではなく隅に寄って描画される（コーナーアンカー回帰テスト）")
+    func badgeIsCornerAnchoredNotCentered() async {
+        let subject = CurrentValueSubject<ConfigReloadFailure?, Never>(
+            .init(path: "/c.toml", reason: .decode("x")))
+        let presenter = withDependencies {
+            $0.configInteractor = ConfigStatusStubInteractor(invalid: subject.eraseToAnyPublisher())
+        } operation: {
+            ConfigStatusPresenter()
+        }
+        presenter.start()
+        defer { presenter.stop() }
+        await waitUntil { presenter.invalidConfig != nil }
+
+        let size = CGSize(width: 800, height: 500)
+        guard let image = renderedImage(ConfigStatusOverlay(presenter: presenter), size: size) else {
+            Issue.record("failed to render ConfigStatusOverlay to a CGImage")
+            return
+        }
+
+        // Sanity: something is actually drawn (guards against a trivially
+        // empty pass masking a broken assertion below).
+        #expect(maxAlpha(in: image, rect: CGRect(origin: .zero, size: size)) > 0)
+
+        // The badge must not render at the canvas center — `ZStack(alignment:
+        // .bottomTrailing)` without a full-window frame only applies that
+        // alignment inside the badge's own intrinsic box, so it renders
+        // centered instead of corner-anchored (the bug this test catches).
+        let centerRegion = CGRect(x: size.width / 2 - 20, y: size.height / 2 - 20, width: 40, height: 40)
+        #expect(maxAlpha(in: image, rect: centerRegion) == 0)
     }
 }

@@ -35,11 +35,14 @@ struct ScopedAPISessionTests {
 
     @Test("each withAPI call builds a fresh session instance")
     func eachCallBuildsFreshSession() async {
-        let scoped = ScopedAPISession(timeout: 10) { ObjectIdentifier($0) }
+        // Keep both sessions alive while comparing: capturing only an
+        // ObjectIdentifier lets the first session deallocate, so the second
+        // allocation can reuse its heap address — a false "same instance".
+        let scoped = ScopedAPISession(timeout: 10) { $0 }
 
         let first = await scoped.withAPI { $0 }
         let second = await scoped.withAPI { $0 }
 
-        #expect(first != second)
+        #expect(first !== second)
     }
 }

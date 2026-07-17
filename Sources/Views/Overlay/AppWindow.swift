@@ -47,13 +47,15 @@ public final class AppWindow: NSWindow {
     ///   - ripplePresenter: Presenter for the ripple effect.
     ///   - spectrumPresenter: Presenter for the spectrum analyzer bars.
     ///   - wallpaperPresenter: Presenter for the wallpaper view.
+    ///   - configStatusPresenter: Presenter for the config-error indicator overlay.
     public init(
         initialLayout: ScreenLayout,
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
         ripplePresenter: RipplePresenter,
         spectrumPresenter: SpectrumPresenter,
-        wallpaperPresenter: WallpaperPresenter
+        wallpaperPresenter: WallpaperPresenter,
+        configStatusPresenter: ConfigStatusPresenter? = nil
     ) {
         let hostingView = NSHostingView(
             rootView: OverlayContentView(
@@ -61,7 +63,8 @@ public final class AppWindow: NSWindow {
                 lyricsPresenter: lyricsPresenter,
                 ripplePresenter: ripplePresenter,
                 spectrumPresenter: spectrumPresenter,
-                wallpaperPresenter: wallpaperPresenter
+                wallpaperPresenter: wallpaperPresenter,
+                configStatusPresenter: configStatusPresenter
             ))
         hostingView.frame = initialLayout.hostingFrame
         self.hostingView = hostingView
@@ -93,6 +96,12 @@ public final class AppWindow: NSWindow {
     /// - Parameter player: The player to attach.
     public func attachPlayerLayer(for player: AVPlayer) {
         Self.attachPlayer(player, to: self, hostingView: hostingView)
+    }
+
+    /// Removes the wallpaper player layer and restores the transparent
+    /// no-wallpaper backing, for a hot-reload that removed all wallpaper.
+    public func detachPlayerLayer() {
+        Self.detachPlayer(from: self, hostingView: hostingView)
     }
 
     /// Applies an affine transform scale to the wallpaper player layer.
@@ -181,6 +190,20 @@ extension AppWindow {
         containerView.layer?.addSublayer(playerLayer)
         containerView.addSubview(hostingView)
         surface.contentView = containerView
+    }
+
+    /// Reverse of `attachPlayer`: drop the player layer and its container, put
+    /// the hosting view back as the direct content view, and restore the clear,
+    /// non-opaque backing set in `applyOverlayStyle`. Idempotent — a no-op when
+    /// no player layer is attached (the common startup / no-wallpaper case).
+    static func detachPlayer(from surface: OverlayWindowSurface, hostingView: NSView) {
+        guard let playerLayer = playerLayer(in: surface) else { return }
+        playerLayer.player = nil
+        playerLayer.removeFromSuperlayer()
+        hostingView.removeFromSuperview()
+        surface.contentView = hostingView
+        surface.overlayBackgroundColor = .clear
+        surface.isOpaque = false
     }
 
     static func applyWallpaperScale(_ scale: Double, to surface: OverlayWindowSurface) {

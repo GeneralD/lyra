@@ -9,7 +9,9 @@ import Testing
 // MARK: - Fake
 
 private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Sendable {
-    let spectrumStyle: SpectrumStyle
+    // `var` so a hot-reload toggle test can flip enabled after injection; the
+    // presenter reads it live (#41 PR3).
+    var spectrumStyle: SpectrumStyle
     let capturingSubject = CurrentValueSubject<Bool, Never>(false)
     var magnitudesValue: [Float] = []
     private(set) var startCount = 0
@@ -96,6 +98,97 @@ struct SpectrumPresenterTests {
         presenter.start()
         presenter.stop()
         #expect(interactor.stopCount == 1)
+    }
+
+    @MainActor
+    @Test("stop then start restarts the capture — the applied-style sentinel does not survive teardown")
+    func restartAfterStopRestartsCapture() {
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        let presenter = Self.presenter(with: interactor)
+        presenter.start()
+        #expect(interactor.startCount == 1)
+
+        presenter.stop()
+        #expect(interactor.stopCount == 1)
+
+        // The enabled config is unchanged across the restart: applyStyle must
+        // treat it as a fresh apply, not a no-change diff, and restart capture.
+        presenter.start()
+        #expect(interactor.startCount == 2)
+    }
+
+    @MainActor
+    @Test("a second start() without stop() is idempotent")
+    func duplicateStartIsIdempotent() {
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        let presenter = Self.presenter(with: interactor)
+        presenter.start()
+        presenter.start()
+        #expect(interactor.startCount == 1)
+    }
+
+    @MainActor
+    @Test("a config ping toggles the capture lifecycle on enable then disable (#41 PR3)")
+    func togglesCaptureOnConfigPing() async {
+        let interactor = FakeSpectrumInteractor(style: SpectrumStyle(enabled: false))
+        let config = FakeConfigInteractor()
+        let presenter = withDependencies {
+            $0.spectrumInteractor = interactor
+            $0.configInteractor = config
+        } operation: {
+            SpectrumPresenter()
+        }
+
+        presenter.start()
+        #expect(interactor.startCount == 0)  // disabled at startup — inert
+
+        // Enable via config: the ping starts the capture without a restart.
+        interactor.spectrumStyle = Self.enabledStyle
+        config.fire()
+        await flushMainQueue()
+        #expect(interactor.startCount == 1)
+
+        // Disable via config: the ping stops it.
+        interactor.spectrumStyle = SpectrumStyle(enabled: false)
+        config.fire()
+        await flushMainQueue()
+        #expect(interactor.stopCount == 1)
+    }
+
+    @MainActor
+    @Test("a styling-only config ping republishes so the View re-renders (#41 PR3 review, F2)")
+    func stylingPingRepublishes() async {
+        let interactor = FakeSpectrumInteractor(style: Self.enabledStyle)
+        let config = FakeConfigInteractor()
+        let presenter = withDependencies {
+            $0.spectrumInteractor = interactor
+            $0.configInteractor = config
+        } operation: {
+            SpectrumPresenter()
+        }
+        presenter.start()
+
+        final class Counter: @unchecked Sendable { var count = 0 }
+        let counter = Counter()
+        let cancellable = presenter.objectWillChange.sink { counter.count += 1 }
+        defer { cancellable.cancel() }
+
+        // Change only styling (bar color); enabled stays true. SpectrumView
+        // snapshots presenter.style in its body, so applyStyle must republish
+        // even though no capture toggle occurs — otherwise the overlay keeps the
+        // old look until an unrelated invalidation.
+        interactor.spectrumStyle = SpectrumStyle(
+            enabled: true, stereo: false, barColor: .solid("#abcdef"),
+            barWidth: 1, barSpacing: 0, noiseReduction: 0)
+        config.fire()
+        await flushMainQueue()
+        #expect(counter.count == 1)
+        #expect(interactor.startCount == 1)  // a styling edit does not restart capture
+
+        // An identical ping (no style change) must not republish.
+        config.fire()
+        await flushMainQueue()
+        #expect(counter.count == 1)
     }
 
     @MainActor

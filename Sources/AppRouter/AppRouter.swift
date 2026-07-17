@@ -9,7 +9,10 @@ import Views
 public final class AppRouter {
     private let bootstrap: AppDependencyBootstrap
     private let windowFactory:
-        @MainActor (ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter)
+        @MainActor (
+            ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter,
+            ConfigStatusPresenter?
+        )
             -> any OverlayWindow
     private let frameSchedulerFactory: @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     private var appPresenter: AppPresenter?
@@ -18,6 +21,7 @@ public final class AppRouter {
     private var wallpaperPresenter: WallpaperPresenter?
     private var ripplePresenter: RipplePresenter?
     private var spectrumPresenter: SpectrumPresenter?
+    private var configStatusPresenter: ConfigStatusPresenter?
 
     private var appWindow: (any OverlayWindow)?
     private var frameScheduler: (any FrameScheduler)?
@@ -28,19 +32,30 @@ public final class AppRouter {
         DisplayLinkDriver(onFrame: onFrame)
     }
 
+    static func defaultWindowFactory(
+        layout: ScreenLayout,
+        headerPresenter: HeaderPresenter,
+        lyricsPresenter: LyricsPresenter,
+        ripplePresenter: RipplePresenter,
+        spectrumPresenter: SpectrumPresenter,
+        wallpaperPresenter: WallpaperPresenter,
+        configStatusPresenter: ConfigStatusPresenter?
+    ) -> any OverlayWindow {
+        AppWindow(
+            initialLayout: layout,
+            headerPresenter: headerPresenter,
+            lyricsPresenter: lyricsPresenter,
+            ripplePresenter: ripplePresenter,
+            spectrumPresenter: spectrumPresenter,
+            wallpaperPresenter: wallpaperPresenter,
+            configStatusPresenter: configStatusPresenter
+        )
+    }
+
     public convenience init(launchEnvironment: AppLaunchEnvironment = .current) {
         self.init(
             bootstrap: AppDependencyBootstrap(launchEnvironment: launchEnvironment),
-            windowFactory: { layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter in
-                AppWindow(
-                    initialLayout: layout,
-                    headerPresenter: headerPresenter,
-                    lyricsPresenter: lyricsPresenter,
-                    ripplePresenter: ripplePresenter,
-                    spectrumPresenter: spectrumPresenter,
-                    wallpaperPresenter: wallpaperPresenter
-                )
-            },
+            windowFactory: Self.defaultWindowFactory,
             frameSchedulerFactory: Self.defaultFrameSchedulerFactory
         )
     }
@@ -49,7 +64,8 @@ public final class AppRouter {
         launchEnvironment: AppLaunchEnvironment,
         windowFactory:
             @escaping @MainActor (
-                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter
+                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter,
+                ConfigStatusPresenter?
             ) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     ) {
@@ -64,7 +80,8 @@ public final class AppRouter {
         bootstrap: AppDependencyBootstrap,
         windowFactory:
             @escaping @MainActor (
-                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter
+                ScreenLayout, HeaderPresenter, LyricsPresenter, RipplePresenter, SpectrumPresenter, WallpaperPresenter,
+                ConfigStatusPresenter?
             ) -> any OverlayWindow,
         frameSchedulerFactory: @escaping @MainActor (@escaping @MainActor (Double) -> Void) -> any FrameScheduler
     ) {
@@ -93,15 +110,22 @@ public final class AppRouter {
             self.ripplePresenter = ripplePresenter
             let spectrumPresenter = SpectrumPresenter()
             self.spectrumPresenter = spectrumPresenter
+            let configStatusPresenter = ConfigStatusPresenter()
+            self.configStatusPresenter = configStatusPresenter
 
             headerPresenter.start()
             lyricsPresenter.start()
             ripplePresenter.start()
             spectrumPresenter.start()
             wallpaperPresenter.start()
+            // ConfigStatusPresenter owns the ConfigInteractor lifecycle (arming the config-file
+            // watch). Start it last so all `appStyleChanges` subscribers above are live before
+            // any watch-triggered reload event is published.
+            configStatusPresenter.start()
 
             let window = windowFactory(
-                layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter)
+                layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter,
+                configStatusPresenter)
             appWindow = window
             window.show()
 
@@ -113,22 +137,25 @@ public final class AppRouter {
                 window?.attachPlayerLayer(for: player)
                 window?.applyWallpaperScale(wallpaperPresenter?.wallpaperScale ?? 1.0)
             }
+            wallpaperPresenter.onPlayerCleared { [weak window] in
+                window?.detachPlayerLayer()
+            }
             wallpaperPresenter.onWallpaperScaleChange { [weak window] scale in
                 window?.applyWallpaperScale(scale)
             }
 
-            // Only enabled features pay a per-frame cost: each optional
-            // handler is included in the frame fan-out only when its feature
-            // is on, so a disabled ripple/spectrum adds zero work per tick.
+            // Ripple and spectrum handlers are always installed so enabling either
+            // at runtime resumes its per-frame work without rebuilding the fan-out
+            // (#41 PR3). Each bails cheaply while its feature is inactive —
+            // `idle()` on an enabled guard, `tick()` on its capturing/residue guard
+            // — so a disabled feature still adds no real per-frame cost (#252/#258).
             let frameHandlers: [@MainActor @Sendable (Double) -> Void] = [
-                ripplePresenter.isEnabled
-                    ? { @MainActor @Sendable [weak self] _ in self?.ripplePresenter?.idle() } : nil,
-                spectrumPresenter.isEnabled
-                    ? { @MainActor @Sendable [weak self] interval in
-                        self?.spectrumPresenter?.tick(frameInterval: interval)
-                    } : nil,
+                { @MainActor @Sendable [weak self] _ in self?.ripplePresenter?.idle() },
+                { @MainActor @Sendable [weak self] interval in
+                    self?.spectrumPresenter?.tick(frameInterval: interval)
+                },
                 { @MainActor @Sendable [weak self] _ in self?.lyricsPresenter?.updateActiveLineTick() },
-            ].compactMap { $0 }
+            ]
             let onFrame: @MainActor @Sendable (Double) -> Void = { interval in
                 for handler in frameHandlers { handler(interval) }
             }
@@ -156,6 +183,13 @@ public final class AppRouter {
 
         spectrumPresenter?.stop()
         defer { spectrumPresenter = nil }
+
+        // ConfigStatusPresenter owns the ConfigInteractor lifecycle: its
+        // stop() disarms the watch. Because the presenter was constructed
+        // inside the bootstrap scope in start(), its `@Dependency` resolves the
+        // same interactor instance here without a manual `withBootstrap` wrap.
+        configStatusPresenter?.stop()
+        defer { configStatusPresenter = nil }
 
         frameScheduler?.stop()
         defer { frameScheduler = nil }

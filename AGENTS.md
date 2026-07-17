@@ -106,6 +106,42 @@ Shared conventions:
   back to the raw title/artist -- never an unvalidated candidate guess --
   when nothing validates. See `docs/ARCHITECTURE.md` (Key Design Decisions,
   #308) for full detail.
+- Config hot-reloads without a daemon restart. `ConfigUseCase.reload()` keeps
+  the previous `AppStyle` in effect when the **required** structure fails to
+  validate (unreadable file, decode error in a core section, or a file that
+  resolves to defaults while it still exists) -- never regress on a bad edit.
+  A malformed **optional** `[ai]`/`[lyrics]` section instead degrades to `nil`
+  like startup and does not block a valid edit; `lyra healthcheck` still
+  reports it (the strictness is the `strictOptionalSections` flag on
+  `validate`/`tryDecode`, #330). The `ConfigWatchGateway` (Domain) /
+  `FileWatchGateway` (Support) pair watches the config's *parent directory*
+  (atomic saves rename the file) plus a re-armed file tier via
+  `DispatchSource`. The gateway is consumed at the **DataSource layer**:
+  `ConfigDataSourceImpl.watchChanges(onChange:)` owns target resolution
+  (config file, `includes`, foreign include parents) and per-event re-arming,
+  and the watch reaches the interactor only through `ConfigRepository` /
+  `ConfigUseCase` pass-throughs -- adjacent layers only, no layer skipping.
+  The directory watch arms whether or not the file exists yet, so a config
+  created after the daemon starts (`lyra config init`, a manual save) is
+  picked up as the initial load without a restart, as long as the config
+  directory exists at start (#329). The
+  `ConfigInteractor` module debounces watch events before calling
+  `reload()` and republishing the outcome over Combine. An invalid reload
+  is shown graphically (an amber "destabilized" geodesic sphere via
+  `ConfigStatusPresenter`/`ConfigStatusOverlay`) since a daemon has no
+  visible stderr. See `docs/ARCHITECTURE.md` (Key Design Decisions, #41) for
+  full detail. Header/Lyrics styling, the ripple/spectrum overlays (styling
+  plus the `enabled` toggle), the wallpaper source, and the screen selection
+  now all re-render live -- each Presenter subscribes once to `appStyleChanges`
+  and reflects the change in an idempotent `applyStyle()`, and the DisplayLink
+  fan-out always includes the ripple/spectrum frame handlers (their enabled
+  guard lives inside the handler, #41 PR3). The wallpaper reload diffs the
+  source and swaps the video via `replaceCurrentItem` on the same AVPlayer, so
+  the overlay never blacks out; removing all wallpaper tears the player down and
+  detaches the layer, restoring the transparent backing rather than leaving a
+  black surface; the screen reload re-runs `resolveLayout()` and restarts vacant
+  polling on a new selector/debounce (#41 PR4). Config hot-reload now covers
+  every visual element -- #41 is functionally complete.
 
 ## Testing Rules
 
@@ -122,8 +158,11 @@ Shared conventions:
 ## Change Checklist
 
 - When adding or removing modules, update `Package.swift`,
-  `DependencyInjection`, `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md`, this
-  `AGENTS.md`, and `README.md`.
+  `DependencyInjection`, `docs/ARCHITECTURE.md`, this `AGENTS.md`, and
+  `README.md`. Update `.claude/CLAUDE.md` only when Build & Test commands
+  change or the layer chain itself changes — its architecture section is a
+  short summary + pointer, and `docs/ARCHITECTURE.md` is the canonical
+  reference (see `.claude/rules/module-checklist.md`).
 - Handler additions also need Entity result types, Domain protocols,
   `StandardOutput` support, CLI wiring, and tests.
 - Do not commit directly to `main`. Use branch -> PR -> merge.

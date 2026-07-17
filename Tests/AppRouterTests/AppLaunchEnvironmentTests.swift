@@ -61,6 +61,7 @@ private struct FixtureWallpaperInteractor: WallpaperInteractor {
     var rippleConfig: RippleStyle = .init(enabled: false)
 
     var playbackMode: WallpaperPlaybackMode { wallpaperState.mode }
+    var wallpaperSource: WallpaperStyle? { nil }
 
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         let items = wallpaperState.items
@@ -82,6 +83,47 @@ private struct FixtureSpectrumInteractor: SpectrumInteractor {
     func start() {}
     func stop() {}
     func magnitudes(barCount: Int) -> [Float] { Array(repeating: 0.5, count: barCount) }
+}
+
+private final class SpyConfigInteractor: ConfigInteractor, @unchecked Sendable {
+    var startCallCount = 0
+    var stopCallCount = 0
+    private let appStyleSubject = PassthroughSubject<Void, Never>()
+
+    var appStyleChanges: AnyPublisher<Void, Never> { appStyleSubject.eraseToAnyPublisher() }
+    var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { Just(nil).eraseToAnyPublisher() }
+
+    func start() { startCallCount += 1 }
+    func stop() { stopCallCount += 1 }
+
+    func ping() { appStyleSubject.send(()) }
+}
+
+/// Wallpaper fake whose source and resolve results can change between config
+/// reloads, so router tests can drive the "wallpaper removed by hot reload"
+/// transition end-to-end.
+private final class MutableSourceWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
+    var source: WallpaperStyle?
+    var items: [ResolvedWallpaperItem]
+
+    init(source: WallpaperStyle?, items: [ResolvedWallpaperItem]) {
+        self.source = source
+        self.items = items
+    }
+
+    var wallpaperSource: WallpaperStyle? { source }
+    var playbackMode: WallpaperPlaybackMode { .cycle }
+    var rippleConfig: RippleStyle { .init(enabled: false) }
+
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        let items = items
+        return AsyncStream { continuation in
+            for item in items { continuation.yield(item) }
+            continuation.finish()
+        }
+    }
+
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
 }
 
 private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
@@ -296,6 +338,41 @@ struct AppRouterTests {
         #expect(frameScheduler is DisplayLinkDriver)
     }
 
+    @Test("default window factory creates AppWindow")
+    func defaultFactoryCreatesAppWindow() {
+        let bootstrap = AppDependencyBootstrap(
+            launchEnvironment: .init(environment: [.uiTestMode: "true"])
+        )
+        let layout = ScreenLayout(
+            windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+            hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+            screenOrigin: .zero
+        )
+
+        let window = withDependencies {
+            bootstrap.apply(to: &$0)
+            $0.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+        } operation: {
+            AppRouter.defaultWindowFactory(
+                layout: layout,
+                headerPresenter: HeaderPresenter(),
+                lyricsPresenter: LyricsPresenter(),
+                ripplePresenter: RipplePresenter(),
+                spectrumPresenter: SpectrumPresenter(),
+                wallpaperPresenter: WallpaperPresenter(),
+                configStatusPresenter: nil
+            )
+        }
+
+        #expect(window is AppWindow)
+
+        // Drive the instance-level player wrappers on the real window: the
+        // static layer plumbing is covered via SpyOverlayWindowSurface, and
+        // this exercises the thin forwarding added for hot reload (#41 PR4).
+        window.attachPlayerLayer(for: AVPlayer())
+        window.detachPlayerLayer()
+    }
+
     @Test("start applies bootstrap fixture graph and stop tears it down")
     func startAndStop() async {
         let window = SpyWindow()
@@ -310,7 +387,7 @@ struct AppRouterTests {
                     .lyricsLines: "One\nTwo",
                 ]
             ),
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -359,7 +436,7 @@ struct AppRouterTests {
 
         let router = AppRouter(
             launchEnvironment: .init(environment: [.uiTestMode: "true"]),
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -383,6 +460,51 @@ struct AppRouterTests {
         #expect(!hasValue(named: "ripplePresenter", from: router))
         #expect(!hasValue(named: "frameScheduler", from: router))
         #expect(!hasValue(named: "appWindow", from: router))
+    }
+
+    @Test("start wires ConfigInteractor/ConfigStatusPresenter and stop tears the presenter down")
+    func startAndStopWireConfigHotReload() {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let spy = SpyConfigInteractor()
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = MutableScreenInteractor(
+                    layout: ScreenLayout(
+                        windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        screenOrigin: .zero
+                    )
+                )
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = FixtureWallpaperInteractor(wallpaperState: .init(items: []))
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+                dependencies.configInteractor = spy
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+
+        // ConfigStatusPresenter (created inside the bootstrap scope) owns the
+        // ConfigInteractor lifecycle now, so its start() arms the injected spy
+        // — the wireframe no longer touches the Interactor layer directly.
+        #expect(spy.startCallCount == 1)
+        #expect(hasValue(named: "configStatusPresenter", from: router))
+
+        router.stop()
+
+        // configStatusPresenter.stop() disarms the same spy: because the
+        // presenter captured the interactor in the bootstrap scope at
+        // construction, the exact instance that was started is the one stopped.
+        #expect(spy.stopCallCount == 1)
+        #expect(!hasValue(named: "configStatusPresenter", from: router))
     }
 
     @Test("start forwards layout changes and player attachment to the window")
@@ -417,7 +539,7 @@ struct AppRouterTests {
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
                 dependencies.continuousClock = ImmediateClock()
             },
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -437,6 +559,58 @@ struct AppRouterTests {
 
         #expect(window.appliedLayouts.count == 1)
         #expect(sameLayout(window.appliedLayouts.last, updatedLayout))
+    }
+
+    @Test("config reload that removes the wallpaper detaches the player from the window")
+    func wallpaperRemovalDetachesPlayer() async {
+        let wallpaperInteractor = MutableSourceWallpaperInteractor(
+            source: WallpaperStyle(
+                items: [WallpaperItem(location: "/tmp/router-wallpaper.mp4", scale: 1.0)],
+                mode: .cycle
+            ),
+            items: [.init(url: URL(fileURLWithPath: "/tmp/router-wallpaper.mp4"), scale: 1.0)]
+        )
+        let configInteractor = SpyConfigInteractor()
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = MutableScreenInteractor(
+                    layout: ScreenLayout(
+                        windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                        screenOrigin: .zero
+                    )
+                )
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = wallpaperInteractor
+                dependencies.configInteractor = configInteractor
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        defer { router.stop() }
+
+        await waitUntil { window.attachedPlayers.count == 1 }
+        #expect(window.attachedPlayers.count == 1)
+
+        // The reload removed [wallpaper]: the source is now nil and the resolve
+        // stream is empty, so the presenter clears the player and the router
+        // must forward that to the window as a layer detach.
+        wallpaperInteractor.source = nil
+        wallpaperInteractor.items = []
+        configInteractor.ping()
+
+        await waitUntil { window.detachCallCount == 1 }
+        #expect(window.detachCallCount == 1)
     }
 
     @Test("frame scheduler tick runs through ripple-enabled callback branch (#278)")
@@ -464,7 +638,7 @@ struct AppRouterTests {
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
                 dependencies.continuousClock = ImmediateClock()
             },
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -500,7 +674,7 @@ struct AppRouterTests {
                 dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
                 dependencies.continuousClock = ImmediateClock()
             },
-            windowFactory: { _, _, _, _, _, _ in window },
+            windowFactory: { _, _, _, _, _, _, _ in window },
             frameSchedulerFactory: { onFrame in
                 driver.onFrame = onFrame
                 return driver
@@ -520,6 +694,7 @@ struct AppRouterTests {
     final class SpyWindow: OverlayWindow {
         var showCallCount = 0
         var closeCallCount = 0
+        var detachCallCount = 0
         var appliedLayouts: [ScreenLayout] = []
         var attachedPlayers: [AVPlayer] = []
         var appliedWallpaperScales: [Double] = []
@@ -534,6 +709,10 @@ struct AppRouterTests {
 
         func attachPlayerLayer(for player: AVPlayer) {
             attachedPlayers.append(player)
+        }
+
+        func detachPlayerLayer() {
+            detachCallCount += 1
         }
 
         func applyWallpaperScale(_ scale: Double) {
@@ -600,6 +779,7 @@ struct AccessibilityHooksTests {
     private struct EnabledRippleWallpaperInteractor: WallpaperInteractor {
         var rippleConfig: RippleStyle { .init(enabled: true) }
         var playbackMode: WallpaperPlaybackMode { .cycle }
+        var wallpaperSource: WallpaperStyle? { nil }
         func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> { AsyncStream { $0.finish() } }
         var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
     }

@@ -9,19 +9,22 @@ public struct OverlayContentView: View {
     let ripplePresenter: RipplePresenter
     let spectrumPresenter: SpectrumPresenter
     @ObservedObject var wallpaperPresenter: WallpaperPresenter
+    let configStatusPresenter: ConfigStatusPresenter?
 
     public init(
         headerPresenter: HeaderPresenter,
         lyricsPresenter: LyricsPresenter,
         ripplePresenter: RipplePresenter,
         spectrumPresenter: SpectrumPresenter,
-        wallpaperPresenter: WallpaperPresenter
+        wallpaperPresenter: WallpaperPresenter,
+        configStatusPresenter: ConfigStatusPresenter? = nil
     ) {
         self.headerPresenter = headerPresenter
         self.lyricsPresenter = lyricsPresenter
         self.ripplePresenter = ripplePresenter
         self.spectrumPresenter = spectrumPresenter
         self.wallpaperPresenter = wallpaperPresenter
+        self.configStatusPresenter = configStatusPresenter
     }
 
     public var body: some View {
@@ -39,6 +42,12 @@ public struct OverlayContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             WallpaperLoadingOverlay(presenter: wallpaperPresenter)
+
+            // Frontmost: the config-error indicator must never be occluded
+            // by the wallpaper, ripple, header, or the loading overlay.
+            if let configStatusPresenter {
+                ConfigStatusOverlay(presenter: configStatusPresenter)
+            }
         }
         .accessibilityIdentifier("overlay-content")
     }

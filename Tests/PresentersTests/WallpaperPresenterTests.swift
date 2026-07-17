@@ -17,10 +17,12 @@ private func waitForItemsLoaded(_ presenter: WallpaperPresenter, count: Int) asy
 private struct StubWallpaperInteractor: WallpaperInteractor {
     var items: [ResolvedWallpaperItem] = []
     var mode: WallpaperPlaybackMode = .cycle
+    var source: WallpaperStyle? = nil
     var rippleConfig: RippleStyle = .init()
     var sleepChangesSubject: PassthroughSubject<SleepWakeEvent, Never>? = nil
 
     var playbackMode: WallpaperPlaybackMode { mode }
+    var wallpaperSource: WallpaperStyle? { source }
 
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         let emitted = items
@@ -63,6 +65,7 @@ private final class LiveStubWallpaperInteractor: WallpaperInteractor, @unchecked
     }
 
     var playbackMode: WallpaperPlaybackMode { mode }
+    var wallpaperSource: WallpaperStyle? { nil }
 
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         AsyncStream { continuation in
@@ -89,6 +92,73 @@ private final class LiveStubWallpaperInteractor: WallpaperInteractor, @unchecked
         let cont = continuation
         lock.unlock()
         cont?.finish()
+    }
+}
+
+/// A stub whose wallpaper source and resolved items can be swapped between a
+/// config hot-reload ping, so a test can drive the `applyStyle()` reload seam.
+/// `resolvedWallpapers()` yields the current items synchronously and counts its
+/// calls, letting a test assert whether a ping actually re-resolved.
+private final class MutableWallpaperInteractor: WallpaperInteractor, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _source: WallpaperStyle?
+    private var _items: [ResolvedWallpaperItem]
+    private var _mode: WallpaperPlaybackMode
+    private var _completes = true
+    private var _resolveCount = 0
+
+    init(source: WallpaperStyle?, items: [ResolvedWallpaperItem], mode: WallpaperPlaybackMode = .cycle) {
+        _source = source
+        _items = items
+        _mode = mode
+    }
+
+    /// `completes: false` yields the items but never finishes the stream,
+    /// simulating a slow resolution (remote download, yt-dlp) that stays
+    /// in flight for the rest of the test.
+    func set(
+        source: WallpaperStyle?, items: [ResolvedWallpaperItem],
+        mode: WallpaperPlaybackMode = .cycle, completes: Bool = true
+    ) {
+        lock.lock()
+        _source = source
+        _items = items
+        _mode = mode
+        _completes = completes
+        lock.unlock()
+    }
+
+    var resolveCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _resolveCount
+    }
+
+    var playbackMode: WallpaperPlaybackMode {
+        lock.lock()
+        defer { lock.unlock() }
+        return _mode
+    }
+
+    var wallpaperSource: WallpaperStyle? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _source
+    }
+
+    var rippleConfig: RippleStyle { .init() }
+    var systemSleepChanges: AnyPublisher<SleepWakeEvent, Never> { Empty().eraseToAnyPublisher() }
+
+    func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
+        lock.lock()
+        _resolveCount += 1
+        let emitted = _items
+        let completes = _completes
+        lock.unlock()
+        return AsyncStream { continuation in
+            for item in emitted { continuation.yield(item) }
+            if completes { continuation.finish() }
+        }
     }
 }
 
@@ -789,6 +859,401 @@ struct WallpaperPresenterTests {
                 subject.send(.willSleep)
                 subject.send(.didWake)
                 // Exercising the .didWake branch of observeSleepWake sink.
+            }
+        }
+    }
+
+    @Suite("hot reload")
+    struct HotReload {
+        @MainActor
+        @Test("config ping with a new source swaps the item, keeping the same player (no blackout)")
+        func newSourceSwapsItemKeepingPlayer() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+                let player = presenter.player
+                #expect(player != nil)
+
+                interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.wallpaperURL == b.url }
+
+                #expect(presenter.wallpaperURL == b.url)
+                // Same AVPlayer instance across the swap — the attached layer stays valid.
+                #expect(presenter.player === player)
+            }
+        }
+
+        @MainActor
+        @Test("config ping with an unchanged source does not re-resolve")
+        func unchangedSourceDoesNotReload() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+                #expect(interactor.resolveCount == 1)
+
+                config.fire()
+                await flushMainQueue()
+
+                #expect(interactor.resolveCount == 1)
+                #expect(presenter.wallpaperURL == a.url)
+            }
+        }
+
+        @MainActor
+        @Test("config ping that removes all items clears the video and tears down the player")
+        func removingSourceTearsDownPlayer() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+                #expect(presenter.player != nil)
+
+                interactor.set(source: nil, items: [])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.wallpaperURL == nil }
+
+                #expect(presenter.wallpaperURL == nil)
+                // The player is torn down so the wireframe can detach the layer and
+                // restore the transparent no-wallpaper backing (#41 PR4 review, F7).
+                await waitUntil { presenter.player == nil }
+                #expect(presenter.player == nil)
+            }
+        }
+
+        @MainActor
+        @Test("onPlayerCleared fires when a hot-reload removes all wallpaper")
+        func onPlayerClearedFiresOnRemoval() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            final class Counter: @unchecked Sendable { var count = 0 }
+            let counter = Counter()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.onPlayerCleared { counter.count += 1 }
+                presenter.start()
+                await waitUntil { presenter.player != nil }
+                #expect(counter.count == 0)
+
+                interactor.set(source: nil, items: [])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { counter.count == 1 }
+
+                #expect(counter.count == 1)
+            }
+        }
+
+        @MainActor
+        @Test("re-adding a source after removal builds a fresh player and re-attaches")
+        func reAddingSourceReAttachesPlayer() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            final class Counter: @unchecked Sendable { var count = 0 }
+            let attachCount = Counter()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.onPlayerAvailable { _ in attachCount.count += 1 }
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+                await waitUntil { attachCount.count == 1 }
+
+                // Remove all wallpaper: player torn down.
+                interactor.set(source: nil, items: [])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.player == nil }
+
+                // Re-add a source: a fresh player is built and re-attaches.
+                interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.wallpaperURL == b.url }
+
+                #expect(presenter.player != nil)
+                #expect(attachCount.count == 2)
+            }
+        }
+
+        @MainActor
+        @Test("repeated config pings during an in-flight slow load do not restart resolution")
+        func pingsDuringInFlightLoadDoNotRestart() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+                #expect(interactor.resolveCount == 1)
+
+                // Switch to a slow source whose resolution stays in flight.
+                interactor.set(
+                    source: WallpaperStyle(location: "slow.mp4"), items: [], completes: false)
+                config.fire()
+                await flushMainQueue()
+                #expect(interactor.resolveCount == 2)
+
+                // Unrelated config edits ping again while the load is in flight:
+                // the pending source is unchanged, so the download must survive
+                // instead of being cancelled and restarted on every save.
+                config.fire()
+                await flushMainQueue()
+                config.fire()
+                await flushMainQueue()
+                #expect(interactor.resolveCount == 2)
+            }
+        }
+
+        @MainActor
+        @Test("the old playlist keeps playing (and advancing) until the replacement resolves")
+        func oldPlaylistStaysLiveDuringInFlightLoad() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"), scale: 1.25)
+            let a2 = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a2.mp4"), scale: 1.5)
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a, a2])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                await waitForItemsLoaded(presenter, count: 2)
+                #expect(presenter.wallpaperScale == 1.25)
+
+                interactor.set(
+                    source: WallpaperStyle(location: "slow.mp4"), items: [], completes: false)
+                config.fire()
+                await flushMainQueue()
+
+                // The still-visible old wallpaper keeps its state (no eager
+                // reset snapping the scale to 1.0 or emptying the playlist)...
+                #expect(presenter.wallpaperURL == a.url)
+                #expect(presenter.wallpaperScale == 1.25)
+                #expect(presenter.items.count == 2)
+
+                // ...and can still advance through its own playlist.
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == a2.url }
+                #expect(presenter.wallpaperScale == 1.5)
+            }
+        }
+
+        @MainActor
+        @Test("an empty resolve after an interrupted swap rolls back to the VISIBLE source — a re-save is not swallowed")
+        func rollbackAfterInterruptedSwapTracksVisibleSource() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+
+                // B's first item becomes visible while its stream is still in flight.
+                interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b], completes: false)
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.wallpaperURL == b.url }
+
+                // C cancels B's in-flight load and resolves empty. The rollback must
+                // target the VISIBLE wallpaper (B) — the applied source committed at
+                // B's first-item activation — not the stale pre-swap A.
+                interactor.set(source: WallpaperStyle(location: "c.mp4"), items: [])
+                config.fire()
+                await waitUntil { interactor.resolveCount == 3 }
+                await waitUntil { !presenter.isLoading }
+
+                // Re-saving A — genuinely different from the visible B — must reload
+                // instead of being swallowed by the diff guard against a stale target.
+                interactor.set(source: WallpaperStyle(location: "a.mp4"), items: [a])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.wallpaperURL == a.url }
+                #expect(presenter.wallpaperURL == a.url)
+            }
+        }
+
+        @MainActor
+        @Test("an empty resolve leaves the old playlist advancing under its OLD playback mode")
+        func emptyResolveKeepsOldPlaybackMode() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let c = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/c.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a, b, c], mode: .cycle)
+            let config = FakeConfigInteractor()
+
+            // Under a leaked shuffle mode, candidates after `a` are [b, c] and this
+            // fake would pick index 1 → c; cycle order advances to b. The two modes
+            // are therefore distinguishable by the item the advance lands on.
+            let fake = FakeRandomSource([1])
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+                $0.randomSource = fake
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                await waitForItemsLoaded(presenter, count: 3)
+                #expect(presenter.wallpaperURL == a.url)
+
+                // A shuffle-mode source that resolves empty: the mode must NOT be
+                // committed eagerly — the old playlist keeps advancing in cycle order.
+                interactor.set(source: WallpaperStyle(location: "x.mp4"), items: [], mode: .shuffle)
+                config.fire()
+                await waitUntil { interactor.resolveCount == 2 }
+                await waitUntil { !presenter.isLoading }
+
+                presenter.controller.handleItemEnd()
+                await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+
+        @MainActor
+        @Test("a configured source that resolves empty keeps the old wallpaper and retries on re-save")
+        func emptyResolveKeepsOldWallpaperAndRetries() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"), scale: 1.25)
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+
+                // The new source resolves to zero items (transient failure).
+                interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { !presenter.isLoading }
+
+                // The old wallpaper stays fully intact — playlist and scale included.
+                #expect(presenter.wallpaperURL == a.url)
+                #expect(presenter.wallpaperScale == 1.25)
+                #expect(presenter.items.count == 1)
+
+                // Re-saving the same source retries resolution instead of being
+                // swallowed by the diff guard (#41 PR4 review, F8).
+                interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b])
+                config.fire()
+                await flushMainQueue()
+                await waitUntil { presenter.wallpaperURL == b.url }
+                #expect(presenter.wallpaperURL == b.url)
+            }
+        }
+
+        @MainActor
+        @Test("reverting to the applied source mid-load cancels the pending swap and reloads it")
+        func revertDuringInFlightLoadReloadsAppliedSource() async {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let interactor = MutableWallpaperInteractor(
+                source: WallpaperStyle(location: "a.mp4"), items: [a])
+            let config = FakeConfigInteractor()
+
+            await withDependencies {
+                $0.wallpaperInteractor = interactor
+                $0.configInteractor = config
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                defer { presenter.stop() }
+                presenter.start()
+                await waitUntil { presenter.wallpaperURL == a.url }
+
+                interactor.set(
+                    source: WallpaperStyle(location: "slow.mp4"), items: [], completes: false)
+                config.fire()
+                await flushMainQueue()
+                #expect(interactor.resolveCount == 2)
+
+                // Reverting the config back to the already-applied source must
+                // not be swallowed just because it equals `appliedSource` — the
+                // pending target differs, so the stale swap has to be cancelled.
+                interactor.set(source: WallpaperStyle(location: "a.mp4"), items: [a])
+                config.fire()
+                await flushMainQueue()
+                #expect(interactor.resolveCount == 3)
+                await waitUntil { !presenter.isLoading }
+                #expect(presenter.wallpaperURL == a.url)
             }
         }
     }

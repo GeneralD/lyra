@@ -32,11 +32,17 @@ public final class SpectrumPresenter: ObservableObject {
     }
 
     @Dependency(\.spectrumInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
 
     @Published public private(set) var isAnimating = false
     private var motion: [BarMotion] = []
     private var capturing = false
-    private var cancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
+    /// The full spectrum style last applied by `applyStyle()`. Diffed against a
+    /// hot-reload ping so an unrelated config edit is a no-op, an `enabled` toggle
+    /// drives the capture lifecycle, and any styling change republishes to
+    /// re-render the View — each only on an actual change, not every ping (#41 PR3).
+    private var appliedStyle: SpectrumStyle?
     /// Length of the track the bars distribute along, in points, as the View
     /// last reported it — the overlay width for vertical placements, the
     /// height for the horizontal `left`/`right` ones. The bar count is derived
@@ -58,17 +64,60 @@ public final class SpectrumPresenter: ObservableObject {
     public var style: SpectrumStyle { interactor.spectrumStyle }
 
     public func start() {
-        guard isEnabled else { return }
-        interactor.start()
-        cancellable = interactor.isCapturing
+        // Idempotent: a second start() without an intervening stop() must not
+        // stack duplicate subscriptions on the shared publishers.
+        guard cancellables.isEmpty else { return }
+        // Subscribe once at startup — never rebuilt, so a config change cannot leak
+        // duplicate subscriptions (#41 PR3). The interactor's capturing subject
+        // persists across capture start/stop cycles, so a single sink stays valid.
+        interactor.isCapturing
             .receive(on: DispatchQueue.main)
             .sink { [weak self] value in self?.capturing = value }
+            .store(in: &cancellables)
+
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.applyStyle() }
+            .store(in: &cancellables)
+
+        applyStyle()
+    }
+
+    /// Idempotently reflects the live spectrum style. Called once at startup and
+    /// for each `appStyleChanges` ping. Toggling `enabled` starts or stops the
+    /// capture lifecycle so the spectrum appears/disappears without a restart
+    /// (#41 PR3). Any other styling change (colors, placement, bar geometry, band
+    /// settings) republishes via `objectWillChange` so `SpectrumView` — which
+    /// snapshots `presenter.style` in its `body` — re-renders live; the bar
+    /// *heights* are already read live each `tick()`, but the drawing style is
+    /// not, so without this a styling-only edit kept the old look until an
+    /// unrelated invalidation (#41 PR3 review, F2).
+    private func applyStyle() {
+        let style = interactor.spectrumStyle
+        let previous = appliedStyle
+        guard style != previous else { return }
+        appliedStyle = style
+        objectWillChange.send()
+
+        guard previous?.enabled != style.enabled else { return }
+        if style.enabled {
+            interactor.start()
+        } else if previous?.enabled == true {
+            // Only tear down a capture that was actually running; the bars then
+            // fall away naturally over the following ticks.
+            interactor.stop()
+            capturing = false
+        }
     }
 
     public func stop() {
-        cancellable = nil
+        cancellables.removeAll()
         interactor.stop()
         capturing = false
+        // Clear the applied-style sentinel so a restart re-applies from scratch:
+        // retained, an unchanged enabled config would diff as "no change" and
+        // never restart the capture this stop() just tore down.
+        appliedStyle = nil
     }
 
     /// The View reports the length of the bar track (overlay width for

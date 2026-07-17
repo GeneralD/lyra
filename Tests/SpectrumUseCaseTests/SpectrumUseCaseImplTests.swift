@@ -153,6 +153,25 @@ struct SpectrumUseCaseImplTests {
         #expect(at48k != at44k)
     }
 
+    @Test("the analyzer rebuilds when a live band setting changes on the same instance (#41 PR3 review, F5)")
+    func analyzerRebuildsOnBandSettingChange() {
+        // Config hot-reload can now change the band settings (min_freq/max_freq,
+        // dB range, scale) live. With bar count and sample rate unchanged, the
+        // memoized analyzer must still rebuild so the new bands take effect —
+        // the pre-fix memo key (bars + rate only) reused the old engine and
+        // silently ignored these edits until a resize/restart.
+        let pcm = sine(amplitude: 0.5)
+        let harness = Harness(left: pcm, sampleRate: 48000)
+        let wide = SpectrumStyle(stereo: false, minFreq: 40, maxFreq: 14000, fftSize: 1024)
+        // Same bar count, same rate, only the upper band cutoff changed.
+        let narrow = SpectrumStyle(stereo: false, minFreq: 40, maxFreq: 2000, fftSize: 1024)
+
+        let atWide = harness.useCase.magnitudes(style: wide, barCount: 24)
+        let atNarrow = harness.useCase.magnitudes(style: narrow, barCount: 24)
+
+        #expect(atWide != atNarrow)
+    }
+
     // MARK: - sample-rate propagation (#299)
 
     @Test("the tap sample rate reaches the analyzer — same PCM, different rate, different bands")

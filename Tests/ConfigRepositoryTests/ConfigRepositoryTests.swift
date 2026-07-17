@@ -255,7 +255,7 @@ struct ConfigRepositoryTests {
                 $0.configDataSource = StubConfigDataSource(tryDecodeResult: .success(""))
             } operation: {
                 let repo = ConfigRepositoryImpl()
-                let result = repo.validate()
+                let result = repo.validate(strictOptionalSections: true)
                 guard case .defaults = result else {
                     Issue.record("Expected .defaults, got \(result)")
                     return
@@ -269,7 +269,7 @@ struct ConfigRepositoryTests {
                 $0.configDataSource = StubConfigDataSource(tryDecodeResult: .success("/home/user/.config/lyra/config.toml"))
             } operation: {
                 let repo = ConfigRepositoryImpl()
-                let result = repo.validate()
+                let result = repo.validate(strictOptionalSections: true)
                 guard case .loaded(let path) = result else {
                     Issue.record("Expected .loaded, got \(result)")
                     return
@@ -284,7 +284,7 @@ struct ConfigRepositoryTests {
                 $0.configDataSource = StubConfigDataSource(tryDecodeResult: .failure(StubError.decodeFailed))
             } operation: {
                 let repo = ConfigRepositoryImpl()
-                let result = repo.validate()
+                let result = repo.validate(strictOptionalSections: true)
                 guard case .decodeError(let path, _) = result else {
                     Issue.record("Expected .decodeError, got \(result)")
                     return
@@ -386,6 +386,21 @@ struct Delegation {
             #expect(repo.existingConfigPath == nil)
         }
     }
+
+    @Test("watchChanges delegates to dataSource and passes onChange through")
+    func watchChangesDelegates() {
+        let dataSource = WatchRecordingConfigDataSource()
+        let token = withDependencies {
+            $0.configDataSource = dataSource
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            return repo.watchChanges { dataSource.onChangeFired.setTrue() }
+        }
+
+        #expect(token != nil)
+        dataSource.fire()
+        #expect(dataSource.onChangeFired.value)
+    }
 }
 
 // MARK: - Test helpers
@@ -399,7 +414,7 @@ private struct StubConfigDataSource: ConfigDataSource {
 
     func load() -> ConfigLoadResult? { loadResult }
 
-    func tryDecode() throws -> String {
+    func tryDecode(strictOptionalSections: Bool) throws -> String {
         try tryDecodeResult.get()
     }
 
@@ -407,6 +422,43 @@ private struct StubConfigDataSource: ConfigDataSource {
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateValue }
     var existingConfigPath: String? { configPath }
     var configDir: String { "" }
+}
+
+/// Records the `watchChanges` subscription so the delegation test can verify the
+/// repository passes `onChange` through to its adjacent data source untouched.
+private final class WatchRecordingConfigDataSource: ConfigDataSource, @unchecked Sendable {
+    let onChangeFired = LockedFlag()
+    private let lock = NSLock()
+    private var handler: (@Sendable () -> Void)?
+
+    func fire() {
+        lock.withLock { handler }?()
+    }
+
+    func load() -> ConfigLoadResult? { nil }
+    func tryDecode(strictOptionalSections: Bool) throws -> String { "" }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
+    var configDir: String { "" }
+
+    func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        lock.withLock { handler = onChange }
+        return NoopWatchToken()
+    }
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+    var value: Bool { lock.withLock { _value } }
+    func setTrue() {
+        lock.withLock { _value = true }
+    }
+}
+
+private struct NoopWatchToken: ConfigWatchToken {
+    func stop() {}
 }
 
 private enum StubError: Error, LocalizedError {

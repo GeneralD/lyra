@@ -57,8 +57,8 @@ struct ConfigUseCaseTests {
         }
     }
 
-    @Test("appStyle is cached — repository.loadAppStyle() called only once")
-    func appStyleCachedSingleRead() {
+    @Test("appStyle は初回に一度ロードされキャッシュされる")
+    func appStyleLoadsOnceThenCaches() {
         let counter = CountingConfigRepository()
         withDependencies {
             $0.configRepository = counter
@@ -66,8 +66,112 @@ struct ConfigUseCaseTests {
             let useCase = ConfigUseCaseImpl()
             _ = useCase.appStyle
             _ = useCase.appStyle
-            _ = useCase.appStyle
             #expect(counter.callCount == 1)
+        }
+    }
+
+    @Test("reload はディスクを再読込し .updated を返す")
+    func reloadUpdatesFromDisk() {
+        let counter = CountingConfigRepository()
+        counter.validation = .loaded(path: "/c.toml")
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle  // Initial load (count 1).
+            let outcome = useCase.reload()  // Reload from disk (count 2).
+            #expect(counter.callCount == 2)
+            guard case .updated = outcome else {
+                Issue.record("expected .updated")
+                return
+            }
+            // The store now holds the freshly loaded style, not the cached one.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "reloaded.mp4")
+        }
+    }
+
+    @Test("decodeError では前回値を保持し .invalid を返す")
+    func reloadKeepsPreviousOnDecodeError() {
+        let counter = CountingConfigRepository()
+        counter.validation = .decodeError(path: "/c.toml", error: "syntax")
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle  // count 1
+            let outcome = useCase.reload()  // Validation fails; loadAppStyle is not called (count remains 1).
+            #expect(counter.callCount == 1)
+            guard case .invalid(let f) = outcome else {
+                Issue.record("expected .invalid")
+                return
+            }
+            #expect(f.reason == .decode("syntax"))
+            // The store still holds the last-good style — never reset on a bad edit.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "initial.mp4")
+        }
+    }
+
+    @Test("ファイル存在下の .defaults は読取失敗とみなし前回値保持")
+    func reloadTreatsDefaultsWithExistingFileAsUnreadable() {
+        let counter = CountingConfigRepository()
+        counter.validation = .defaults
+        counter.pathExists = true
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            let outcome = useCase.reload()
+            guard case .invalid(let f) = outcome else {
+                Issue.record("expected .invalid")
+                return
+            }
+            #expect(f.reason == .unreadable)
+            // The store still holds the last-good style — never reset on a bad edit.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "initial.mp4")
+        }
+    }
+
+    @Test("validate の .unreadable は .invalid(.unreadable) として前回値保持")
+    func reloadSurfacesUnreadableValidation() {
+        let counter = CountingConfigRepository()
+        counter.validation = .unreadable(path: "/c.toml")
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            let outcome = useCase.reload()  // Validation fails; loadAppStyle is not called (count remains 1).
+            #expect(counter.callCount == 1)
+            guard case .invalid(let f) = outcome else {
+                Issue.record("expected .invalid")
+                return
+            }
+            #expect(f.path == "/c.toml")
+            #expect(f.reason == .unreadable)
+            // The store still holds the last-good style — never reset on a bad edit.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "initial.mp4")
+        }
+    }
+
+    @Test("ファイル不在の .defaults は正当なデフォルト適用として .updated")
+    func reloadAppliesDefaultsWhenNoFile() {
+        let counter = CountingConfigRepository()
+        counter.validation = .defaults
+        counter.pathExists = false
+        withDependencies {
+            $0.configRepository = counter
+        } operation: {
+            let useCase = ConfigUseCaseImpl()
+            _ = useCase.appStyle
+            let outcome = useCase.reload()
+            guard case .updated = outcome else {
+                Issue.record("expected .updated")
+                return
+            }
+            // A deliberate removal replaces the store with the freshly loaded
+            // (defaults) style instead of clinging to the previous one.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "reloaded.mp4")
         }
     }
 }
@@ -93,6 +197,21 @@ func existingConfigPathNil() {
     }
 }
 
+@Test("watchChanges delegates to repository and passes onChange through")
+func watchChangesDelegates() {
+    let repository = WatchRecordingConfigRepository()
+    let token = withDependencies {
+        $0.configRepository = repository
+    } operation: {
+        let useCase = ConfigUseCaseImpl()
+        return useCase.watchChanges { repository.onChangeFired.setTrue() }
+    }
+
+    #expect(token != nil)
+    repository.fire()
+    #expect(repository.onChangeFired.value)
+}
+
 // MARK: - Mocks
 
 private struct MockConfigRepository: ConfigRepository {
@@ -100,25 +219,68 @@ private struct MockConfigRepository: ConfigRepository {
     var templateResult: String?
     var writeTemplateResult: String = ""
     var configPath: String?
+    var validation: ConfigValidationResult = .defaults
 
     func loadAppStyle() -> AppStyle { style }
 
-    func validate() -> ConfigValidationResult { .defaults }
+    func validate(strictOptionalSections: Bool) -> ConfigValidationResult { validation }
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
     var existingConfigPath: String? { configPath }
 }
 
-private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {
-    var callCount = 0
+/// Records the `watchChanges` subscription so the delegation test can verify the
+/// use case passes `onChange` through to its adjacent repository untouched.
+private final class WatchRecordingConfigRepository: ConfigRepository, @unchecked Sendable {
+    let onChangeFired = LockedFlag()
+    private let lock = NSLock()
+    private var handler: (@Sendable () -> Void)?
 
-    func loadAppStyle() -> AppStyle {
-        callCount += 1
-        return .init()
+    func fire() {
+        lock.withLock { handler }?()
     }
 
-    func validate() -> ConfigValidationResult { .defaults }
+    func loadAppStyle() -> AppStyle { .init() }
+    func validate(strictOptionalSections: Bool) -> ConfigValidationResult { .defaults }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }
+
+    func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        lock.withLock { handler = onChange }
+        return NoopWatchToken()
+    }
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+    var value: Bool { lock.withLock { _value } }
+    func setTrue() {
+        lock.withLock { _value = true }
+    }
+}
+
+private struct NoopWatchToken: ConfigWatchToken {
+    func stop() {}
+}
+
+private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {
+    var callCount = 0
+    var validation: ConfigValidationResult = .loaded(path: "/c.toml")
+    var pathExists = true
+
+    /// The first load serves `initial.mp4`, later loads serve `reloaded.mp4`, so
+    /// a test can assert which style the use case's store actually holds after a
+    /// reload attempt — not just how many times the repository was called.
+    func loadAppStyle() -> AppStyle {
+        callCount += 1
+        let location = callCount == 1 ? "initial.mp4" : "reloaded.mp4"
+        return AppStyle(wallpaper: WallpaperStyle(location: location), configDir: "/config")
+    }
+
+    func validate(strictOptionalSections: Bool) -> ConfigValidationResult { validation }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { pathExists ? "/c.toml" : nil }
 }

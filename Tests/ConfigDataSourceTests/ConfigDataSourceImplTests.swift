@@ -6,14 +6,18 @@ import Testing
 
 @Suite("ConfigDataSourceImpl.configDir")
 struct ConfigDataSourceImplConfigDirTests {
-    @Test("configDir falls back to home directory when no config file exists")
-    func fallsBackToHomeWhenMissing() throws {
+    @Test("configDir points at the expected config dir (not home) when no config file exists (#329)")
+    func fallsBackToExpectedDirWhenMissing() throws {
         let emptyXdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
         defer { try? emptyXdgConfig.delete() }
 
         let dataSource = ConfigDataSourceImpl(configHome: emptyXdgConfig.path)
 
-        #expect(dataSource.configDir == Folder.home.path)
+        // Not home — the watcher must arm on where the file *would* be created so a
+        // config added after daemon start is picked up without a restart (#329).
+        #expect(dataSource.configDir != Folder.home.path)
+        #expect(dataSource.configDir.hasSuffix("/lyra"))
+        #expect(dataSource.configDir.hasPrefix(emptyXdgConfig.path))
     }
 
     @Test("configDir matches the discovered config file's parent directory")
@@ -30,7 +34,7 @@ struct ConfigDataSourceImplConfigDirTests {
     }
 }
 
-@Suite("ConfigDataSourceImpl.tryDecode — strict optional-section validation")
+@Suite("ConfigDataSourceImpl.tryDecode — optional-section strictness (#330)")
 struct ConfigDataSourceImplTryDecodeTests {
     private func dataSource(withConfig content: String) throws -> (ConfigDataSourceImpl, Folder) {
         let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
@@ -39,29 +43,39 @@ struct ConfigDataSourceImplTryDecodeTests {
         return (ConfigDataSourceImpl(configHome: xdgConfig.path), xdgConfig)
     }
 
-    @Test("a malformed [lyrics] section fails validation instead of passing silently")
-    func malformedLyricsSectionFailsValidation() throws {
-        let (dataSource, folder) = try dataSource(
-            withConfig: """
-                screen = "main"
+    private let malformedLyrics = """
+        screen = "main"
 
-                [lyrics]
-                fallback_command = "/not/an/argv/array"
-                """)
+        [lyrics]
+        fallback_command = "/not/an/argv/array"
+        """
+
+    private let malformedAI = """
+        screen = "main"
+
+        [ai]
+        endpoint = ["not", "a", "string"]
+        """
+
+    @Test("strict mode surfaces a malformed [lyrics] section as a failure (healthcheck)")
+    func malformedLyricsSectionFailsStrictValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedLyrics)
         defer { try? folder.delete() }
 
-        #expect(throws: (any Error).self) { try dataSource.tryDecode() }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
+    }
+
+    @Test("lenient mode tolerates a malformed [lyrics] section — degrades like startup (hot-reload)")
+    func malformedLyricsSectionPassesLenientValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedLyrics)
+        defer { try? folder.delete() }
+
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: false) }
     }
 
     @Test("a malformed [lyrics] section still loads leniently — the rest of the config survives")
     func malformedLyricsSectionLoadsLeniently() throws {
-        let (dataSource, folder) = try dataSource(
-            withConfig: """
-                screen = "main"
-
-                [lyrics]
-                fallback_command = "/not/an/argv/array"
-                """)
+        let (dataSource, folder) = try dataSource(withConfig: malformedLyrics)
         defer { try? folder.delete() }
 
         let loaded = dataSource.load()
@@ -70,22 +84,24 @@ struct ConfigDataSourceImplTryDecodeTests {
         #expect(loaded?.config.screen == .main)
     }
 
-    @Test("a malformed [ai] section fails validation instead of passing silently")
-    func malformedAISectionFailsValidation() throws {
-        let (dataSource, folder) = try dataSource(
-            withConfig: """
-                screen = "main"
-
-                [ai]
-                endpoint = ["not", "a", "string"]
-                """)
+    @Test("strict mode surfaces a malformed [ai] section as a failure (healthcheck)")
+    func malformedAISectionFailsStrictValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedAI)
         defer { try? folder.delete() }
 
-        #expect(throws: (any Error).self) { try dataSource.tryDecode() }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
 
-    @Test("a well-formed [lyrics] section passes validation")
-    func wellFormedLyricsSectionPassesValidation() throws {
+    @Test("lenient mode tolerates a malformed [ai] section — degrades like startup (hot-reload)")
+    func malformedAISectionPassesLenientValidation() throws {
+        let (dataSource, folder) = try dataSource(withConfig: malformedAI)
+        defer { try? folder.delete() }
+
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: false) }
+    }
+
+    @Test("a well-formed [lyrics] section passes in both modes")
+    func wellFormedLyricsSectionPassesBothModes() throws {
         let (dataSource, folder) = try dataSource(
             withConfig: """
                 screen = "main"
@@ -96,7 +112,19 @@ struct ConfigDataSourceImplTryDecodeTests {
                 """)
         defer { try? folder.delete() }
 
-        #expect(throws: Never.self) { try dataSource.tryDecode() }
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: true) }
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: false) }
+    }
+
+    @Test("a malformed required structure fails even in lenient mode — the required decode always gates")
+    func malformedRequiredStructureFailsEvenInLenientMode() throws {
+        // `wallpaper = [` is an unterminated array: the required decode itself
+        // fails, so lenient mode cannot rescue it (unlike an optional-section error).
+        let (dataSource, folder) = try dataSource(withConfig: "wallpaper = [")
+        defer { try? folder.delete() }
+
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: false) }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
 
     @Test("a malformed [developer] section fails validation instead of silently disabling the trace")
@@ -110,7 +138,7 @@ struct ConfigDataSourceImplTryDecodeTests {
                 """)
         defer { try? folder.delete() }
 
-        #expect(throws: (any Error).self) { try dataSource.tryDecode() }
+        #expect(throws: (any Error).self) { try dataSource.tryDecode(strictOptionalSections: true) }
     }
 
     @Test("a malformed [developer] section still loads leniently — the rest of the config survives")
@@ -141,6 +169,75 @@ struct ConfigDataSourceImplTryDecodeTests {
                 """)
         defer { try? folder.delete() }
 
-        #expect(throws: Never.self) { try dataSource.tryDecode() }
+        #expect(throws: Never.self) { try dataSource.tryDecode(strictOptionalSections: true) }
+    }
+}
+
+// Per-call readers ([lyrics] fallback, [ai] endpoint) re-read the config on every
+// lookup. While an invalid edit sits on disk, `reload()` keeps the previous style —
+// `load()` must honor the same contract and serve the last accepted config instead
+// of silently degrading those features to defaults (#337 review).
+@Suite("ConfigDataSourceImpl.load — last-good retention across invalid states")
+struct ConfigDataSourceImplLastGoodLoadTests {
+    private func dataSource(withConfig content: String) throws -> (ConfigDataSourceImpl, Folder, File) {
+        let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
+        let lyraDir = try xdgConfig.createSubfolder(named: "lyra")
+        let file = try lyraDir.createFile(named: "config.toml")
+        try file.write(content)
+        return (ConfigDataSourceImpl(configHome: xdgConfig.path), xdgConfig, file)
+    }
+
+    @Test("an invalid on-disk state serves the last successfully decoded config")
+    func invalidStateServesLastGood() throws {
+        let (dataSource, folder, file) = try dataSource(withConfig: "screen = \"main\"")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load()?.config.screen == .main)
+
+        // `wallpaper = [` is an unterminated array — the required decode fails.
+        try file.write("wallpaper = [")
+
+        #expect(dataSource.load()?.config.screen == .main)
+    }
+
+    @Test("an invalid config with no prior successful load returns nil")
+    func invalidWithoutPriorGoodReturnsNil() throws {
+        let (dataSource, folder, _) = try dataSource(withConfig: "wallpaper = [")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load() == nil)
+    }
+
+    @Test("deleting the config file clears the last-good fallback — removal means defaults")
+    func deletingFileClearsLastGood() throws {
+        let (dataSource, folder, file) = try dataSource(withConfig: "screen = \"main\"")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load() != nil)
+
+        let parent = try Folder(path: file.parent?.path ?? "")
+        try file.delete()
+
+        #expect(dataSource.load() == nil)
+
+        // Recreate the file with broken content: the pre-deletion value must not
+        // resurface — the deletion cleared the fallback, so the invalid state has
+        // nothing to fall back to. (Without the clear, `screen = .main` would leak.)
+        try parent.createFile(named: "config.toml").write("wallpaper = [")
+        #expect(dataSource.load() == nil)
+    }
+
+    @Test("fixing the config replaces the last-good fallback with the fresh values")
+    func fixedConfigServesFreshValues() throws {
+        let (dataSource, folder, file) = try dataSource(withConfig: "screen = \"main\"")
+        defer { try? folder.delete() }
+
+        #expect(dataSource.load()?.config.screen == .main)
+
+        try file.write("wallpaper = [")
+        #expect(dataSource.load()?.config.screen == .main)
+
+        try file.write("screen = \"largest\"")
+        #expect(dataSource.load()?.config.screen == .largest)
     }
 }

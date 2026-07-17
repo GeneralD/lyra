@@ -118,6 +118,14 @@ let package = Package(
                 "Domain"
             ]
         ),
+
+        // ── FileWatchGateway ──
+        .target(
+            name: "FileWatchGateway",
+            dependencies: [
+                "Domain"
+            ]
+        ),
         .target(
             name: "AppKitScreenProvider",
             dependencies: [
@@ -244,6 +252,7 @@ let package = Package(
                 "DeveloperLog",
                 "TrackInteractor",
                 "ScreenInteractor",
+                "ConfigInteractor",
                 "WallpaperInteractor",
                 "SpectrumInteractor",
                 "ConfigUseCase",
@@ -267,6 +276,7 @@ let package = Package(
                 "SQLiteDataStore",
                 "DarwinGateway",
                 "CoreAudioTapGateway",
+                "FileWatchGateway",
                 "FrequencyAnalyzer",
                 "ProcessHandler",
                 "VersionHandler",
@@ -290,6 +300,13 @@ let package = Package(
         ),
         .target(
             name: "ScreenInteractor",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "ConfigInteractor",
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -415,6 +432,7 @@ let package = Package(
             name: "ConfigDataSource",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ]
@@ -512,6 +530,14 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "ConfigInteractorTests",
+            dependencies: [
+                "ConfigInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
             name: "WallpaperInteractorTests",
             dependencies: [
                 "WallpaperInteractor",
@@ -566,6 +592,10 @@ let package = Package(
         .testTarget(
             name: "CoreAudioTapGatewayTests",
             dependencies: ["CoreAudioTapGateway"]
+        ),
+        .testTarget(
+            name: "FileWatchGatewayTests",
+            dependencies: ["FileWatchGateway", "Domain"]
         ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
@@ -750,7 +780,21 @@ let package = Package(
             dependencies: [
                 "ConfigDataSource",
                 "Domain",
+                "FileWatchGateway",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "TOMLKit", package: "TOMLKit"),
+            ]
+        ),
+        .testTarget(
+            name: "ConfigHotReloadTests",
+            dependencies: [
+                "ConfigUseCase",
+                "ConfigInteractor",
+                "ConfigRepository",
+                "ConfigDataSource",
+                "Domain",
+                "Entity",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
@@ -758,6 +802,7 @@ let package = Package(
             dependencies: [
                 "LyricsDataSource",
                 "Domain",
+                "ConfigDataSource",
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Papyrus", package: "papyrus"),
             ]

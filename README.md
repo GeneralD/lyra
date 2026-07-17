@@ -107,6 +107,16 @@ Or create `~/.config/lyra/config.toml` (or `config.json`) manually. All fields a
 
 Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 
+### Live reload
+
+The daemon watches the config directory for edits and re-validates on every save — no `lyra restart` needed to pick up a config file change. Saves are debounced briefly to coalesce rapid writes, then applied automatically. The watch arms even when no config file exists yet, so a config created after the daemon starts (via `lyra config init` or a manual save) is picked up without a restart, as long as its directory (`~/.config/lyra`) already exists.
+
+This now covers every visual element: config validation, the header and lyrics styling (fonts, colors, sizes, decode effect, and artwork all re-render live), the lyrics `[lyrics] fallback_command`/`timeout_ms` settings (re-read on every fallback invocation), the ripple and spectrum overlays (their styling and their `enabled` toggle both take effect live), the wallpaper source (swapping the video, changing playback mode, or removing it entirely all apply live without blacking out the overlay), and the screen selection (`[screen]` selector and debounce). No `lyra restart` is required for any config edit.
+
+If an edit breaks the config's required structure (invalid TOML/JSON, or bad values in the core text/wallpaper/spectrum sections), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
+
+A malformed optional `[ai]` or `[lyrics]` section is tolerated instead of blocking the whole edit: that section is skipped while the rest of the valid config still applies, exactly as it does at startup (so no "shattered" sphere appears for it). `lyra healthcheck` still reports a malformed `[ai]`/`[lyrics]` so the problem stays discoverable.
+
 ### Top-level
 
 | Key | Type | Default | Description |

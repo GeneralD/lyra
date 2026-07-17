@@ -11,6 +11,29 @@
 | **CLI Command** | Argument parsing, thin glue | Loops, task groups, complex branching |
 | **DataStore** | Persistence/cache of *domain data* — Entity values a Repository reads back (SQLite caches, wallpaper files) | Caching *computational resources* (memoized engines, FFT setups, formatters) — those stay private state of the owning implementation (see docs/ARCHITECTURE.md "Analyzer memoization", #313) |
 
+## Dependency Chain — Adjacent Layers Only, No Skipping
+
+Within the VIPER lane, each layer depends only on the layer directly beneath it:
+
+```text
+View → Presenter → Interactor → UseCase → Repository → DataSource/DataStore → Gateway (OS boundary)
+```
+
+- **No layer skipping.** An upper layer must not consume a lower-lower layer
+  directly, even when `@Dependency` makes it a one-liner — an Interactor
+  holding a Gateway is a violation regardless of how convenient the DI graph
+  makes it (#337: `ConfigInteractor` → `ConfigWatchGateway` was refactored
+  into the adjacent chain).
+- **OS-boundary gateways are consumed at the DataSource layer.** Precedents:
+  `AudioTapDataSource → AudioTapGateway`, `ConfigDataSource →
+  ConfigWatchGateway`. When an upper layer needs OS-boundary behavior, thread
+  a contract through the adjacent layers as pass-throughs (e.g.
+  `watchChanges(onChange:)` on UseCase → Repository → DataSource) instead of
+  reaching down.
+- **Knowledge placement follows the chain too.** Path resolution, normalization,
+  and other persistence-shaped knowledge live in the DataSource; the layers
+  above see only the contract.
+
 ## CLI Command Pattern
 
 All commands follow: **inject → call → write → guard**. No exceptions.

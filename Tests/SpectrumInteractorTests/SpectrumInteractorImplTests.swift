@@ -305,6 +305,7 @@ private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
 
 private struct StubConfigUseCase: ConfigUseCase {
     let appStyle: AppStyle
+    func reload() -> ConfigReloadOutcome { .updated(appStyle) }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }

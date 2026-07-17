@@ -1,10 +1,25 @@
+import Dependencies
 import Domain
 import Files
 import Foundation
 import TOMLKit
+import os
 
 public struct ConfigDataSourceImpl: Sendable {
+    @Dependency(\.configWatchGateway) var watchGateway
     private let configHomeOverride: String?
+    /// The last successfully decoded load, shared across value copies of this
+    /// struct (the DI `liveValue` is a single long-lived instance). `load()`
+    /// falls back to it while the on-disk config fails the *required* decode
+    /// (broken TOML, malformed text/wallpaper section), so consumers that
+    /// deliberately re-read per call — `[lyrics]` fallback_command, `[ai]`
+    /// endpoint — keep honoring the last accepted config across a rejected
+    /// hot-reload edit, mirroring `ConfigUseCase.reload()`'s keep-previous-style
+    /// contract instead of silently degrading to defaults (#337 review).
+    /// A malformed optional `[ai]`/`[lyrics]`/`[developer]` section alone is NOT
+    /// protected: the lenient decode degrades it to `nil` and still succeeds, so
+    /// the cache is overwritten — matching what `reload()` accepts (#330).
+    private let lastGoodLoad = LastGoodLoadBox()
 
     public init(configHome: String? = nil) {
         configHomeOverride = configHome?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -13,12 +28,24 @@ public struct ConfigDataSourceImpl: Sendable {
 
 extension ConfigDataSourceImpl: ConfigDataSource {
     public func load() -> ConfigLoadResult? {
-        guard let file = findConfigFile(),
-            let content = try? file.readAsString()
-        else { return nil }
+        guard let file = findConfigFile() else {
+            // No config file at all: a deliberate removal means defaults, so the
+            // last-good fallback must not outlive the file it came from.
+            lastGoodLoad.value = nil
+            return nil
+        }
         let configDir = file.parent?.path ?? Folder.home.path
-        guard let config = decode(content: content, path: file.path, configDir: configDir) else { return nil }
-        return ConfigLoadResult(config: config, configDir: configDir)
+        guard let content = try? file.readAsString(),
+            let config = decode(content: content, path: file.path, configDir: configDir)
+        else {
+            // The file exists but is unreadable or undecodable right now (a
+            // rejected mid-edit state, or an atomic-save window): serve the last
+            // accepted config so per-call readers keep working until it's fixed.
+            return lastGoodLoad.value
+        }
+        let result = ConfigLoadResult(config: config, configDir: configDir)
+        lastGoodLoad.value = result
+        return result
     }
 
     public func template(format: ConfigFormat) -> String? {
@@ -58,17 +85,38 @@ extension ConfigDataSourceImpl: ConfigDataSource {
     }
 
     public var configDir: String {
-        findConfigFile()?.parent?.path ?? Folder.home.path
+        // When the file exists, its parent; otherwise the directory where the config
+        // *would* live, so the watcher can arm on it before the file is created (#329).
+        findConfigFile()?.parent?.path ?? expectedConfigDirectory
     }
 
-    public func tryDecode() throws -> String {
+    public func tryDecode(strictOptionalSections: Bool) throws -> String {
         guard let file = findConfigFile(),
             let content = try? file.readAsString()
         else { return "" }
         let configDir = file.parent?.path ?? Folder.home.path
+        // The required structure always gates validity — a malformed text /
+        // wallpaper / spectrum section is fatal in either mode.
         try decodeOrThrow(content: content, path: file.path, configDir: configDir)
-        try strictDecodeOptionalSections(content: content, path: file.path, configDir: configDir)
+        // The optional [ai]/[lyrics] sections only gate validity in strict mode.
+        // Hot-reload passes `false` so a malformed enhancement section degrades to
+        // nil (matching startup) rather than discarding valid text/wallpaper edits.
+        if strictOptionalSections {
+            try strictDecodeOptionalSections(content: content, path: file.path, configDir: configDir)
+        }
         return file.path
+    }
+}
+
+/// Reference-type backing for the last-good load so every value copy of
+/// `ConfigDataSourceImpl` shares one cache. `@unchecked Sendable`: all access
+/// goes through the unfair lock.
+private final class LastGoodLoadBox: @unchecked Sendable {
+    private let state = OSAllocatedUnfairLock<ConfigLoadResult?>(initialState: nil)
+
+    var value: ConfigLoadResult? {
+        get { state.withLock { $0 } }
+        set { state.withLock { $0 = newValue } }
     }
 }
 
@@ -102,15 +150,22 @@ extension ConfigDataSourceImpl {
         }.first
     }
 
-    func lyraConfigFolder() throws -> Folder {
-        let home = Folder.home
+    // The directory where the config file lives or would live: `$XDG_CONFIG_HOME/lyra`,
+    // falling back to `~/.config/lyra`. A pure path computation that never creates the
+    // directory — the single source of truth shared by `configDir`'s file-absent fallback
+    // (the watch target, #329) and `lyraConfigFolder()`'s create-and-open.
+    var expectedConfigDirectory: String {
         let explicit =
             configHomeOverride
             ?? ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
                 in: .whitespacesAndNewlines)
         let xdgConfigPath =
-            (explicit?.isEmpty == false) ? explicit! : "\(home.path).config"
-        let lyraPath = "\(xdgConfigPath)/lyra"
+            (explicit?.isEmpty == false) ? explicit! : "\(Folder.home.path).config"
+        return "\(xdgConfigPath)/lyra"
+    }
+
+    func lyraConfigFolder() throws -> Folder {
+        let lyraPath = expectedConfigDirectory
         try FileManager.default.createDirectory(atPath: lyraPath, withIntermediateDirectories: true)
         return try Folder(path: lyraPath)
     }
@@ -158,17 +213,46 @@ extension ConfigDataSourceImpl {
     }
 
     func resolveIncludes(into table: TOMLTable, configDir: String) {
-        guard let paths = table["includes"]?.array else { return }
-        for element in paths {
-            guard let relativePath = element.string else { continue }
-            let file: File? =
-                relativePath.hasPrefix("/")
-                ? try? File(path: relativePath)
-                : try? Folder(path: configDir).file(at: relativePath)
-            guard let content = try? file?.readAsString(),
+        for file in includeFiles(of: table, configDir: configDir) {
+            guard let content = try? file.readAsString(),
                 let included = try? TOMLTable(string: content)
             else { continue }
             deepMerge(from: included, into: table)
+        }
+    }
+
+    /// The config's current `includes` paths, re-resolved from the on-disk TOML
+    /// each call WITHOUT requiring the files to exist. Feeds the hot-reload
+    /// watch targets (ConfigWatch) through the same entry parsing decode uses,
+    /// so the watched set can never drift from what decode would merge — and a
+    /// missing include still contributes its parent directory to the watch, so
+    /// creating the file later fires an event instead of going unnoticed.
+    var includedConfigPaths: [String] {
+        guard let file = findConfigFile(),
+            file.path.hasSuffix(".toml"),  // `includes` is a TOML-only feature.
+            let content = try? file.readAsString(),
+            let table = try? TOMLTable(string: content)
+        else { return [] }
+        return includePaths(of: table, configDir: file.parent?.path ?? Folder.home.path)
+    }
+
+    // Shared entry parsing with includedConfigPaths, so watch targets can
+    // never drift from what the decode actually merged.
+    func includeFiles(of table: TOMLTable, configDir: String) -> [File] {
+        includePaths(of: table, configDir: configDir).compactMap { try? File(path: $0) }
+    }
+
+    /// Absolute paths of the `includes` entries, resolved without touching the
+    /// filesystem. Decode filters these down to existing files (`includeFiles`);
+    /// the watch keeps them all.
+    private func includePaths(of table: TOMLTable, configDir: String) -> [String] {
+        guard let paths = table["includes"]?.array else { return [] }
+        // Files-derived directory paths carry a trailing slash, but decode is
+        // also called with plain caller-supplied strings — normalize the join.
+        let base = configDir.hasSuffix("/") ? configDir : configDir + "/"
+        return paths.compactMap { element in
+            guard let path = element.string else { return nil }
+            return path.hasPrefix("/") ? path : base + path
         }
     }
 
