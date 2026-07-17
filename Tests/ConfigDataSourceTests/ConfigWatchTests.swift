@@ -188,6 +188,187 @@ struct ConfigWatchTests {
         #expect(gateway.watchedFiles.count == armedBeforeFire)
     }
 
+    @Test("config dir 不在でも最も近い実在祖先に park して armed になる（#338）")
+    func parksOnNearestAncestorWhenConfigDirMissing() throws {
+        defer { tearDown() }
+
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+
+        let gateway = FakeWatchGateway()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges {}
+        }
+        defer { token?.stop() }
+
+        #expect(token != nil)
+        #expect(gateway.watchedDirectories == [tempDir])
+        #expect(gateway.watchedFiles.isEmpty)
+    }
+
+    @Test("祖先イベントで config dir 出現 → watch 昇格・file watch・initial load 発火（#338）")
+    func promotesToConfigDirOnceCreated() throws {
+        defer { tearDown() }
+
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+
+        let gateway = FakeWatchGateway()
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+
+        _ = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+        gateway.fireDirectoryHandlers()
+
+        #expect(gateway.watchedDirectories.contains { $0.hasSuffix("/lyra/") })
+        #expect(gateway.watchedFiles.contains { $0.hasSuffix("/lyra/config.toml") })
+        #expect(onChange.count == 1)
+
+        // Promoted for real: a subsequent config-directory event flows as usual.
+        gateway.fireDirectoryHandlers()
+        #expect(onChange.count == 2)
+    }
+
+    @Test("目的パスが現れない祖先イベントは onChange を発火しない（ノイズフィルタ、#338）")
+    func ancestorNoiseDoesNotFireOnChange() throws {
+        defer { tearDown() }
+
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+
+        let gateway = FakeWatchGateway()
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+
+        gateway.fireDirectoryHandlers()  // Unrelated churn beneath the ancestor.
+
+        #expect(onChange.count == 0)
+        #expect(gateway.watchedFiles.isEmpty)
+
+        // The park must survive the noise: a later creation still promotes.
+        _ = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+        gateway.fireDirectoryHandlers()
+        #expect(onChange.count == 1)
+    }
+
+    @Test("中間ディレクトリのみ出現 → より近い祖先へ park し直し、onChange なし（#338）")
+    func walksDownToNearerAncestorWithoutFiring() throws {
+        defer { tearDown() }
+
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        let configRoot = tempDir + "/cfgroot"
+
+        let gateway = FakeWatchGateway()
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: configRoot).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+
+        #expect(gateway.watchedDirectories.last == tempDir)
+
+        try FileManager.default.createDirectory(atPath: configRoot, withIntermediateDirectories: true)
+        gateway.fireDirectoryHandlers()
+
+        #expect(onChange.count == 0)
+        #expect(gateway.watchedDirectories.last == configRoot)
+
+        try FileManager.default.createDirectory(atPath: configRoot + "/lyra", withIntermediateDirectories: true)
+        try "screen = \"main\"".write(toFile: configRoot + "/lyra/config.toml", atomically: true, encoding: .utf8)
+        gateway.fireDirectoryHandlers()
+
+        #expect(onChange.count == 1)
+        #expect(gateway.watchedDirectories.last?.hasSuffix("/lyra/") == true)
+        #expect(gateway.watchedFiles.contains { $0.hasSuffix("/lyra/config.toml") })
+    }
+
+    @Test("稼働中に config dir が消えたら祖先へ降格 park し、再作成で復帰する（#338）")
+    func demotesWhenConfigDirDeletedAndRecoversOnRecreation() throws {
+        defer { tearDown() }
+
+        let lyraDir = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+
+        let gateway = FakeWatchGateway()
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+
+        try FileManager.default.removeItem(atPath: lyraDir)
+        gateway.fireDirectoryHandlers()  // The dead directory fd's final .delete event.
+
+        #expect(onChange.count == 1)  // Reload-to-defaults ping.
+        #expect(gateway.watchedDirectories.last == tempDir)
+
+        _ = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+        gateway.fireDirectoryHandlers()
+
+        #expect(onChange.count == 2)
+        #expect(gateway.watchedDirectories.last?.hasSuffix("/lyra/") == true)
+        #expect(gateway.watchedFiles.last?.hasSuffix("/lyra/config.toml") == true)
+    }
+
+    @Test("directoryAncestors は近い順に / まで列挙する（純関数）")
+    func directoryAncestorsEnumeratesNearestFirst() {
+        #expect(directoryAncestors(of: "/a/b/c") == ["/a/b", "/a", "/"])
+        #expect(directoryAncestors(of: "/a/b/c/") == ["/a/b", "/a", "/"])
+        #expect(directoryAncestors(of: "/a") == ["/"])
+        #expect(directoryAncestors(of: "/") == [])
+    }
+
+    @Test("実 FS: config dir を後から作成しても watch が昇格して onChange が発火する（#338）")
+    func liveGatewayPromotesWhenConfigDirCreatedLater() async throws {
+        defer { tearDown() }
+
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = FileWatchGateway()
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+        #expect(token != nil)
+
+        // First run of `lyra config init`: directory and file appear together.
+        let lyraDir = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+
+        let promoteDeadline = ContinuousClock.now + .seconds(3)
+        while onChange.count < 1, ContinuousClock.now < promoteDeadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(onChange.count >= 1)
+
+        // The promoted session must have armed the file tier: an in-place
+        // append is visible only to a file-level watch.
+        let settled = onChange.count
+        let handle = FileHandle(forWritingAtPath: lyraDir + "/config.toml")
+        try handle?.seekToEnd()
+        try handle?.write(contentsOf: Data("\n# edited\n".utf8))
+        try handle?.close()
+
+        let editDeadline = ContinuousClock.now + .seconds(3)
+        while onChange.count <= settled, ContinuousClock.now < editDeadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(onChange.count > settled)
+    }
+
     @Test("実 FS: include の in-place 編集・atomic save 後の再編集が onChange を発火する")
     func liveGatewayObservesIncludeEditsAndSurvivesAtomicSave() async throws {
         defer { tearDown() }
@@ -259,7 +440,7 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     private let directoryWatchable: Bool
     private var _watchedDirectories: [String] = []
     private var _watchedFiles: [String] = []
-    private var directoryHandlers: [@Sendable () -> Void] = []
+    private var liveDirectoryHandlers: [UUID: @Sendable () -> Void] = [:]
     private var _stoppedTokenCount = 0
 
     init(directoryWatchable: Bool = true) {
@@ -270,12 +451,20 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     var watchedFiles: [String] { lock.withLock { _watchedFiles } }
     var stoppedTokenCount: Int { lock.withLock { _stoppedTokenCount } }
 
+    /// Mirrors the live gateway: a directory watch only arms when the
+    /// directory exists on disk (`open(2)` fails otherwise), which is what
+    /// the ancestor-park fallback (#338) keys on.
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
-            guard directoryWatchable else { return nil }
+            var isDirectory: ObjCBool = false
+            guard directoryWatchable,
+                FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory),
+                isDirectory.boolValue
+            else { return nil }
+            let id = UUID()
             _watchedDirectories.append(directory)
-            directoryHandlers.append(onChange)
-            return FakeToken { [weak self] in self?.recordStop() }
+            liveDirectoryHandlers[id] = onChange
+            return FakeToken { [weak self] in self?.stopDirectoryWatch(id) }
         }
     }
 
@@ -286,8 +475,17 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
         }
     }
 
+    /// Fires only the handlers of directory watches still alive — a cancelled
+    /// DispatchSource delivers no further events.
     func fireDirectoryHandlers() {
-        for handler in lock.withLock({ directoryHandlers }) { handler() }
+        for handler in lock.withLock({ Array(liveDirectoryHandlers.values) }) { handler() }
+    }
+
+    private func stopDirectoryWatch(_ id: UUID) {
+        lock.withLock {
+            liveDirectoryHandlers[id] = nil
+            _stoppedTokenCount += 1
+        }
     }
 
     private func recordStop() {
