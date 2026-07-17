@@ -151,6 +151,31 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(timeoutMs == 1234)
     }
 
+    @Test("LYRA_CONFIG_DIR follows the load() result's configDir, not the on-disk candidate (last-good fallback)")
+    func configDirFollowsLoadResult() async {
+        let captured = CapturedInvocation()
+        // load() serves a last-good config that lived under /retained while the
+        // current on-disk candidate would resolve to /current — the env var and
+        // placeholder expansion must follow the directory the served config
+        // actually came from.
+        let dataSource = withDependencies {
+            $0.configDataSource = StubConfigDataSource(
+                fallbackCommand: ["$LYRA_CONFIG_DIR/fetch.sh"],
+                configDir: "/current",
+                loadedConfigDir: "/retained")
+        } operation: {
+            CustomScriptLyricsDataSourceImpl(processRunner: { executable, arguments, environment, timeoutMs in
+                await captured.record(
+                    executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
+                return (status: 0, stdout: #"{"track_name": "T", "plain_lyrics": "x"}"#, stderr: "")
+            })
+        }
+        _ = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+
+        #expect(await captured.executable == "/retained/fetch.sh")
+        #expect(await captured.environment?["LYRA_CONFIG_DIR"] == "/retained")
+    }
+
     @Test("executeProcess survives pathological timeout values — huge/NaN/infinite clamp instead of trapping")
     func executeProcessClampsPathologicalTimeouts() async throws {
         for pathological in [1e300, .nan, .infinity] as [Double] {
@@ -429,6 +454,10 @@ private struct StubConfigDataSource: ConfigDataSource {
     var fallbackCommand: [String] = []
     var timeoutMs: Double = 5000
     var configDir: String = "/config"
+    /// The configDir carried by `load()`'s result when it should diverge from
+    /// the on-disk `configDir` (the last-good fallback scenario: a broken edit
+    /// sits at a different candidate path than the served config came from).
+    var loadedConfigDir: String?
 
     // AppConfig's memberwise init is internal to the Entity module (only its
     // Codable `init(from:)` is public), so a cross-module test builds it via JSON
@@ -440,7 +469,7 @@ private struct StubConfigDataSource: ConfigDataSource {
         guard let data = json.data(using: .utf8),
             let config = try? JSONDecoder().decode(AppConfig.self, from: data)
         else { return nil }
-        return ConfigLoadResult(config: config, configDir: configDir)
+        return ConfigLoadResult(config: config, configDir: loadedConfigDir ?? configDir)
     }
     func tryDecode(strictOptionalSections: Bool) throws -> String { "" }
     func template(format: ConfigFormat) -> String? { nil }

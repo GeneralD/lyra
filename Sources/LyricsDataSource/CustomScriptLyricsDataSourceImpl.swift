@@ -46,10 +46,16 @@ extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
     public func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         // Read config fresh on every call (never captured at init) so an edited
         // fallback_command/timeout_ms takes effect on the daemon's next lookup (#41).
-        let lyrics = configDataSource.load()?.config.lyrics
+        let loaded = configDataSource.load()
+        let lyrics = loaded?.config.lyrics
         let fallbackCommand = lyrics?.fallbackCommand ?? []
         let timeoutMs = lyrics?.timeoutMs.value ?? 5000
-        let configDir = configDataSource.configDir
+        // The configDir must come from the same load result: while a broken edit
+        // sits on disk, load() serves the last-good config, whose configDir can
+        // differ from the current on-disk candidate's parent — mixing the two
+        // would expand $LYRA_CONFIG_DIR against a directory the served config
+        // never lived in.
+        let configDir = loaded?.configDir ?? configDataSource.configDir
         let cacheDir = Self.resolvedCacheDir()
 
         // Placeholders expand BEFORE the absolute-path guard so a config can lead with
