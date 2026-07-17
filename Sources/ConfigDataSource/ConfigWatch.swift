@@ -149,20 +149,35 @@ extension ConfigWatchSession {
         onChange()
     }
 
-    /// Caller must hold `lock`. Points the directory tier at the config
-    /// directory itself, or — when that cannot be watched because it does not
-    /// exist yet — parks it on the nearest watchable ancestor (#338).
-    /// Re-resolves the target and swaps in a fresh fd every time, so a
-    /// directory that was deleted, replaced, or has just appeared is picked up
-    /// by the same code path with no staleness check to get wrong.
+    /// Caller must hold `lock`. Re-resolves the directory tier and swaps in a
+    /// fresh fd, so a directory that was deleted, replaced, or has just
+    /// appeared is picked up by the same code path with no staleness check to
+    /// get wrong.
+    ///
+    /// The live watch is released only once its replacement is secured. If
+    /// nothing on the chain can be opened — `open(2)` failing even for the `/`
+    /// the ancestors bottom out on, i.e. fd exhaustion — the current token is
+    /// kept instead: it may well still be live, and dropping it would leave
+    /// the session with no watch to deliver the event that would retry the arm,
+    /// stranding it deaf until a daemon restart. That is precisely the state
+    /// #338 exists to remove, and re-arming every event (rather than only on a
+    /// vanished directory) would otherwise expose it on every config edit
+    /// (#339 review).
     private func armDirectoryTierLocked() {
+        guard let armed = freshDirectoryTierLocked() else { return }
         directoryToken?.stop()
-        directoryToken = nil
-        ancestorPath = nil
+        directoryToken = armed.token
+        ancestorPath = armed.ancestorPath
+    }
+
+    /// Caller must hold `lock`. Opens a fresh watch on the config directory,
+    /// or — when it does not exist yet — parks on the nearest watchable
+    /// ancestor (#338), reporting which. Touches no state, so a caller can
+    /// decide whether the result is worth trading the live watch for.
+    private func freshDirectoryTierLocked() -> (token: any ConfigWatchToken, ancestorPath: String?)? {
         let configDir = dataSource.configDir
         if let token = gateway.watch(directory: configDir, onChange: { [weak self] in self?.changed() }) {
-            directoryToken = token
-            return
+            return (token, nil)
         }
         // A plain loop, not `lazy.compactMap { … }.first`: arming a watch is a
         // side effect, and a lazy *collection* transform runs twice for the
@@ -173,10 +188,9 @@ extension ConfigWatchSession {
                 let token = gateway.watch(
                     directory: ancestor, onChange: { [weak self] in self?.ancestorChanged() })
             else { continue }
-            directoryToken = token
-            ancestorPath = ancestor
-            return
+            return (token, ancestor)
         }
+        return nil
     }
 
     /// Caller must hold `lock`.

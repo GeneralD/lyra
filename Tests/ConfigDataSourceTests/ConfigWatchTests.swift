@@ -357,6 +357,36 @@ struct ConfigWatchTests {
         #expect(gateway.watchedFiles.last?.hasSuffix("/lyra/config.toml") == true)
     }
 
+    @Test("再 arm が全滅しても現行 watch を手放さない（#339 レビュー）")
+    func keepsLiveWatchWhenRearmFailsEntirely() throws {
+        defer { tearDown() }
+
+        _ = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+
+        let gateway = FakeWatchGateway()
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+        #expect(token != nil)
+
+        // Transient fd exhaustion: the re-arm this event triggers can open
+        // nothing at all, not even the `/` the ancestor chain ends on.
+        gateway.setDirectoryWatchable(false)
+        gateway.fireDirectoryHandlers()
+        #expect(onChange.count == 1)
+
+        // Dropping the only live watch to reach for a replacement that never
+        // arrives would leave the session deaf until a daemon restart — the
+        // exact state #338 exists to remove. It must still be armed.
+        gateway.setDirectoryWatchable(true)
+        gateway.fireDirectoryHandlers()
+        #expect(onChange.count == 2)
+    }
+
     @Test("directoryAncestors は近い順に / まで列挙する（純関数）")
     func directoryAncestorsEnumeratesNearestFirst() {
         #expect(directoryAncestors(of: "/a/b/c") == ["/a/b", "/a", "/"])
@@ -484,7 +514,7 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     }
 
     private let lock = NSLock()
-    private let directoryWatchable: Bool
+    private var directoryWatchable: Bool
     private var _watchedDirectories: [String] = []
     private var _watchedFiles: [String] = []
     private var directoryWatches: [UUID: DirectoryWatch] = [:]
@@ -499,6 +529,12 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     var watchedFiles: [String] { lock.withLock { _watchedFiles } }
     var stoppedFileTokenCount: Int { lock.withLock { _stoppedFileTokenCount } }
     var stoppedDirectoryTokenCount: Int { lock.withLock { _stoppedDirectoryTokenCount } }
+
+    /// Simulates transient `open(2)` pressure (fd exhaustion): every further
+    /// directory arm fails, including the `/` the ancestor chain bottoms out on.
+    func setDirectoryWatchable(_ watchable: Bool) {
+        lock.withLock { directoryWatchable = watchable }
+    }
 
     /// Mirrors the live gateway: a directory watch only arms when the
     /// directory exists on disk (`open(2)` fails otherwise), which is what
