@@ -97,8 +97,8 @@ struct IncludesTests {
         try "screen = \"main\"".write(toFile: lyraDir + "/koko.toml", atomically: true, encoding: .utf8)
         try "screen = \"main\"".write(toFile: outsideDir + "/shared.toml", atomically: true, encoding: .utf8)
         try """
-            includes = ["koko.toml", "\(outsideDir)/shared.toml", "missing.toml"]
-            """.write(toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
+        includes = ["koko.toml", "\(outsideDir)/shared.toml", "missing.toml"]
+        """.write(toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
 
         // tempDir acts as $XDG_CONFIG_HOME, so findConfigFile resolves <tempDir>/lyra/config.toml.
         let paths = ConfigDataSourceImpl(configHome: tempDir).includedConfigPaths

@@ -24,7 +24,7 @@ public final class ConfigInteractorImpl: @unchecked Sendable {
 
     deinit {
         token?.stop()
-        rearmedTokens.forEach { $0.stop() }
+        for rearmed in rearmedTokens { rearmed.stop() }
         debounceTask?.cancel()
     }
 }
@@ -55,7 +55,7 @@ extension ConfigInteractorImpl: ConfigInteractor {
         lock.withLock {
             token?.stop()
             token = nil
-            rearmedTokens.forEach { $0.stop() }
+            for rearmed in rearmedTokens { rearmed.stop() }
             rearmedTokens = []
             debounceTask?.cancel()
             debounceTask = nil
@@ -103,7 +103,7 @@ extension ConfigInteractorImpl: ConfigInteractor {
     /// an atomic save there (which kills the file fd without firing the config
     /// directory watch) still triggers a reload. Caller must hold `lock`.
     private func armFileWatchLocked() {
-        rearmedTokens.forEach { $0.stop() }
+        for rearmed in rearmedTokens { rearmed.stop() }
         let includes = configUseCase.includedConfigPaths
         let files = [configUseCase.existingConfigPath].compactMap { $0 } + includes
         let foreignDirectories = Set(includes.map { ($0 as NSString).deletingLastPathComponent })
