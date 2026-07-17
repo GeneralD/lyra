@@ -144,15 +144,21 @@ struct AppWindowTests {
         surface.contentView = hostingView
         AppWindow.attachPlayer(AVPlayer(), to: surface, hostingView: hostingView)
         #expect(surface.contentView !== hostingView)
+        // Capture the live player layer BEFORE detaching — after detach the
+        // container view is gone, so probing the restored hosting view's
+        // sublayers would trivially find nothing without proving teardown.
+        let playerLayer = surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
+        #expect(playerLayer != nil)
 
         AppWindow.detachPlayer(from: surface, hostingView: hostingView)
 
-        // Hosting view is restored as the direct content view; no player layer left.
+        // Hosting view is restored as the direct content view; the captured
+        // layer is fully torn down (player released, removed from any tree).
         #expect(surface.contentView === hostingView)
         #expect(surface.overlayBackgroundColor == .clear)
         #expect(surface.isOpaque == false)
-        let playerLayer = surface.contentView?.layer?.sublayers?.compactMap { $0 as? AVPlayerLayer }.first
-        #expect(playerLayer == nil)
+        #expect(playerLayer?.player == nil)
+        #expect(playerLayer?.superlayer == nil)
     }
 
     @Test("detachPlayer is a no-op when no player layer is attached")

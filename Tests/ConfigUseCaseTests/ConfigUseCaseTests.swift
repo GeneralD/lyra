@@ -85,6 +85,8 @@ struct ConfigUseCaseTests {
                 Issue.record("expected .updated")
                 return
             }
+            // The store now holds the freshly loaded style, not the cached one.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "reloaded.mp4")
         }
     }
 
@@ -104,6 +106,8 @@ struct ConfigUseCaseTests {
                 return
             }
             #expect(f.reason == .decode("syntax"))
+            // The store still holds the last-good style — never reset on a bad edit.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "initial.mp4")
         }
     }
 
@@ -123,6 +127,8 @@ struct ConfigUseCaseTests {
                 return
             }
             #expect(f.reason == .unreadable)
+            // The store still holds the last-good style — never reset on a bad edit.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "initial.mp4")
         }
     }
 
@@ -143,6 +149,8 @@ struct ConfigUseCaseTests {
             }
             #expect(f.path == "/c.toml")
             #expect(f.reason == .unreadable)
+            // The store still holds the last-good style — never reset on a bad edit.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "initial.mp4")
         }
     }
 
@@ -161,6 +169,9 @@ struct ConfigUseCaseTests {
                 Issue.record("expected .updated")
                 return
             }
+            // A deliberate removal replaces the store with the freshly loaded
+            // (defaults) style instead of clinging to the previous one.
+            #expect(useCase.appStyle.wallpaper?.items.first?.location == "reloaded.mp4")
         }
     }
 }
@@ -259,9 +270,13 @@ private final class CountingConfigRepository: ConfigRepository, @unchecked Senda
     var validation: ConfigValidationResult = .loaded(path: "/c.toml")
     var pathExists = true
 
+    /// The first load serves `initial.mp4`, later loads serve `reloaded.mp4`, so
+    /// a test can assert which style the use case's store actually holds after a
+    /// reload attempt — not just how many times the repository was called.
     func loadAppStyle() -> AppStyle {
         callCount += 1
-        return .init()
+        let location = callCount == 1 ? "initial.mp4" : "reloaded.mp4"
+        return AppStyle(wallpaper: WallpaperStyle(location: location), configDir: "/config")
     }
 
     func validate(strictOptionalSections: Bool) -> ConfigValidationResult { validation }

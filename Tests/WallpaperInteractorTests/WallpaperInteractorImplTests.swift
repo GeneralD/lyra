@@ -37,6 +37,21 @@ private struct StubWallpaperUseCase: WallpaperUseCase, Sendable {
 
 private enum StubError: Error { case failed }
 
+/// Reference-type stub whose `style` a test can mutate after injection, so the
+/// interactor — which must read the style live, never snapshot it at init —
+/// can be asserted against a config change on the SAME instance.
+private final class MutableStubConfigUseCase: ConfigUseCase, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _style: AppStyle
+    init(style: AppStyle = .init()) { _style = style }
+    func set(style: AppStyle) { lock.withLock { _style = style } }
+    var appStyle: AppStyle { lock.withLock { _style } }
+    func reload() -> ConfigReloadOutcome { .updated(appStyle) }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
+}
+
 private func collect(_ stream: AsyncStream<ResolvedWallpaperItem>) async -> [ResolvedWallpaperItem] {
     await stream.reduce(into: [ResolvedWallpaperItem]()) { $0.append($1) }
 }
@@ -58,24 +73,23 @@ struct WallpaperInteractorImplTests {
         #expect(interactor.playbackMode == .cycle)
     }
 
-    @Test("wallpaperSource exposes the config's wallpaper style (nil when absent)")
+    @Test("wallpaperSource reads the config's wallpaper style live on the same instance (nil when absent)")
     func wallpaperSourceReflectsConfig() {
         let wallpaper = WallpaperStyle(location: "bg.mp4", start: 10, end: 180, scale: 1.25)
-        let configured = withDependencies {
-            $0.configUseCase = StubConfigUseCase(style: AppStyle(wallpaper: wallpaper, configDir: "/config"))
-            $0.wallpaperUseCase = StubWallpaperUseCase()
-        } operation: {
-            WallpaperInteractorImpl()
-        }
-        let unconfigured = withDependencies {
-            $0.configUseCase = StubConfigUseCase()
+        let useCase = MutableStubConfigUseCase()
+        let interactor = withDependencies {
+            $0.configUseCase = useCase
             $0.wallpaperUseCase = StubWallpaperUseCase()
         } operation: {
             WallpaperInteractorImpl()
         }
 
-        #expect(configured.wallpaperSource == wallpaper)
-        #expect(unconfigured.wallpaperSource == nil)
+        // Absent style first, then a config change on the SAME instance: the
+        // interactor must read the style live, not a snapshot taken at init.
+        #expect(interactor.wallpaperSource == nil)
+
+        useCase.set(style: AppStyle(wallpaper: wallpaper, configDir: "/config"))
+        #expect(interactor.wallpaperSource == wallpaper)
     }
 
     @Test("resolvedWallpapers emits single item for legacy single-location config")
