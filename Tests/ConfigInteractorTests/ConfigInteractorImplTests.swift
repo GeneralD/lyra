@@ -274,6 +274,29 @@ struct ConfigInteractorImplTests {
         interactor.stop()
     }
 
+    @Test("末尾スラッシュ付き configDir でも同一ディレクトリの include が二重 watch されない")
+    func normalizesTrailingSlashWhenComparingIncludeParents() {
+        let gateway = FakeConfigWatchGateway()
+        // The live configDir (a Files-style folder path) carries a trailing slash.
+        let useCase = StubConfigUseCase(
+            outcome: .updated(.init(configDir: "/x")),
+            existingConfigPath: "/tmp/lyra/config.toml",
+            configDir: "/tmp/lyra/",
+            includedConfigPaths: ["/tmp/lyra/koko.toml"])
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+
+        #expect(gateway.watchCallCount == 1)
+        interactor.stop()
+    }
+
     @Test("configDir 外の include は親ディレクトリも watch される（atomic save 対策）")
     func armsDirectoryWatchOnForeignIncludeParent() {
         let gateway = FakeConfigWatchGateway()

@@ -106,8 +106,15 @@ extension ConfigInteractorImpl: ConfigInteractor {
         for rearmed in rearmedTokens { rearmed.stop() }
         let includes = configUseCase.includedConfigPaths
         let files = [configUseCase.existingConfigPath].compactMap { $0 } + includes
+        // The live configDir (a Files-style folder path) carries a trailing slash,
+        // while NSString-derived parents do not — normalize before comparing or
+        // configDir sneaks past the subtraction and gets double-watched.
+        let configDirectory =
+            configUseCase.configDir.hasSuffix("/")
+            ? String(configUseCase.configDir.dropLast())
+            : configUseCase.configDir
         let foreignDirectories = Set(includes.map { ($0 as NSString).deletingLastPathComponent })
-            .subtracting([configUseCase.configDir])
+            .subtracting([configDirectory])
         rearmedTokens =
             files.compactMap { path in
                 gateway.watch(file: path) { [weak self] in self?.scheduleReload() }
