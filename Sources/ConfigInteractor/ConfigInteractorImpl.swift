@@ -17,14 +17,14 @@ public final class ConfigInteractorImpl: @unchecked Sendable {
     private let invalidSubject = CurrentValueSubject<ConfigReloadFailure?, Never>(nil)
     private let lock = NSLock()
     private var token: (any ConfigWatchToken)?
-    private var fileToken: (any ConfigWatchToken)?
+    private var rearmedTokens: [any ConfigWatchToken] = []
     private var debounceTask: Task<Void, Never>?
 
     public init() {}
 
     deinit {
         token?.stop()
-        fileToken?.stop()
+        rearmedTokens.forEach { $0.stop() }
         debounceTask?.cancel()
     }
 }
@@ -55,8 +55,8 @@ extension ConfigInteractorImpl: ConfigInteractor {
         lock.withLock {
             token?.stop()
             token = nil
-            fileToken?.stop()
-            fileToken = nil
+            rearmedTokens.forEach { $0.stop() }
+            rearmedTokens = []
             debounceTask?.cancel()
             debounceTask = nil
         }
@@ -95,14 +95,25 @@ extension ConfigInteractorImpl: ConfigInteractor {
         }
     }
 
-    /// Arms the file-level watch on the config file's current path (no-op when
-    /// the file does not exist). The directory watch alone misses in-place
-    /// overwrites — editors that save without renaming, `cp`, appends — because
-    /// a directory vnode only fires on entry changes. Caller must hold `lock`.
+    /// Arms file-level watches on the config file and its `includes` files
+    /// (no-ops for paths that do not exist). The directory watch alone misses
+    /// in-place overwrites — editors that save without renaming, `cp`, appends —
+    /// because a directory vnode only fires on entry changes. Includes living
+    /// outside `configDir` additionally get their parent directory watched, so
+    /// an atomic save there (which kills the file fd without firing the config
+    /// directory watch) still triggers a reload. Caller must hold `lock`.
     private func armFileWatchLocked() {
-        fileToken?.stop()
-        fileToken = nil
-        guard let path = configUseCase.existingConfigPath else { return }
-        fileToken = gateway.watch(file: path) { [weak self] in self?.scheduleReload() }
+        rearmedTokens.forEach { $0.stop() }
+        let includes = configUseCase.includedConfigPaths
+        let files = [configUseCase.existingConfigPath].compactMap { $0 } + includes
+        let foreignDirectories = Set(includes.map { ($0 as NSString).deletingLastPathComponent })
+            .subtracting([configUseCase.configDir])
+        rearmedTokens =
+            files.compactMap { path in
+                gateway.watch(file: path) { [weak self] in self?.scheduleReload() }
+            }
+            + foreignDirectories.compactMap { directory in
+                gateway.watch(directory: directory) { [weak self] in self?.scheduleReload() }
+            }
     }
 }

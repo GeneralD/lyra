@@ -59,4 +59,8 @@ extension ConfigUseCaseImpl: ConfigUseCase {
     public var configDir: String {
         repository.configDir
     }
+
+    public var includedConfigPaths: [String] {
+        repository.includedConfigPaths
+    }
 }

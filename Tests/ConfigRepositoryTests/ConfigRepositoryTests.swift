@@ -386,6 +386,16 @@ struct Delegation {
             #expect(repo.existingConfigPath == nil)
         }
     }
+
+    @Test("includedConfigPaths delegates to dataSource")
+    func includedConfigPathsDelegates() {
+        withDependencies {
+            $0.configDataSource = StubConfigDataSource(includedPaths: ["/home/.config/lyra/koko.toml"])
+        } operation: {
+            let repo = ConfigRepositoryImpl()
+            #expect(repo.includedConfigPaths == ["/home/.config/lyra/koko.toml"])
+        }
+    }
 }
 
 // MARK: - Test helpers
@@ -396,6 +406,7 @@ private struct StubConfigDataSource: ConfigDataSource {
     var templateValue: String?
     var writeTemplateValue: String = ""
     var configPath: String?
+    var includedPaths: [String] = []
 
     func load() -> ConfigLoadResult? { loadResult }
 
@@ -407,6 +418,7 @@ private struct StubConfigDataSource: ConfigDataSource {
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateValue }
     var existingConfigPath: String? { configPath }
     var configDir: String { "" }
+    var includedConfigPaths: [String] { includedPaths }
 }
 
 private enum StubError: Error, LocalizedError {

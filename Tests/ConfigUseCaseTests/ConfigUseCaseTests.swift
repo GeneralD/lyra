@@ -186,6 +186,17 @@ func existingConfigPathNil() {
     }
 }
 
+@Test("includedConfigPaths delegates to repository")
+func includedConfigPathsDelegates() {
+    withDependencies {
+        $0.configRepository = MockConfigRepository(
+            style: .init(), includedPaths: ["/home/user/.config/lyra/koko.toml"])
+    } operation: {
+        let useCase = ConfigUseCaseImpl()
+        #expect(useCase.includedConfigPaths == ["/home/user/.config/lyra/koko.toml"])
+    }
+}
+
 // MARK: - Mocks
 
 private struct MockConfigRepository: ConfigRepository {
@@ -194,6 +205,7 @@ private struct MockConfigRepository: ConfigRepository {
     var writeTemplateResult: String = ""
     var configPath: String?
     var validation: ConfigValidationResult = .defaults
+    var includedPaths: [String] = []
 
     func loadAppStyle() -> AppStyle { style }
 
@@ -201,6 +213,7 @@ private struct MockConfigRepository: ConfigRepository {
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
     var existingConfigPath: String? { configPath }
+    var includedConfigPaths: [String] { includedPaths }
 }
 
 private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {

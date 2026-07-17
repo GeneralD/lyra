@@ -88,6 +88,16 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         findConfigFile()?.parent?.path ?? expectedConfigDirectory
     }
 
+    public var includedConfigPaths: [String] {
+        guard let file = findConfigFile(),
+            file.path.hasSuffix(".toml"),  // `includes` is a TOML-only feature.
+            let content = try? file.readAsString(),
+            let table = try? TOMLTable(string: content)
+        else { return [] }
+        let configDir = file.parent?.path ?? Folder.home.path
+        return includeFiles(of: table, configDir: configDir).map(\.path)
+    }
+
     public func tryDecode(strictOptionalSections: Bool) throws -> String {
         guard let file = findConfigFile(),
             let content = try? file.readAsString()
@@ -211,17 +221,23 @@ extension ConfigDataSourceImpl {
     }
 
     func resolveIncludes(into table: TOMLTable, configDir: String) {
-        guard let paths = table["includes"]?.array else { return }
-        for element in paths {
-            guard let relativePath = element.string else { continue }
-            let file: File? =
-                relativePath.hasPrefix("/")
-                ? try? File(path: relativePath)
-                : try? Folder(path: configDir).file(at: relativePath)
-            guard let content = try? file?.readAsString(),
+        for file in includeFiles(of: table, configDir: configDir) {
+            guard let content = try? file.readAsString(),
                 let included = try? TOMLTable(string: content)
             else { continue }
             deepMerge(from: included, into: table)
+        }
+    }
+
+    // Shared by resolveIncludes and includedConfigPaths so watch targets can
+    // never drift from what the decode actually merged.
+    func includeFiles(of table: TOMLTable, configDir: String) -> [File] {
+        guard let paths = table["includes"]?.array else { return [] }
+        return paths.compactMap { element in
+            guard let relativePath = element.string else { return nil }
+            return relativePath.hasPrefix("/")
+                ? try? File(path: relativePath)
+                : try? Folder(path: configDir).file(at: relativePath)
         }
     }
 

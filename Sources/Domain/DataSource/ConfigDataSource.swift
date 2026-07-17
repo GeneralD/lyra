@@ -12,6 +12,15 @@ public protocol ConfigDataSource: Sendable {
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
     var existingConfigPath: String? { get }
     var configDir: String { get }
+    /// Resolved absolute paths of the config's `includes` files — additional
+    /// hot-reload watch targets, re-resolved on every reload so an edited
+    /// `includes` list retargets the watch. Defaults to empty; only the live
+    /// implementation resolves real paths.
+    var includedConfigPaths: [String] { get }
+}
+
+extension ConfigDataSource {
+    public var includedConfigPaths: [String] { [] }
 }
 
 public enum ConfigDataSourceKey: TestDependencyKey {

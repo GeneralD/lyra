@@ -250,6 +250,51 @@ struct ConfigInteractorImplTests {
         #expect(gateway.watchedFile == "/tmp/config.toml")
         interactor.stop()
     }
+
+    @Test("includes 先のファイルも file watch される")
+    func armsFileWatchesOnIncludedFiles() {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(
+            outcome: .updated(.init(configDir: "/x")),
+            existingConfigPath: "/tmp/lyra/config.toml",
+            includedConfigPaths: ["/tmp/lyra/koko.toml"])
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+
+        #expect(gateway.watchedFiles == ["/tmp/lyra/config.toml", "/tmp/lyra/koko.toml"])
+        // The include lives inside configDir, already covered by the main directory watch.
+        #expect(gateway.watchCallCount == 1)
+        interactor.stop()
+    }
+
+    @Test("configDir 外の include は親ディレクトリも watch される（atomic save 対策）")
+    func armsDirectoryWatchOnForeignIncludeParent() {
+        let gateway = FakeConfigWatchGateway()
+        let useCase = StubConfigUseCase(
+            outcome: .updated(.init(configDir: "/x")),
+            existingConfigPath: "/tmp/lyra/config.toml",
+            includedConfigPaths: ["/elsewhere/shared.toml"])
+        let interactor = withDependencies {
+            $0.configWatchGateway = gateway
+            $0.configUseCase = useCase
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            ConfigInteractorImpl()
+        }
+
+        interactor.start()
+
+        #expect(gateway.watchedFiles == ["/tmp/lyra/config.toml", "/elsewhere/shared.toml"])
+        #expect(gateway.watchedDirectories == ["/tmp/lyra", "/elsewhere"])
+        interactor.stop()
+    }
 }
 
 // MARK: - Fakes / Stubs
@@ -257,31 +302,33 @@ struct ConfigInteractorImplTests {
 private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     private let lock = NSLock()
     private var handler: (@Sendable () -> Void)?
-    private var fileHandler: (@Sendable () -> Void)?
+    private var fileHandlers: [@Sendable () -> Void] = []
     private var _watchCallCount = 0
     private var _watchFileCallCount = 0
-    private var _watchedDirectory: String?
-    private var _watchedFile: String?
+    private var _watchedDirectories: [String] = []
+    private var _watchedFiles: [String] = []
 
     var watchCallCount: Int { lock.withLock { _watchCallCount } }
     var watchFileCallCount: Int { lock.withLock { _watchFileCallCount } }
-    var watchedDirectory: String? { lock.withLock { _watchedDirectory } }
-    var watchedFile: String? { lock.withLock { _watchedFile } }
+    var watchedDirectory: String? { lock.withLock { _watchedDirectories.first } }
+    var watchedDirectories: [String] { lock.withLock { _watchedDirectories } }
+    var watchedFile: String? { lock.withLock { _watchedFiles.first } }
+    var watchedFiles: [String] { lock.withLock { _watchedFiles } }
 
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
             handler = onChange
             _watchCallCount += 1
-            _watchedDirectory = directory
+            _watchedDirectories.append(directory)
         }
         return FakeConfigWatchToken()
     }
 
     func watch(file: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
-            fileHandler = onChange
+            fileHandlers.append(onChange)
             _watchFileCallCount += 1
-            _watchedFile = file
+            _watchedFiles.append(file)
         }
         return FakeConfigWatchToken()
     }
@@ -291,7 +338,7 @@ private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Senda
     }
 
     func fireFile() {
-        lock.withLock { fileHandler }?()
+        for handler in lock.withLock({ fileHandlers }) { handler() }
     }
 }
 
@@ -315,15 +362,18 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     let outcome: ConfigReloadOutcome
     let pathBox: PathBox
     let configDir: String  // The watched directory — resolved regardless of file existence (#329).
+    let includedConfigPaths: [String]
 
     init(
         outcome: ConfigReloadOutcome,
         existingConfigPath: String? = "/tmp/config.toml",
-        configDir: String = "/tmp/lyra"
+        configDir: String = "/tmp/lyra",
+        includedConfigPaths: [String] = []
     ) {
         self.outcome = outcome
         self.pathBox = PathBox(existingConfigPath)
         self.configDir = configDir
+        self.includedConfigPaths = includedConfigPaths
     }
 
     var existingConfigPath: String? { pathBox.path }

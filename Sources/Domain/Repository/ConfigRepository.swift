@@ -14,10 +14,16 @@ public protocol ConfigRepository: Sendable {
     /// the hot-reload watch target (#329). Defaults to empty; only the live
     /// implementation resolves a real path, so unrelated test stubs need not.
     var configDir: String { get }
+    /// Resolved absolute paths of the config's `includes` files — additional
+    /// hot-reload watch targets, re-resolved on every reload so an edited
+    /// `includes` list retargets the watch. Defaults to empty; only the live
+    /// implementation resolves real paths.
+    var includedConfigPaths: [String] { get }
 }
 
 extension ConfigRepository {
     public var configDir: String { "" }
+    public var includedConfigPaths: [String] { [] }
 }
 
 public enum ConfigRepositoryKey: TestDependencyKey {
