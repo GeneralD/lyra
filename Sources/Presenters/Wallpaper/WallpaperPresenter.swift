@@ -89,7 +89,7 @@ public final class WallpaperPresenter: ObservableObject {
         loadTask?.cancel()
         setLoading(true)
         targetSource = source
-        mode = interactor.playbackMode
+        let pendingMode = interactor.playbackMode
         let stream = interactor.resolvedWallpapers()
         loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -105,31 +105,37 @@ public final class WallpaperPresenter: ObservableObject {
                     replaced = true
                     items = [resolved]
                     currentIndex = 0
+                    // Commit the applied source and mode the moment the first item
+                    // becomes visible — not at stream end. A later load can cancel
+                    // this one mid-stream, and a commit deferred to the end would
+                    // leave `appliedSource` pointing at a wallpaper no longer on
+                    // screen, so the empty-resolve rollback below would roll back
+                    // to the wrong source and the diff guard would then swallow a
+                    // re-save of the visible one. The mode commits here too: an
+                    // empty resolve must leave the old playlist advancing under
+                    // its own mode (#41 round-4 review, F4/F5).
+                    appliedSource = source
+                    mode = pendingMode
                     setLoading(false)
                     await activateCurrentItem()
                 }
             }
             // A newer load superseded this one (cancelled): the pending target
-            // now belongs to that load, so neither the commit nor the empty
-            // cleanup below may run for this stale one (#41 PR4 review, F9).
-            guard !Task.isCancelled else { return }
-            if replaced {
-                // Commit the applied source only on a successful resolve.
-                appliedSource = source
+            // now belongs to that load, so the empty cleanup below may not run
+            // for this stale one (#41 PR4 review, F9).
+            guard !Task.isCancelled, !replaced else { return }
+            setLoading(false)
+            if source == nil {
+                // A genuine removal applies and restores transparency.
+                appliedSource = nil
+                clearActiveItem()
             } else {
-                setLoading(false)
-                if source == nil {
-                    // A genuine removal applies and restores transparency.
-                    appliedSource = nil
-                    clearActiveItem()
-                } else {
-                    // A configured source that resolved to zero items (transient
-                    // download failure, or a file created just after the save)
-                    // keeps the old wallpaper playing; rolling the target back
-                    // means re-saving the same value retries resolution instead
-                    // of being swallowed by the diff guard (#41 PR4 review, F8).
-                    targetSource = appliedSource
-                }
+                // A configured source that resolved to zero items (transient
+                // download failure, or a file created just after the save)
+                // keeps the old wallpaper playing; rolling the target back
+                // means re-saving the same value retries resolution instead
+                // of being swallowed by the diff guard (#41 PR4 review, F8).
+                targetSource = appliedSource
             }
         }
     }
