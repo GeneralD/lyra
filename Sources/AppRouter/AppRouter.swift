@@ -118,11 +118,8 @@ public final class AppRouter {
             ripplePresenter.start()
             spectrumPresenter.start()
             wallpaperPresenter.start()
-            // ConfigStatusPresenter owns the ConfigInteractor lifecycle
-            // (arming the config-file watch); it is started last so every
-            // `appStyleChanges` subscriber above is live before the initial
-            // reload fires.
-            configStatusPresenter.start()
+            // ConfigStatusPresenter owns the ConfigInteractor lifecycle (arming the config-file watch).
+            // Start it last so all `appStyleChanges` subscribers above are live before any watch-triggered reload event is published.
 
             let window = windowFactory(
                 layout, headerPresenter, lyricsPresenter, ripplePresenter, spectrumPresenter, wallpaperPresenter,
