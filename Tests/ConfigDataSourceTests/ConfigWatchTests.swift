@@ -75,6 +75,32 @@ struct ConfigWatchTests {
         #expect(gateway.watchedDirectories.count == 1)
     }
 
+    @Test("欠損 include も watch 対象に残る — 外部 include の親 dir が watch され、後からの作成を拾える")
+    func keepsMissingIncludesInWatchTargets() throws {
+        defer { tearDown() }
+
+        let outsideDir = tempDir + "/outside"
+        try FileManager.default.createDirectory(atPath: outsideDir, withIntermediateDirectories: true)
+        // Neither include exists yet. The foreign parent directory must still be
+        // watched so creating shared.toml later fires an event; the missing
+        // same-directory include is covered by the config-directory watch.
+        _ = try setUpLyraDir(files: [
+            "config.toml": "includes = [\"missing.toml\", \"\(outsideDir)/shared.toml\"]"
+        ])
+
+        let gateway = FakeWatchGateway()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges {}
+        }
+        defer { token?.stop() }
+
+        #expect(gateway.watchedDirectories.contains { $0.hasSuffix("/outside/") })
+        #expect(gateway.watchedFiles.contains { $0.hasSuffix("/lyra/missing.toml") })
+        #expect(gateway.watchedFiles.contains { $0.hasSuffix("/outside/shared.toml") })
+    }
+
     @Test("config dir を watch できないときは nil を返し file watch も張らない")
     func returnsNilWhenDirectoryUnwatchable() throws {
         defer { tearDown() }

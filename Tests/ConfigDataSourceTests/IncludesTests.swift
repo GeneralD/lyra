@@ -86,7 +86,7 @@ struct IncludesTests {
         #expect(config?.ai == nil)
     }
 
-    @Test("includedConfigPaths resolves relative and absolute includes, skipping missing files")
+    @Test("includedConfigPaths resolves relative and absolute includes, keeping missing files for the watch")
     func includedConfigPathsResolution() throws {
         defer { tearDown() }
 
@@ -104,9 +104,12 @@ struct IncludesTests {
         let paths = ConfigDataSourceImpl(configHome: tempDir).includedConfigPaths
 
         // Compare by suffix: the Files library canonicalizes /var/... to /private/var/...
-        #expect(paths.count == 2)
+        // The missing include stays in the list: the hot-reload watch needs its
+        // parent directory so that creating the file later fires an event.
+        #expect(paths.count == 3)
         #expect(paths.contains { $0.hasSuffix("/lyra/koko.toml") })
         #expect(paths.contains { $0.hasSuffix("/outside/shared.toml") })
+        #expect(paths.contains { $0.hasSuffix("/lyra/missing.toml") })
     }
 
     @Test("includedConfigPaths is empty for a JSON config (includes is TOML-only)")

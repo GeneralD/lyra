@@ -221,33 +221,38 @@ extension ConfigDataSourceImpl {
         }
     }
 
-    /// The config's current `includes` files, re-resolved from the on-disk TOML
-    /// each call. Feeds the hot-reload watch targets (ConfigWatch) through the
-    /// same `includeFiles` resolution decode uses, so the watched set can never
-    /// drift from what decode actually merges.
-    var includedConfigFiles: [File] {
+    /// The config's current `includes` paths, re-resolved from the on-disk TOML
+    /// each call WITHOUT requiring the files to exist. Feeds the hot-reload
+    /// watch targets (ConfigWatch) through the same entry parsing decode uses,
+    /// so the watched set can never drift from what decode would merge — and a
+    /// missing include still contributes its parent directory to the watch, so
+    /// creating the file later fires an event instead of going unnoticed.
+    var includedConfigPaths: [String] {
         guard let file = findConfigFile(),
             file.path.hasSuffix(".toml"),  // `includes` is a TOML-only feature.
             let content = try? file.readAsString(),
             let table = try? TOMLTable(string: content)
         else { return [] }
-        let configDir = file.parent?.path ?? Folder.home.path
-        return includeFiles(of: table, configDir: configDir)
+        return includePaths(of: table, configDir: file.parent?.path ?? Folder.home.path)
     }
 
-    var includedConfigPaths: [String] {
-        includedConfigFiles.map(\.path)
-    }
-
-    // Shared by resolveIncludes and includedConfigFiles so watch targets can
+    // Shared entry parsing with includedConfigPaths, so watch targets can
     // never drift from what the decode actually merged.
     func includeFiles(of table: TOMLTable, configDir: String) -> [File] {
+        includePaths(of: table, configDir: configDir).compactMap { try? File(path: $0) }
+    }
+
+    /// Absolute paths of the `includes` entries, resolved without touching the
+    /// filesystem. Decode filters these down to existing files (`includeFiles`);
+    /// the watch keeps them all.
+    private func includePaths(of table: TOMLTable, configDir: String) -> [String] {
         guard let paths = table["includes"]?.array else { return [] }
+        // Files-derived directory paths carry a trailing slash, but decode is
+        // also called with plain caller-supplied strings — normalize the join.
+        let base = configDir.hasSuffix("/") ? configDir : configDir + "/"
         return paths.compactMap { element in
-            guard let relativePath = element.string else { return nil }
-            return relativePath.hasPrefix("/")
-                ? try? File(path: relativePath)
-                : try? Folder(path: configDir).file(at: relativePath)
+            guard let path = element.string else { return nil }
+            return path.hasPrefix("/") ? path : base + path
         }
     }
 
