@@ -27,10 +27,8 @@ public final class ConfigStatusPresenter: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.invalidConfig = $0 }
             .store(in: &cancellables)
-        // Arm the watch only after the invalid-state subscription is live, and
-        // after AppRouter has started the other `appStyleChanges` subscribers,
-        // so the initial reload reaches every consumer.
-        interactor.start()
+        // Arm the watch only after the invalid-state subscription is live, and after AppRouter has
+        // started the other `appStyleChanges` subscribers, so no reload events are missed.
     }
 
     public func stop() {
