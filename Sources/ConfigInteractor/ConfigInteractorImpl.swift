@@ -68,6 +68,13 @@ extension ConfigInteractorImpl: ConfigInteractor {
         // the reload + publishes stay inside it: a debounce task that already woke
         // can't slip a reload or a spurious UI update past a concurrent stop() —
         // once stop() returns, nothing further is emitted.
+        //
+        // Publishing while holding the lock is safe ONLY because every subscriber
+        // hops off with `receive(on: DispatchQueue.main)` before doing work — a
+        // synchronous subscriber could re-enter this interactor (or block) inside
+        // the lock. Keep the main-queue hop when adding subscribers. Sending
+        // outside the lock instead would reopen the post-stop() emission race
+        // this block exists to close, so the hop is the chosen trade-off.
         lock.withLock {
             guard token != nil, !Task.isCancelled else { return }
             switch configUseCase.reload() {

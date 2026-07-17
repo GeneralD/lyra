@@ -1,6 +1,12 @@
 import Dependencies
 
 /// A stoppable watch handle.
+///
+/// `stop()` does not synchronously wait out an in-flight change callback: a
+/// callback racing with `stop()` may still be delivered after it returns.
+/// Waiting would invert the lock order between the watch session and its
+/// consumer and deadlock, so consumers instead gate delivered events on their
+/// own teardown state (as `ConfigInteractorImpl.applyReload` does).
 public protocol ConfigWatchToken: Sendable {
     func stop()
 }

@@ -158,8 +158,11 @@ Shared conventions:
 ## Change Checklist
 
 - When adding or removing modules, update `Package.swift`,
-  `DependencyInjection`, `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md`, this
-  `AGENTS.md`, and `README.md`.
+  `DependencyInjection`, `docs/ARCHITECTURE.md`, this `AGENTS.md`, and
+  `README.md`. Update `.claude/CLAUDE.md` only when Build & Test commands
+  change or the layer chain itself changes — its architecture section is a
+  short summary + pointer, and `docs/ARCHITECTURE.md` is the canonical
+  reference (see `.claude/rules/module-checklist.md`).
 - Handler additions also need Entity result types, Domain protocols,
   `StandardOutput` support, CLI wiring, and tests.
 - Do not commit directly to `main`. Use branch -> PR -> merge.

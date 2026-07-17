@@ -144,7 +144,7 @@ graph TD
 ## 10. ファイル監視の詳細
 
 - **親ディレクトリ監視**方式（`DispatchSource.makeFileSystemObjectSource` を config **ディレクトリ**の fd に対して `.write`）。多くのエディタは atomic-save（一時ファイル→rename）で置き換えるため、ファイル fd 直監視だと 1 回目以降失効する。ディレクトリ監視なら create/rename/modify を捕捉できる。
-- **`includes` 追従**: include 先も同ディレクトリ内が通例なので親ディレクトリ監視で概ねカバー。別ディレクトリ include の完全追従は将来課題として明記（初回スコープでは同ディレクトリ前提）。
+- **`includes` 追従**: include 先も file tier で個別に watch し、別ディレクトリの include はその親ディレクトリも watch する（#337 で実装済み。当初は「同ディレクトリ前提・別ディレクトリは将来課題」だったが、in-place 上書き検知のための file fd 直 watch ＋外部親ディレクトリ watch ＋イベント毎再アームまで拡張した）。include が未作成でも親ディレクトリを watch し、後からの作成を検知する。
 - **debounce**: 保存 1 回で複数イベントが飛ぶ・巨大 config の連続書き込みを coalesce。
 - Gateway 化により、テストでは fake が「変更」を号令一下で発火（§11 ①）でき、実 FS タイミング非依存。
 
