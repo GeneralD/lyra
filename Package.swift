@@ -432,6 +432,7 @@ let package = Package(
             name: "ConfigDataSource",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ]
@@ -779,6 +780,8 @@ let package = Package(
             dependencies: [
                 "ConfigDataSource",
                 "Domain",
+                "FileWatchGateway",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ]
         ),

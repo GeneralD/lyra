@@ -56,11 +56,7 @@ extension ConfigUseCaseImpl: ConfigUseCase {
         repository.existingConfigPath
     }
 
-    public var configDir: String {
-        repository.configDir
-    }
-
-    public var includedConfigPaths: [String] {
-        repository.includedConfigPaths
+    public func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        repository.watchChanges(onChange: onChange)
     }
 }

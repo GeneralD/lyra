@@ -3,13 +3,15 @@ import Dependencies
 import Domain
 import Foundation
 
-/// Watches the config file's parent directory, debounces changes, then calls
-/// `ConfigUseCase.reload()` and publishes the result.
+/// Debounces config-change events from `ConfigUseCase.watchChanges(onChange:)`,
+/// then calls `ConfigUseCase.reload()` and publishes the result. Which paths are
+/// watched and how (directory vs file tiers, include resolution, re-arming) is
+/// the DataSource layer's concern — this interactor only orchestrates reload
+/// and publish.
 ///
 /// The watch token and debounce task require mutable state, so this implementation
 /// is a `final class` with `@unchecked Sendable`, as required by the Swift conventions.
 public final class ConfigInteractorImpl: @unchecked Sendable {
-    @Dependency(\.configWatchGateway) private var gateway
     @Dependency(\.configUseCase) private var configUseCase
     @Dependency(\.continuousClock) private var clock
 
@@ -17,14 +19,12 @@ public final class ConfigInteractorImpl: @unchecked Sendable {
     private let invalidSubject = CurrentValueSubject<ConfigReloadFailure?, Never>(nil)
     private let lock = NSLock()
     private var token: (any ConfigWatchToken)?
-    private var rearmedTokens: [any ConfigWatchToken] = []
     private var debounceTask: Task<Void, Never>?
 
     public init() {}
 
     deinit {
         token?.stop()
-        for rearmed in rearmedTokens { rearmed.stop() }
         debounceTask?.cancel()
     }
 }
@@ -34,20 +34,12 @@ extension ConfigInteractorImpl: ConfigInteractor {
     public var invalidConfig: AnyPublisher<ConfigReloadFailure?, Never> { invalidSubject.eraseToAnyPublisher() }
 
     public func start() {
-        // Watch the config directory whether or not the file exists yet, so a config
-        // created after daemon start (`lyra config init`, a manual save) is picked up
-        // as the initial load without a restart (#329). The gateway watches the
-        // directory — not the file — for atomic-save rename resilience, so an absent
-        // file inside an existing directory still arms correctly.
-        let directory = configUseCase.configDir
-        let watchedGateway = gateway
         lock.withLock {
             // Idempotent: a second start() (router restart, test harness, future
-            // lifecycle changes) must not leak the previous DispatchSource/fd or
-            // install a duplicate watch that would double-fire reload events.
+            // lifecycle changes) must not leak the previous watch or install a
+            // duplicate one that would double-fire reload events.
             guard token == nil else { return }
-            token = watchedGateway.watch(directory: directory) { [weak self] in self?.scheduleReload() }
-            armFileWatchLocked()
+            token = configUseCase.watchChanges { [weak self] in self?.scheduleReload() }
         }
     }
 
@@ -55,8 +47,6 @@ extension ConfigInteractorImpl: ConfigInteractor {
         lock.withLock {
             token?.stop()
             token = nil
-            for rearmed in rearmedTokens { rearmed.stop() }
-            rearmedTokens = []
             debounceTask?.cancel()
             debounceTask = nil
         }
@@ -87,40 +77,6 @@ extension ConfigInteractorImpl: ConfigInteractor {
             case .invalid(let failure):
                 invalidSubject.send(failure)
             }
-            // An atomic save renamed a fresh inode into place (killing the old
-            // file fd), or the file just appeared for the first time (#329) —
-            // re-arm the file-level watch on the current path so the next
-            // in-place overwrite is still observed.
-            armFileWatchLocked()
         }
-    }
-
-    /// Arms file-level watches on the config file and its `includes` files
-    /// (no-ops for paths that do not exist). The directory watch alone misses
-    /// in-place overwrites — editors that save without renaming, `cp`, appends —
-    /// because a directory vnode only fires on entry changes. Includes living
-    /// outside `configDir` additionally get their parent directory watched, so
-    /// an atomic save there (which kills the file fd without firing the config
-    /// directory watch) still triggers a reload. Caller must hold `lock`.
-    private func armFileWatchLocked() {
-        for rearmed in rearmedTokens { rearmed.stop() }
-        let includes = configUseCase.includedConfigPaths
-        let files = [configUseCase.existingConfigPath].compactMap { $0 } + includes
-        // The live configDir (a Files-style folder path) carries a trailing slash,
-        // while NSString-derived parents do not — normalize before comparing or
-        // configDir sneaks past the subtraction and gets double-watched.
-        let configDirectory =
-            configUseCase.configDir.hasSuffix("/")
-            ? String(configUseCase.configDir.dropLast())
-            : configUseCase.configDir
-        let foreignDirectories = Set(includes.map { ($0 as NSString).deletingLastPathComponent })
-            .subtracting([configDirectory])
-        rearmedTokens =
-            files.compactMap { path in
-                gateway.watch(file: path) { [weak self] in self?.scheduleReload() }
-            }
-            + foreignDirectories.compactMap { directory in
-                gateway.watch(directory: directory) { [weak self] in self?.scheduleReload() }
-            }
     }
 }

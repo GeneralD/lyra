@@ -5,9 +5,10 @@ public protocol ConfigWatchToken: Sendable {
     func stop()
 }
 
-/// An OS boundary that watches the config directory and calls `onChange` for each change.
-/// The live implementation uses DispatchSource and supports fake injection for testing,
-/// following the same boundary justification as AudioTapGateway.
+/// An OS boundary that watches directories and files, calling `onChange` for each change.
+/// Consumed by the ConfigDataSource layer — which owns watch-target resolution — mirroring
+/// how AudioTapDataSource consumes AudioTapGateway. The live implementation uses
+/// DispatchSource and supports fake injection for testing.
 public protocol ConfigWatchGateway: Sendable {
     /// Starts watching `directory` and calls `onChange` on an arbitrary queue for each event.
     /// Returns nil when a watch cannot be established.

@@ -12,15 +12,21 @@ public protocol ConfigDataSource: Sendable {
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
     var existingConfigPath: String? { get }
     var configDir: String { get }
-    /// Resolved absolute paths of the config's `includes` files — additional
-    /// hot-reload watch targets, re-resolved on every reload so an edited
-    /// `includes` list retargets the watch. Defaults to empty; only the live
-    /// implementation resolves real paths.
-    var includedConfigPaths: [String] { get }
+    /// Arms the hot-reload watch over the whole config surface — the config
+    /// directory (so a file created after daemon start is picked up, #329),
+    /// the config file and its `includes` files (in-place overwrites), and the
+    /// parent directories of includes living outside the config directory —
+    /// calling `onChange` on an arbitrary queue for every change until the
+    /// returned token is stopped. The watched set is resolved (and re-armed)
+    /// from the on-disk config by the implementation, so it can never drift
+    /// from what decode actually merges. Returns nil when the config directory
+    /// cannot be watched. Defaults to nil; only the live implementation arms a
+    /// real watch, so unrelated test stubs need not.
+    func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)?
 }
 
 extension ConfigDataSource {
-    public var includedConfigPaths: [String] { [] }
+    public func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? { nil }
 }
 
 public enum ConfigDataSourceKey: TestDependencyKey {

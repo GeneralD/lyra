@@ -31,24 +31,28 @@ struct ConfigHotReloadPipelineTests {
         // by the test and the instance reloaded by the interactor are identical.
         //
         // The withDependencies update closure runs before its overrides enter the ambient TaskLocal.
-        // Constructing dependency-owning types such as ConfigRepositoryImpl there would capture the
+        // Constructing dependency-owning types such as ConfigDataSourceImpl there would capture the
         // defaults instead. The overrides become ambient inside the operation closure, so construct
-        // dependency-owning types one operation level deeper.
+        // dependency-owning types one operation level deeper — the fake gateway sits outermost
+        // because ConfigDataSourceImpl (the watch owner) captures it at construction.
         let (sharedUseCase, interactor): (ConfigUseCaseImpl, ConfigInteractorImpl) = withDependencies {
-            $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
+            $0.configWatchGateway = gateway
             $0.continuousClock = ImmediateClock()
         } operation: {
             withDependencies {
-                $0.configRepository = ConfigRepositoryImpl()
+                $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
             } operation: {
-                let useCase = ConfigUseCaseImpl()
-                let interactor = withDependencies {
-                    $0.configUseCase = useCase
-                    $0.configWatchGateway = gateway
+                withDependencies {
+                    $0.configRepository = ConfigRepositoryImpl()
                 } operation: {
-                    ConfigInteractorImpl()
+                    let useCase = ConfigUseCaseImpl()
+                    let interactor = withDependencies {
+                        $0.configUseCase = useCase
+                    } operation: {
+                        ConfigInteractorImpl()
+                    }
+                    return (useCase, interactor)
                 }
-                return (useCase, interactor)
             }
         }
 
@@ -109,20 +113,23 @@ struct ConfigHotReloadPipelineTests {
         let gateway = FakeConfigWatchGateway()
 
         let (sharedUseCase, interactor): (ConfigUseCaseImpl, ConfigInteractorImpl) = withDependencies {
-            $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
+            $0.configWatchGateway = gateway
             $0.continuousClock = ImmediateClock()
         } operation: {
             withDependencies {
-                $0.configRepository = ConfigRepositoryImpl()
+                $0.configDataSource = ConfigDataSourceImpl(configHome: xdgConfig.path)
             } operation: {
-                let useCase = ConfigUseCaseImpl()
-                let interactor = withDependencies {
-                    $0.configUseCase = useCase
-                    $0.configWatchGateway = gateway
+                withDependencies {
+                    $0.configRepository = ConfigRepositoryImpl()
                 } operation: {
-                    ConfigInteractorImpl()
+                    let useCase = ConfigUseCaseImpl()
+                    let interactor = withDependencies {
+                        $0.configUseCase = useCase
+                    } operation: {
+                        ConfigInteractorImpl()
+                    }
+                    return (useCase, interactor)
                 }
-                return (useCase, interactor)
             }
         }
 
@@ -176,7 +183,7 @@ private final class FakeConfigWatchGateway: ConfigWatchGateway, @unchecked Senda
     }
 
     // The pipeline tests drive reloads through the directory event only; the
-    // file-level watch is exercised in ConfigInteractorImplTests.
+    // file-level watch is exercised in ConfigWatchTests (ConfigDataSourceTests).
     func watch(file: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         FakeConfigWatchToken()
     }

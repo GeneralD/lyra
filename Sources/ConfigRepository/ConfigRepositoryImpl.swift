@@ -101,12 +101,8 @@ extension ConfigRepositoryImpl: ConfigRepository {
         dataSource.existingConfigPath
     }
 
-    public var configDir: String {
-        dataSource.configDir
-    }
-
-    public var includedConfigPaths: [String] {
-        dataSource.includedConfigPaths
+    public func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        dataSource.watchChanges(onChange: onChange)
     }
 
     public func validate(strictOptionalSections: Bool) -> ConfigValidationResult {

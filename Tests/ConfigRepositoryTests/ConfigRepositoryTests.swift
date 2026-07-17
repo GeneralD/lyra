@@ -387,14 +387,19 @@ struct Delegation {
         }
     }
 
-    @Test("includedConfigPaths delegates to dataSource")
-    func includedConfigPathsDelegates() {
-        withDependencies {
-            $0.configDataSource = StubConfigDataSource(includedPaths: ["/home/.config/lyra/koko.toml"])
+    @Test("watchChanges delegates to dataSource and passes onChange through")
+    func watchChangesDelegates() {
+        let dataSource = WatchRecordingConfigDataSource()
+        let token = withDependencies {
+            $0.configDataSource = dataSource
         } operation: {
             let repo = ConfigRepositoryImpl()
-            #expect(repo.includedConfigPaths == ["/home/.config/lyra/koko.toml"])
+            return repo.watchChanges { dataSource.onChangeFired.setTrue() }
         }
+
+        #expect(token != nil)
+        dataSource.fire()
+        #expect(dataSource.onChangeFired.value)
     }
 }
 
@@ -406,7 +411,6 @@ private struct StubConfigDataSource: ConfigDataSource {
     var templateValue: String?
     var writeTemplateValue: String = ""
     var configPath: String?
-    var includedPaths: [String] = []
 
     func load() -> ConfigLoadResult? { loadResult }
 
@@ -418,7 +422,43 @@ private struct StubConfigDataSource: ConfigDataSource {
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateValue }
     var existingConfigPath: String? { configPath }
     var configDir: String { "" }
-    var includedConfigPaths: [String] { includedPaths }
+}
+
+/// Records the `watchChanges` subscription so the delegation test can verify the
+/// repository passes `onChange` through to its adjacent data source untouched.
+private final class WatchRecordingConfigDataSource: ConfigDataSource, @unchecked Sendable {
+    let onChangeFired = LockedFlag()
+    private let lock = NSLock()
+    private var handler: (@Sendable () -> Void)?
+
+    func fire() {
+        lock.withLock { handler }?()
+    }
+
+    func load() -> ConfigLoadResult? { nil }
+    func tryDecode(strictOptionalSections: Bool) throws -> String { "" }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
+    var configDir: String { "" }
+
+    func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        lock.withLock { handler = onChange }
+        return NoopWatchToken()
+    }
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+    var value: Bool { lock.withLock { _value } }
+    func setTrue() {
+        lock.withLock { _value = true }
+    }
+}
+
+private struct NoopWatchToken: ConfigWatchToken {
+    func stop() {}
 }
 
 private enum StubError: Error, LocalizedError {

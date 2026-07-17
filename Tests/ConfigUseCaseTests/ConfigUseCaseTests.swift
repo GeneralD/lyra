@@ -186,15 +186,19 @@ func existingConfigPathNil() {
     }
 }
 
-@Test("includedConfigPaths delegates to repository")
-func includedConfigPathsDelegates() {
-    withDependencies {
-        $0.configRepository = MockConfigRepository(
-            style: .init(), includedPaths: ["/home/user/.config/lyra/koko.toml"])
+@Test("watchChanges delegates to repository and passes onChange through")
+func watchChangesDelegates() {
+    let repository = WatchRecordingConfigRepository()
+    let token = withDependencies {
+        $0.configRepository = repository
     } operation: {
         let useCase = ConfigUseCaseImpl()
-        #expect(useCase.includedConfigPaths == ["/home/user/.config/lyra/koko.toml"])
+        return useCase.watchChanges { repository.onChangeFired.setTrue() }
     }
+
+    #expect(token != nil)
+    repository.fire()
+    #expect(repository.onChangeFired.value)
 }
 
 // MARK: - Mocks
@@ -205,7 +209,6 @@ private struct MockConfigRepository: ConfigRepository {
     var writeTemplateResult: String = ""
     var configPath: String?
     var validation: ConfigValidationResult = .defaults
-    var includedPaths: [String] = []
 
     func loadAppStyle() -> AppStyle { style }
 
@@ -213,7 +216,42 @@ private struct MockConfigRepository: ConfigRepository {
     func template(format: ConfigFormat) -> String? { templateResult }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { writeTemplateResult }
     var existingConfigPath: String? { configPath }
-    var includedConfigPaths: [String] { includedPaths }
+}
+
+/// Records the `watchChanges` subscription so the delegation test can verify the
+/// use case passes `onChange` through to its adjacent repository untouched.
+private final class WatchRecordingConfigRepository: ConfigRepository, @unchecked Sendable {
+    let onChangeFired = LockedFlag()
+    private let lock = NSLock()
+    private var handler: (@Sendable () -> Void)?
+
+    func fire() {
+        lock.withLock { handler }?()
+    }
+
+    func loadAppStyle() -> AppStyle { .init() }
+    func validate(strictOptionalSections: Bool) -> ConfigValidationResult { .defaults }
+    func template(format: ConfigFormat) -> String? { nil }
+    func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
+    var existingConfigPath: String? { nil }
+
+    func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        lock.withLock { handler = onChange }
+        return NoopWatchToken()
+    }
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+    var value: Bool { lock.withLock { _value } }
+    func setTrue() {
+        lock.withLock { _value = true }
+    }
+}
+
+private struct NoopWatchToken: ConfigWatchToken {
+    func stop() {}
 }
 
 private final class CountingConfigRepository: ConfigRepository, @unchecked Sendable {

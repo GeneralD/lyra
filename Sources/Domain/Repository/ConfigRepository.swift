@@ -10,20 +10,17 @@ public protocol ConfigRepository: Sendable {
     func template(format: ConfigFormat) -> String?
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String
     var existingConfigPath: String? { get }
-    /// The directory the config file lives in, or would live in when absent —
-    /// the hot-reload watch target (#329). Defaults to empty; only the live
-    /// implementation resolves a real path, so unrelated test stubs need not.
-    var configDir: String { get }
-    /// Resolved absolute paths of the config's `includes` files — additional
-    /// hot-reload watch targets, re-resolved on every reload so an edited
-    /// `includes` list retargets the watch. Defaults to empty; only the live
-    /// implementation resolves real paths.
-    var includedConfigPaths: [String] { get }
+    /// Arms the hot-reload watch over the whole config surface — the config
+    /// directory, the config file, and its `includes` files — calling `onChange`
+    /// on an arbitrary queue for every change until the returned token is
+    /// stopped. Returns nil when the config directory cannot be watched.
+    /// Defaults to nil; only the live implementation arms a real watch, so
+    /// unrelated test stubs need not.
+    func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)?
 }
 
 extension ConfigRepository {
-    public var configDir: String { "" }
-    public var includedConfigPaths: [String] { [] }
+    public func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? { nil }
 }
 
 public enum ConfigRepositoryKey: TestDependencyKey {

@@ -1,3 +1,4 @@
+import Dependencies
 import Domain
 import Files
 import Foundation
@@ -5,6 +6,7 @@ import TOMLKit
 import os
 
 public struct ConfigDataSourceImpl: Sendable {
+    @Dependency(\.configWatchGateway) var watchGateway
     private let configHomeOverride: String?
     /// The last successfully decoded load, shared across value copies of this
     /// struct (the DI `liveValue` is a single long-lived instance). `load()`
@@ -86,16 +88,6 @@ extension ConfigDataSourceImpl: ConfigDataSource {
         // When the file exists, its parent; otherwise the directory where the config
         // *would* live, so the watcher can arm on it before the file is created (#329).
         findConfigFile()?.parent?.path ?? expectedConfigDirectory
-    }
-
-    public var includedConfigPaths: [String] {
-        guard let file = findConfigFile(),
-            file.path.hasSuffix(".toml"),  // `includes` is a TOML-only feature.
-            let content = try? file.readAsString(),
-            let table = try? TOMLTable(string: content)
-        else { return [] }
-        let configDir = file.parent?.path ?? Folder.home.path
-        return includeFiles(of: table, configDir: configDir).map(\.path)
     }
 
     public func tryDecode(strictOptionalSections: Bool) throws -> String {
@@ -229,7 +221,25 @@ extension ConfigDataSourceImpl {
         }
     }
 
-    // Shared by resolveIncludes and includedConfigPaths so watch targets can
+    /// The config's current `includes` files, re-resolved from the on-disk TOML
+    /// each call. Feeds the hot-reload watch targets (ConfigWatch) through the
+    /// same `includeFiles` resolution decode uses, so the watched set can never
+    /// drift from what decode actually merges.
+    var includedConfigFiles: [File] {
+        guard let file = findConfigFile(),
+            file.path.hasSuffix(".toml"),  // `includes` is a TOML-only feature.
+            let content = try? file.readAsString(),
+            let table = try? TOMLTable(string: content)
+        else { return [] }
+        let configDir = file.parent?.path ?? Folder.home.path
+        return includeFiles(of: table, configDir: configDir)
+    }
+
+    var includedConfigPaths: [String] {
+        includedConfigFiles.map(\.path)
+    }
+
+    // Shared by resolveIncludes and includedConfigFiles so watch targets can
     // never drift from what the decode actually merged.
     func includeFiles(of table: TOMLTable, configDir: String) -> [File] {
         guard let paths = table["includes"]?.array else { return [] }
