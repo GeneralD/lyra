@@ -163,7 +163,42 @@ struct ConfigWatchTests {
         gateway.fireDirectoryHandlers()  // Atomic save: the old file fd is dead.
 
         #expect(gateway.watchedFiles.count == 2)
-        #expect(gateway.stoppedTokenCount == 1)
+        #expect(gateway.stoppedFileTokenCount == 1)
+    }
+
+    @Test("config dir が削除→即再作成されても directory watch が新 vnode へ張り替わる（#339 レビュー）")
+    func rearmsDirectoryTierWhenConfigDirReplaced() throws {
+        defer { tearDown() }
+
+        let lyraDir = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
+
+        let gateway = FakeWatchGateway()
+        let onChange = Counter()
+        let token = withDependencies {
+            $0.configWatchGateway = gateway
+        } operation: {
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+        }
+        defer { token?.stop() }
+
+        // A `rm -rf` + `mkdir` that beats the event handler to the punch: by
+        // the time the session sees the event the path exists again, so a
+        // path-existence check reports "still there" while the fd is on the
+        // deleted vnode and will never fire again.
+        try FileManager.default.removeItem(atPath: lyraDir)
+        try FileManager.default.createDirectory(atPath: lyraDir, withIntermediateDirectories: true)
+        gateway.fireDirectoryHandlers()
+
+        #expect(gateway.stoppedDirectoryTokenCount >= 1)
+
+        // The payoff: only a token re-armed on the *new* directory can report
+        // the config created inside it.
+        let beforeCreate = onChange.count
+        try "screen = \"main\"".write(toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
+        gateway.fireDirectoryHandlers()
+
+        #expect(onChange.count > beforeCreate)
+        #expect(gateway.watchedFiles.last?.hasSuffix("/lyra/config.toml") == true)
     }
 
     @Test("stop() 後はイベントが来ても再アームも onChange もされない")
@@ -436,12 +471,25 @@ private final class Counter: @unchecked Sendable {
 }
 
 private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
+    /// One armed directory watch, pinned to the vnode identity it was armed
+    /// on. A real `open(2)` fd tracks the *inode*, not the path: once the
+    /// directory it opened is unlinked, the fd is dead even if a new
+    /// directory immediately takes the same path.
+    private struct DirectoryWatch {
+        let path: String
+        let inode: Int
+        let onChange: @Sendable () -> Void
+
+        var isLive: Bool { directoryInode(of: path) == inode }
+    }
+
     private let lock = NSLock()
     private let directoryWatchable: Bool
     private var _watchedDirectories: [String] = []
     private var _watchedFiles: [String] = []
-    private var liveDirectoryHandlers: [UUID: @Sendable () -> Void] = [:]
-    private var _stoppedTokenCount = 0
+    private var directoryWatches: [UUID: DirectoryWatch] = [:]
+    private var _stoppedFileTokenCount = 0
+    private var _stoppedDirectoryTokenCount = 0
 
     init(directoryWatchable: Bool = true) {
         self.directoryWatchable = directoryWatchable
@@ -449,21 +497,19 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
 
     var watchedDirectories: [String] { lock.withLock { _watchedDirectories } }
     var watchedFiles: [String] { lock.withLock { _watchedFiles } }
-    var stoppedTokenCount: Int { lock.withLock { _stoppedTokenCount } }
+    var stoppedFileTokenCount: Int { lock.withLock { _stoppedFileTokenCount } }
+    var stoppedDirectoryTokenCount: Int { lock.withLock { _stoppedDirectoryTokenCount } }
 
     /// Mirrors the live gateway: a directory watch only arms when the
     /// directory exists on disk (`open(2)` fails otherwise), which is what
-    /// the ancestor-park fallback (#338) keys on.
+    /// the ancestor-park fallback (#338) keys on, and it pins the inode it
+    /// armed on so a replaced directory can be told from a surviving one.
     func watch(directory: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
-            var isDirectory: ObjCBool = false
-            guard directoryWatchable,
-                FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory),
-                isDirectory.boolValue
-            else { return nil }
+            guard directoryWatchable, let inode = directoryInode(of: directory) else { return nil }
             let id = UUID()
             _watchedDirectories.append(directory)
-            liveDirectoryHandlers[id] = onChange
+            directoryWatches[id] = DirectoryWatch(path: directory, inode: inode, onChange: onChange)
             return FakeToken { [weak self] in self?.stopDirectoryWatch(id) }
         }
     }
@@ -477,26 +523,44 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     func watch(file: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
             _watchedFiles.append(file)
-            return FakeToken { [weak self] in self?.recordStop() }
+            return FakeToken { [weak self] in self?.recordStopOfFileToken() }
         }
     }
 
-    /// Fires only the handlers of directory watches still alive — a cancelled
-    /// DispatchSource delivers no further events.
+    /// Delivers one queued event to every armed directory watch, then drops
+    /// the ones whose vnode died. A deleted directory still delivers that
+    /// final event (the `.delete` notification is queued while the vnode is
+    /// alive), but its fd never fires again — which is exactly what makes a
+    /// session that failed to re-arm observable here rather than silently
+    /// deaf. A stopped watch is already gone from the dictionary, mirroring a
+    /// cancelled DispatchSource.
     func fireDirectoryHandlers() {
-        for handler in lock.withLock({ Array(liveDirectoryHandlers.values) }) { handler() }
+        for watch in lock.withLock({ Array(directoryWatches.values) }) { watch.onChange() }
+        lock.withLock { directoryWatches = directoryWatches.filter { $0.value.isLive } }
     }
 
     private func stopDirectoryWatch(_ id: UUID) {
         lock.withLock {
-            liveDirectoryHandlers[id] = nil
-            _stoppedTokenCount += 1
+            directoryWatches[id] = nil
+            _stoppedDirectoryTokenCount += 1
         }
     }
 
-    private func recordStop() {
-        lock.withLock { _stoppedTokenCount += 1 }
+    private func recordStopOfFileToken() {
+        lock.withLock { _stoppedFileTokenCount += 1 }
     }
+}
+
+/// Inode of an existing directory at `path`, or nil when it is absent or not
+/// a directory. Free function so `DirectoryWatch.isLive` and the arm path
+/// resolve identity exactly the same way.
+private func directoryInode(of path: String) -> Int? {
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+        isDirectory.boolValue,
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+    else { return nil }
+    return attributes[.systemFileNumber] as? Int
 }
 
 private struct FakeToken: ConfigWatchToken {

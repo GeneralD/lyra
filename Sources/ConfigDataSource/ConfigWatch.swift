@@ -36,21 +36,29 @@ extension ConfigDataSourceImpl {
     }
 }
 
-/// One live hot-reload watch: a config-directory watch (it survives atomic
-/// saves and sees a config file created after daemon start, #329) plus a
-/// re-armable tier of file watches and foreign include-directory watches.
-/// Every event re-arms the file tier before notifying, because an atomic save
-/// renames a fresh inode into place and kills the old file fd; re-arming reads
-/// the current on-disk `includes`, so an edited include list retargets the
-/// watch without waiting for the reload to complete.
+/// One live hot-reload watch over the config surface: a **directory tier**
+/// (the config directory — so a config file created after daemon start is
+/// seen, #329 — or, when it does not exist yet, its nearest existing
+/// ancestor, #338) plus a tier of file watches and foreign
+/// include-directory watches.
 ///
-/// When the config directory itself does not exist, the directory tier parks
-/// on its nearest existing ancestor instead (#338): each ancestor event walks
-/// the watch down as path components appear, and only reaching the config
-/// directory itself arms the file tier and fires `onChange` as the initial
-/// load. A config directory deleted while watched is demoted back onto an
-/// ancestor the same way, so the session recovers from the directory coming
-/// and going at any point in its life — not just at daemon start.
+/// **Every event re-arms both tiers from disk before notifying.** The file
+/// tier must, because an atomic save renames a fresh inode into place and
+/// kills the old file fd. The directory tier must for the same reason one
+/// level up: a config directory that is deleted — or deleted and re-created
+/// behind the watch, which keeps the path but gets a fresh inode — leaves the
+/// fd on a dead vnode that never fires again. Re-arming is unconditional
+/// rather than guarded by a staleness check, because a path-existence check
+/// cannot see that replacement at all (#339 review) and re-resolving costs
+/// one `open(2)`. Since every re-arm re-reads the on-disk state, an edited
+/// `includes` list, a created config directory, and a replaced one all
+/// retarget the watch without waiting for the reload to complete.
+///
+/// The directory tier is therefore self-healing in both directions: it parks
+/// on an ancestor while the config directory is absent, walks down as path
+/// components appear, promotes onto the directory (arming the file tier and
+/// firing `onChange` as the initial load) once it exists, and demotes back if
+/// it is removed — at any point in the session's life, not just at start.
 ///
 /// `final class`: shared mutable token state behind a lock, plus deinit cleanup
 /// so a dropped token cannot leak DispatchSources. `@unchecked Sendable`: all
@@ -114,7 +122,7 @@ extension ConfigWatchSession {
     private func changed() {
         let live = lock.withLock {
             guard !stopped else { return false }
-            reparkDirectoryTierIfGoneLocked()
+            armDirectoryTierLocked()
             rearmFilesLocked()
             return true
         }
@@ -143,10 +151,10 @@ extension ConfigWatchSession {
 
     /// Caller must hold `lock`. Points the directory tier at the config
     /// directory itself, or — when that cannot be watched because it does not
-    /// exist yet — parks it on the nearest watchable ancestor (#338). The
-    /// previous token is always released: a re-park onto the same path swaps
-    /// in a fresh fd, which also heals a watch whose directory was deleted
-    /// and re-created behind the dead descriptor.
+    /// exist yet — parks it on the nearest watchable ancestor (#338).
+    /// Re-resolves the target and swaps in a fresh fd every time, so a
+    /// directory that was deleted, replaced, or has just appeared is picked up
+    /// by the same code path with no staleness check to get wrong.
     private func armDirectoryTierLocked() {
         directoryToken?.stop()
         directoryToken = nil
@@ -169,17 +177,6 @@ extension ConfigWatchSession {
             ancestorPath = ancestor
             return
         }
-    }
-
-    /// Caller must hold `lock`. A deleted config directory leaves the
-    /// directory tier on a dead fd that will never fire again — re-park it on
-    /// the nearest existing ancestor so a later re-creation is caught (#338).
-    /// Deletion is detected by existence, not by event kind (the gateway
-    /// callback carries none); the per-event file-tier re-arm keeps covering
-    /// the files either way.
-    private func reparkDirectoryTierIfGoneLocked() {
-        guard ancestorPath == nil, (try? Folder(path: dataSource.configDir)) == nil else { return }
-        armDirectoryTierLocked()
     }
 
     /// Caller must hold `lock`.

@@ -115,8 +115,9 @@ Shared conventions:
   reports it (the strictness is the `strictOptionalSections` flag on
   `validate`/`tryDecode`, #330). The `ConfigWatchGateway` (Domain) /
   `FileWatchGateway` (Support) pair watches the config's *parent directory*
-  (atomic saves rename the file) plus a re-armed file tier via
-  `DispatchSource`. The gateway is consumed at the **DataSource layer**:
+  (atomic saves rename the file) plus a file tier via `DispatchSource`; both
+  tiers are re-armed from disk on every event, since a renamed file and a
+  replaced directory each leave their fd on a dead vnode. The gateway is consumed at the **DataSource layer**:
   `ConfigDataSourceImpl.watchChanges(onChange:)` owns target resolution
   (config file, `includes`, foreign include parents) and per-event re-arming,
   and the watch reaches the interactor only through `ConfigRepository` /
