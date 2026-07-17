@@ -357,10 +357,10 @@ struct ConfigWatchTests {
         // The promoted session must have armed the file tier: an in-place
         // append is visible only to a file-level watch.
         let settled = onChange.count
-        let handle = FileHandle(forWritingAtPath: lyraDir + "/config.toml")
-        try handle?.seekToEnd()
-        try handle?.write(contentsOf: Data("\n# edited\n".utf8))
-        try handle?.close()
+        let handle = try #require(FileHandle(forWritingAtPath: lyraDir + "/config.toml"))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("\n# edited\n".utf8))
+        try handle.close()
 
         let editDeadline = ContinuousClock.now + .seconds(3)
         while onChange.count <= settled, ContinuousClock.now < editDeadline {
@@ -388,10 +388,10 @@ struct ConfigWatchTests {
         #expect(token != nil)
 
         // 1. In-place append to the include file — only its file-level watch sees this.
-        let includeHandle = FileHandle(forWritingAtPath: lyraDir + "/koko.toml")
-        try includeHandle?.seekToEnd()
-        try includeHandle?.write(contentsOf: Data("\n# edited\n".utf8))
-        try includeHandle?.close()
+        let includeHandle = try #require(FileHandle(forWritingAtPath: lyraDir + "/koko.toml"))
+        try includeHandle.seekToEnd()
+        try includeHandle.write(contentsOf: Data("\n# edited\n".utf8))
+        try includeHandle.close()
 
         let firstDeadline = ContinuousClock.now + .seconds(3)
         while onChange.count < 1, ContinuousClock.now < firstDeadline {
@@ -411,10 +411,10 @@ struct ConfigWatchTests {
         }
 
         let settled = onChange.count
-        let configHandle = FileHandle(forWritingAtPath: lyraDir + "/config.toml")
-        try configHandle?.seekToEnd()
-        try configHandle?.write(contentsOf: Data("\n# in-place after rename\n".utf8))
-        try configHandle?.close()
+        let configHandle = try #require(FileHandle(forWritingAtPath: lyraDir + "/config.toml"))
+        try configHandle.seekToEnd()
+        try configHandle.write(contentsOf: Data("\n# in-place after rename\n".utf8))
+        try configHandle.close()
 
         let secondDeadline = ContinuousClock.now + .seconds(3)
         while onChange.count <= settled, ContinuousClock.now < secondDeadline {
@@ -468,6 +468,12 @@ private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
         }
     }
 
+    /// Unlike `watch(directory:)`, file watches deliberately record every
+    /// *requested* target and always succeed. The session never branches on
+    /// file-arm success (a failed arm is simply dropped by `compactMap`), so
+    /// tests assert target *resolution* here — e.g. a missing include staying
+    /// in the requested set — while real arming semantics are exercised by
+    /// the live-gateway E2E tests.
     func watch(file: String, onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
         lock.withLock {
             _watchedFiles.append(file)
