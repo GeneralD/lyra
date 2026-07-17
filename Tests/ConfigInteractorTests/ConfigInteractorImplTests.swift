@@ -18,9 +18,20 @@ struct ConfigInteractorImplTests {
             ConfigInteractorImpl()
         }
 
+        // Written from Combine sink callbacks and read from the polling loop —
+        // lock every access so the cross-thread reads are well-defined.
         final class Observed: @unchecked Sendable {
-            var pinged = false
-            var lastInvalid: ConfigReloadFailure?
+            private let lock = NSLock()
+            private var _pinged = false
+            private var _lastInvalid: ConfigReloadFailure?
+            var pinged: Bool {
+                get { lock.withLock { _pinged } }
+                set { lock.withLock { _pinged = newValue } }
+            }
+            var lastInvalid: ConfigReloadFailure? {
+                get { lock.withLock { _lastInvalid } }
+                set { lock.withLock { _lastInvalid = newValue } }
+            }
         }
         let observed = Observed()
         let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
@@ -49,9 +60,20 @@ struct ConfigInteractorImplTests {
             ConfigInteractorImpl()
         }
 
+        // Written from Combine sink callbacks and read from the polling loop —
+        // lock every access so the cross-thread reads are well-defined.
         final class Observed: @unchecked Sendable {
-            var invalid: ConfigReloadFailure?
-            var pinged = false
+            private let lock = NSLock()
+            private var _invalid: ConfigReloadFailure?
+            private var _pinged = false
+            var invalid: ConfigReloadFailure? {
+                get { lock.withLock { _invalid } }
+                set { lock.withLock { _invalid = newValue } }
+            }
+            var pinged: Bool {
+                get { lock.withLock { _pinged } }
+                set { lock.withLock { _pinged = newValue } }
+            }
         }
         let observed = Observed()
         let invalidCancellable = interactor.invalidConfig.sink { observed.invalid = $0 }
@@ -137,8 +159,15 @@ struct ConfigInteractorImplTests {
             ConfigInteractorImpl()
         }
 
+        // Written from a Combine sink callback and read after yields — lock
+        // every access so the cross-thread reads are well-defined.
         final class Observed: @unchecked Sendable {
-            var pinged = false
+            private let lock = NSLock()
+            private var _pinged = false
+            var pinged: Bool {
+                get { lock.withLock { _pinged } }
+                set { lock.withLock { _pinged = newValue } }
+            }
         }
         let observed = Observed()
         let cancellable = interactor.appStyleChanges.sink { observed.pinged = true }

@@ -59,9 +59,21 @@ struct ConfigHotReloadPipelineTests {
         // 1. Verify that config A is initially reflected in configUseCase.appStyle.
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "a.mp4")
 
+        // Written from Combine sink callbacks (interactor worker context) and read
+        // from the test's polling loop — lock every access so the cross-thread
+        // reads are well-defined instead of racy plain vars.
         final class Observed: @unchecked Sendable {
-            var pinged = false
-            var lastInvalid: ConfigReloadFailure?
+            private let lock = NSLock()
+            private var _pinged = false
+            private var _lastInvalid: ConfigReloadFailure?
+            var pinged: Bool {
+                get { lock.withLock { _pinged } }
+                set { lock.withLock { _pinged = newValue } }
+            }
+            var lastInvalid: ConfigReloadFailure? {
+                get { lock.withLock { _lastInvalid } }
+                set { lock.withLock { _lastInvalid = newValue } }
+            }
         }
         let observed = Observed()
         let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
@@ -135,9 +147,21 @@ struct ConfigHotReloadPipelineTests {
 
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "a.mp4")
 
+        // Written from Combine sink callbacks (interactor worker context) and read
+        // from the test's polling loop — lock every access so the cross-thread
+        // reads are well-defined instead of racy plain vars.
         final class Observed: @unchecked Sendable {
-            var pinged = false
-            var lastInvalid: ConfigReloadFailure?
+            private let lock = NSLock()
+            private var _pinged = false
+            private var _lastInvalid: ConfigReloadFailure?
+            var pinged: Bool {
+                get { lock.withLock { _pinged } }
+                set { lock.withLock { _pinged = newValue } }
+            }
+            var lastInvalid: ConfigReloadFailure? {
+                get { lock.withLock { _lastInvalid } }
+                set { lock.withLock { _lastInvalid = newValue } }
+            }
         }
         let observed = Observed()
         let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
