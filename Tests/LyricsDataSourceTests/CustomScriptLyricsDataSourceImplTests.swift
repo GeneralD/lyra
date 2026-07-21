@@ -176,20 +176,6 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(await captured.environment?["LYRA_CONFIG_DIR"] == "/retained")
     }
 
-    @Test("executeProcess survives pathological timeout values — huge/NaN/infinite clamp instead of trapping")
-    func executeProcessClampsPathologicalTimeouts() async throws {
-        for pathological in [1e300, .nan, .infinity] as [Double] {
-            let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
-                executable: "/bin/echo", arguments: ["ok"], environment: [:], timeoutMs: pathological)
-            #expect(result.status == 0)
-            #expect(result.stdout == "ok")
-        }
-        // A negative value clamps to the 1 ms floor — the call must not trap; whether the
-        // subprocess beats the 1 ms deadline is timing-dependent, so only no-crash is asserted.
-        _ = try await CustomScriptLyricsDataSourceImpl.executeProcess(
-            executable: "/bin/echo", arguments: ["ok"], environment: [:], timeoutMs: -5)
-    }
-
     @Test("$LYRA_CONFIG_DIR / ${LYRA_CACHE_DIR} placeholders expand in fallback_command elements")
     func placeholdersExpandInFallbackCommand() async {
         let captured = CapturedInvocation()
@@ -237,111 +223,33 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(result == nil)
     }
 
-    // MARK: - Real executeProcess (regression guard for the b09c1da waitUntilExit() hang fix)
+    // MARK: - Live processRunner wiring
     //
-    // Every test above stubs `processRunner`, so none of them ever runs the real
-    // `executeProcess` static function — the exact code whose `waitUntilExit()` was
-    // replaced with `terminationHandler` + a 3rd DispatchGroup pair after repeated
-    // short-lived invocations were empirically observed to hang (#308 review). These
-    // two tests spawn real subprocesses through `executeProcess` directly so a future
-    // refactor that reintroduces a blocking wait is caught by the suite.
+    // The subprocess machinery (real clock, blocking drain, SIGTERM→SIGKILL timeout)
+    // moved to `ProcessExecutor` + `DarwinGateway.runProcess` (#340), each tested there
+    // deterministically. What remains to verify HERE is that the no-arg init's live
+    // `processRunner` closure resolves the config command and hands it to the injected
+    // `ProcessExecutor` — proven with a spy, no real subprocess and no timing oracle.
 
-    @Test("executeProcess spawns a real subprocess repeatedly without hanging")
-    func executeProcessRealSubprocessDoesNotHang() async throws {
-        let iterations = 50
-        let start = ContinuousClock.now
-
-        for i in 0..<iterations {
-            let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
-                executable: "/bin/echo",
-                arguments: ["hello-\(i)"],
-                environment: [:],
-                timeoutMs: 3000
-            )
-            #expect(result.status == 0)
-            #expect(result.stdout == "hello-\(i)")
-        }
-
-        // 30s budget (vs. a normal-case sub-second run) absorbs CI contention
-        // without losing detection power — a genuine hang would still fail
-        // this bound many times over.
-        let elapsed = start.duration(to: .now)
-        #expect(elapsed < .seconds(30))
-    }
-
-    @Test("executeProcess returns promptly on timeout instead of waiting out the full sleep duration")
-    func executeProcessTimeoutReturnsPromptly() async throws {
-        let start = ContinuousClock.now
-
-        let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
-            executable: "/bin/sh",
-            arguments: ["-c", "sleep 10"],
-            environment: [:],
-            timeoutMs: 100
-        )
-
-        let elapsed = start.duration(to: .now)
-        #expect(result.status == -1)
-        #expect(result.stdout.isEmpty)
-        #expect(elapsed < .seconds(5))
-    }
-
-    @Test("executeProcess throws when the executable cannot be launched")
-    func executeProcessThrowsOnLaunchFailure() async {
-        await #expect(throws: (any Error).self) {
-            try await CustomScriptLyricsDataSourceImpl.executeProcess(
-                executable: "/nonexistent/definitely-not-a-real-binary-xyz",
-                arguments: [],
-                environment: [:],
-                timeoutMs: 1000
-            )
-        }
-    }
-
-    @Test("the no-argument init reads fallback_command/timeout from config and runs the resolved script")
-    func initReadsConfigAndRunsScript() async throws {
-        // A [lyrics] section pointing at /bin/echo (absolute, always present). echo emits
-        // non-JSON, so get() returns nil — but constructing via the config-reading init and
-        // invoking the real processRunner exercises init(), resolvedCacheDir(), and the
-        // processRunner closure that the injectable init bypasses.
+    @Test("the no-argument init wires config's fallback_command/timeout into the injected ProcessExecutor")
+    func initWiresConfigIntoProcessExecutor() async throws {
+        let spy = SpyProcessExecutor(result: (status: 0, stdout: "not json", stderr: ""))
         let dataSource = withDependencies {
             $0.configDataSource = StubConfigDataSource(fallbackCommand: ["/bin/echo", "unused"], timeoutMs: 5000)
+            $0.processExecutor = spy
         } operation: {
             CustomScriptLyricsDataSourceImpl()
         }
 
         let result = await dataSource.get(title: "Song", artist: "Artist", duration: nil)
+
+        // echo's non-JSON output fails validation, so get() returns nil …
         #expect(result == nil)
-    }
-
-    @Test("executeProcess force-kills a SIGTERM-ignoring script after the timeout")
-    func executeProcessForceKillsStubbornScript() async throws {
-        let pidFile = NSTemporaryDirectory() + "lyra-tierc-\(UUID().uuidString).pid"
-        defer { try? FileManager.default.removeItem(atPath: pidFile) }
-
-        // The script records its own pid, then ignores SIGTERM and sleeps far past the
-        // timeout. Only the SIGTERM→SIGKILL escalation can stop it.
-        let result = try await CustomScriptLyricsDataSourceImpl.executeProcess(
-            executable: "/bin/sh",
-            arguments: ["-c", "echo $$ > '\(pidFile)'; trap '' TERM; sleep 30"],
-            environment: [:],
-            timeoutMs: 200
-        )
-        #expect(result.status == -1)
-
-        let pidString =
-            (try? String(contentsOfFile: pidFile, encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let pid = Int32(pidString) ?? 0
-        #expect(pid > 0, "the script should have recorded its pid before ignoring SIGTERM")
-
-        // After the escalation reaps it, kill(pid, 0) fails (ESRCH). Poll rather than
-        // sleep a fixed interval — the reap is asynchronous.
-        let deadline = ContinuousClock.now + .seconds(3)
-        while kill(pid, 0) == 0, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(kill(pid, 0) != 0, "a SIGTERM-ignoring script must be SIGKILLed, not left running")
+        // … but the spy proves init()/resolvedCacheDir()/the closure resolved the command,
+        // appended title+artist, and forwarded the configured timeout.
+        #expect(await spy.lastCall?.executable == "/bin/echo")
+        #expect(await spy.lastCall?.arguments == ["unused", "Song", "Artist"])
+        #expect(await spy.lastCall?.timeoutMs == 5000)
     }
 
     // MARK: - Config hot reload (#41)
@@ -493,5 +401,32 @@ private actor CapturedInvocation {
         self.arguments = arguments
         self.environment = environment
         self.timeoutMs = timeoutMs
+    }
+}
+
+/// Records the single call the no-arg init's live `processRunner` makes into the
+/// injected `ProcessExecutor`, and returns a canned result. Used to prove config →
+/// executor wiring without spawning a real subprocess.
+private actor SpyProcessExecutor: ProcessExecutor {
+    struct Call {
+        let executable: String
+        let arguments: [String]
+        let environment: [String: String]
+        let timeoutMs: Double?
+    }
+
+    private(set) var lastCall: Call?
+    private let result: (status: Int32, stdout: String, stderr: String)
+
+    init(result: (status: Int32, stdout: String, stderr: String)) {
+        self.result = result
+    }
+
+    func run(
+        executable: String, arguments: [String], environment: [String: String], timeoutMs: Double?
+    ) async throws -> (status: Int32, stdout: String, stderr: String) {
+        lastCall = Call(
+            executable: executable, arguments: arguments, environment: environment, timeoutMs: timeoutMs)
+        return result
     }
 }

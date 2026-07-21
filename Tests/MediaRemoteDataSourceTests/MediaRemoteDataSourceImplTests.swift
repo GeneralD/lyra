@@ -461,6 +461,9 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     func runInteractiveShell(_ command: String) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
 
+    func runProcess(executable: String, arguments: [String], environment: [String: String]) async throws -> (
+        status: Int32, stdout: String, stderr: String
+    ) { fatalError("unused") }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         let lines: [String] = lock.withLock {
             runStreamingCallCount += 1

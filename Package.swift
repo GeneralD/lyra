@@ -273,6 +273,7 @@ let package = Package(
                 "MediaRemoteDataSource",
                 "WallpaperDataSource",
                 "AudioTapDataSource",
+                "ProcessExecutor",
                 "SQLiteDataStore",
                 "DarwinGateway",
                 "CoreAudioTapGateway",
@@ -480,6 +481,15 @@ let package = Package(
             ]
         ),
 
+        // ── ProcessExecutor (clock-driven timeout over ProcessGateway, #340) ──
+        .target(
+            name: "ProcessExecutor",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
         // ── DataStore ──
         .target(
             name: "SQLiteDataStore",
@@ -616,6 +626,14 @@ let package = Package(
         ),
         .testTarget(name: "AppTests", dependencies: ["App"]),
         .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
+        .testTarget(
+            name: "ProcessExecutorTests",
+            dependencies: [
+                "ProcessExecutor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
         .testTarget(
