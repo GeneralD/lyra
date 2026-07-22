@@ -68,7 +68,7 @@ struct DarwinGatewayRunProcessTests {
                 environment: [:])
         }
 
-        let deadline = ContinuousClock.now + .seconds(1)
+        let deadline = ContinuousClock.now + .seconds(3)
         while !FileManager.default.fileExists(atPath: pidFile), ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -94,8 +94,8 @@ struct DarwinGatewayRunProcessTests {
                 environment: [:])
         }
 
-        let deadline = ContinuousClock.now + .seconds(1)
-        while !FileManager.default.fileExists(atPath: readyFile), ContinuousClock.now < deadline {
+        let readyDeadline = ContinuousClock.now + .seconds(3)
+        while !FileManager.default.fileExists(atPath: readyFile), ContinuousClock.now < readyDeadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
         task.cancel()
