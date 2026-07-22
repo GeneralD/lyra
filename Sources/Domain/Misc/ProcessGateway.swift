@@ -34,6 +34,16 @@ public protocol ProcessGateway: Sendable {
     func runInteractiveShell(_ command: String) -> Int32
     func runCapturingOutput(executable: String, arguments: [String]) -> String?
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String>
+
+    /// Async subprocess primitive for `ProcessExecutor` (#340): spawns the child,
+    /// drains stdout/stderr *without blocking a thread pool*, and runs to completion.
+    /// Timeout is deliberately NOT a parameter here — the clock-driven timeout lives
+    /// in `ProcessExecutor` so it stays testable. On task **cancellation** (the
+    /// executor's timeout path), the child is terminated (SIGTERM, then SIGKILL after
+    /// a short grace) and `CancellationError` is thrown.
+    func runProcess(
+        executable: String, arguments: [String], environment: [String: String]
+    ) async throws -> (status: Int32, stdout: String, stderr: String)
 }
 
 public enum ProcessGatewayKey: TestDependencyKey {
@@ -67,5 +77,10 @@ private struct UnimplementedProcessGateway: ProcessGateway {
     }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         fatalError("ProcessGateway.runStreaming not implemented")
+    }
+    func runProcess(
+        executable: String, arguments: [String], environment: [String: String]
+    ) async throws -> (status: Int32, stdout: String, stderr: String) {
+        fatalError("ProcessGateway.runProcess not implemented")
     }
 }

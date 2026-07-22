@@ -11,12 +11,20 @@ public struct YouTubeWallpaperDataSourceImpl: Sendable {
     let replaceItemAtPath: @Sendable (String, String) -> Void
 
     public init() {
+        // Resolve+capture the executor from the init-time context (the daemon's live DI
+        // graph), so a construction-time override sticks in tests.
+        @Dependency(\.processExecutor) var processExecutor
         self.init(
             tempPathFor: { url, ext in
                 try WallpaperCache().tempPath(for: url, ext: ext)
             },
             processRunner: { executablePath, arguments in
-                try await Self.executeProcess(executablePath: executablePath, arguments: arguments)
+                // timeout nil: yt-dlp/ffmpeg are long-lived and must run to completion.
+                // Pass the daemon's inherited environment (as the old executeProcess did by
+                // never setting process.environment) so the tools keep their PATH etc.
+                try await processExecutor.run(
+                    executable: executablePath, arguments: arguments,
+                    environment: ProcessInfo.processInfo.environment, timeoutMs: nil)
             },
             fileExistsAtPath: { path in
                 FileManager.default.fileExists(atPath: path)
@@ -222,72 +230,10 @@ extension YouTubeWallpaperDataSourceImpl {
     }
 }
 
-// MARK: - Async Process
-
-extension YouTubeWallpaperDataSourceImpl {
-    static func executeProcess(executablePath: String, arguments: [String]) async throws -> (status: Int32, stdout: String, stderr: String) {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executablePath)
-            process.arguments = arguments
-            process.standardInput = FileHandle.nullDevice
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-                return
-            }
-
-            // Drain both pipes concurrently on background threads so that neither fills
-            // its OS pipe buffer and deadlocks the child process. ffmpeg in particular
-            // streams extensive progress output to stderr throughout a transcode, which
-            // can easily exceed the ~64 KB pipe buffer before the process exits.
-            let buffer = PipeBuffer()
-            let group = DispatchGroup()
-
-            group.enter()
-            DispatchQueue.global().async {
-                buffer.stdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                group.leave()
-            }
-
-            group.enter()
-            DispatchQueue.global().async {
-                buffer.stderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                group.leave()
-            }
-
-            group.notify(queue: .global()) {
-                // Both pipes have drained (EOF received → child has exited), but NSTask's
-                // internal SIGCHLD processing may not have run yet.  waitUntilExit() ensures
-                // terminationStatus is valid before we read it.
-                process.waitUntilExit()
-                continuation.resume(
-                    returning: (process.terminationStatus, buffer.stdoutTrimmed, buffer.stderrTrimmed))
-            }
-        }
-    }
-}
-
-/// Accumulates stdout and stderr bytes from concurrent pipe-drain tasks.
-/// Marked `@unchecked Sendable` because each stored property is written by exactly
-/// one DispatchQueue task and read only after the DispatchGroup barrier — no lock needed.
-private final class PipeBuffer: @unchecked Sendable {
-    var stdout = Data()
-    var stderr = Data()
-
-    var stdoutTrimmed: String { trimmed(stdout) }
-    var stderrTrimmed: String { trimmed(stderr) }
-
-    private func trimmed(_ data: Data) -> String {
-        String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-}
+// The subprocess plumbing that used to live here (an `executeProcess` static with a
+// blocking pipe drain and a residual `waitUntilExit()` — the very call #308 removed from
+// the lyrics side) moved to `ProcessExecutor` + `DarwinGateway.runProcess` (#340). The
+// no-arg init's live `processRunner` now delegates to `@Dependency(\.processExecutor)`.
 
 // MARK: - Errors
 

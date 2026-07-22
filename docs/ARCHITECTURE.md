@@ -62,7 +62,7 @@ graph TD
     Domain --> Entity
 
     CLI -.-> CommandHandler
-    Presenters -.-> Interactor
+    Presenters -.-> Interactor & Support
     CommandHandler -.-> UseCase & Support
     Interactor -.-> UseCase
     UseCase -.-> Repository & Support
@@ -148,6 +148,8 @@ graph LR
         FrequencyAnalyzer[FrequencyAnalyzer]
         FileWatchGateway[FileWatchGateway]
         DeveloperLog[DeveloperLog]
+        ProcessExecutor[ProcessExecutor]
+        RandomSource[RandomSource]
     end
 
     subgraph DataStore
@@ -159,6 +161,7 @@ graph LR
     ProcessHandler -.-> DarwinGateway
     ServiceHandler -.-> DarwinGateway
     BenchmarkHandler -.-> DarwinGateway
+    HealthHandler -.-> LyricsDataSource & MetadataDataSource & WallpaperDataSource & ConfigRepository
     TrackInteractor -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase & ConfigUseCase
     ScreenInteractor -.-> ConfigUseCase
     WallpaperInteractor -.-> WallpaperUseCase & ConfigUseCase
@@ -176,9 +179,12 @@ graph LR
     MetadataUseCase -.-> MetadataRepository
     MetadataRepository -.-> MetadataDataSource & SQLiteDataStore
     WallpaperUseCase -.-> WallpaperRepository
-    WallpaperRepository -.-> WallpaperDataSource
+    WallpaperRepository -.-> WallpaperDataSource & SQLiteDataStore
     MediaRemoteDataSource -.-> DarwinGateway
     WallpaperDataSource -.-> DarwinGateway
+    LyricsDataSource -.-> ProcessExecutor
+    WallpaperDataSource -.-> ProcessExecutor
+    ProcessExecutor -.-> DarwinGateway
     ConfigDataSource -.-> FileWatchGateway
     AudioTapDataSource -.-> CoreAudioTapGateway
 
@@ -212,6 +218,8 @@ graph LR
     style FrequencyAnalyzer fill:#d57,stroke:#333,color:#fff
     style FileWatchGateway fill:#d57,stroke:#333,color:#fff
     style DeveloperLog fill:#d57,stroke:#333,color:#fff
+    style ProcessExecutor fill:#d57,stroke:#333,color:#fff
+    style RandomSource fill:#d57,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
@@ -244,9 +252,9 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter), `Config/` (`ConfigStatusPresenter`, #41). DecodeEffect engine, RippleState |
 | Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler`, `BenchmarkHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. BenchmarkHandler: CPU/memory measurement via `ProcessGateway`. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
-| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer`, `FileWatchGateway`, `DeveloperLog` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT to per-bar magnitude conversion (pure computation behind Domain's `FrequencyAnalyzing` / `FrequencyAnalyzerFactory`); `FileWatchGateway` owns the DispatchSource-based config watch — directory + file two-tier (`ConfigWatchGateway` implementation, consumed by `ConfigDataSource`, #41); `DeveloperLog` (`FileDeveloperLog`) is a general write-only config-gated diagnostic sink (StandardOutput family, not a DataStore), injected as a cross-cutting service — the lyrics-resolution trace (#331) is its first instance |
+| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer`, `FileWatchGateway`, `DeveloperLog`, `ProcessExecutor`, `RandomSource` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT to per-bar magnitude conversion (pure computation behind Domain's `FrequencyAnalyzing` / `FrequencyAnalyzerFactory`); `FileWatchGateway` owns the DispatchSource-based config watch — directory + file two-tier (`ConfigWatchGateway` implementation, consumed by `ConfigDataSource`, #41); `DeveloperLog` (`FileDeveloperLog`) is a general write-only config-gated diagnostic sink (StandardOutput family, not a DataStore), injected as a cross-cutting service — the lyrics-resolution trace (#331) is its first instance; `ProcessExecutor` (`ProcessExecutorImpl`) is the DataSource-tier collaborator that adds a clock-driven timeout + capture over `ProcessGateway.runProcess`, shared by the lyrics and YouTube DataSources so neither carries its own subprocess plumbing (#340); `RandomSource` (`SystemRandomSource`) provides injectable randomness consumed by Presenters (`DecodeEffect`, wallpaper shuffle) so random behavior is deterministic under test |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor`, `SpectrumInteractor`, `ConfigInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
-| DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
+| DI Wiring | `DependencyInjection` | All liveValue registrations; also hosts two thin boundary pieces with no module of their own — `AppKitFontMetrics` (`FontMetricsProvider` live, consumed by Views' `SwiftUIResolver`) and the `healthCheckers` aggregation (the `HealthCheckable` implementations live beside their APIs in the DataSource/Repository modules) |
 | Entity | `Entity` | Pure data types, zero external dependencies |
 | Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
 | UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase`, `WallpaperUseCase`, `SpectrumUseCase` | Business logic only, no cross-UseCase deps |
@@ -294,6 +302,8 @@ graph TD
 **MediaRemoteDataSource via swift-interpret helper**: `MediaRemote.framework` is a private framework, and `MRMediaRemoteGetNowPlayingInfo` only returns data when the **host process** carries an Apple-internal entitlement (`com.apple.private.tcc.allow` family). Apple-signed binaries — including `/usr/bin/swift` — qualify; any third-party binary (Developer ID, ad-hoc, anything notarized outside Apple) does **not**, because AMFI strips Apple-private entitlements from non-Apple-signed Mach-Os at load time. The helper Swift source (`Resources/media-remote-helper.swift`) is therefore spawned via the **absolute path** `/usr/bin/swift <src>` so that the Apple-signed `xcode_select` tool-shim is unconditionally the host process. **Never go through `/usr/bin/env swift`** — `env` respects `$PATH` and a developer with a Homebrew / swift.org / asdf swift earlier in `PATH` would silently fall into a non-Apple-signed binary, reintroducing the same regression. **Never pre-compile the helper with `swiftc`** — the resulting binary becomes the host, loses the entitlement, and `MRMediaRemoteGetNowPlayingInfo` silently returns no info on macOS 26+ (regression tracked in #261). The helper runs as a persistent subprocess and streams JSON over a pipe, using `MRMediaRemoteRegisterForNowPlayingNotifications` for event-driven updates. The 1–2 s `swift-frontend -interpret` cost on first launch is the price of admission; there is no Apple-supported alternative for third parties. **Artwork emission is scoped to track changes (#255)**: each JSON line carries an `event` tag (`"track-change"` for notification-driven + initial fetches, `"tick"` for the 3 s periodic snapshot). Base64-encoding the cover (hundreds of KB–several MB) on every tick pegged daemon CPU for no benefit, so `artwork_base64` is sent only on `track-change`; `MediaRemoteDataSourceImpl` backfills the cached cover on ticks and clears it when a `track-change` arrives cover-less. This composes with the daemon-side decode memoization (`lastArtworkBase64`/`lastArtworkData`, #270): #270 avoids re-*decoding* an unchanged payload, #255 avoids re-*transmitting* it.
 
 **ProcessGateway OS boundary**: `ProcessGateway` centralizes OS-bound work in Domain (resource sampling, process management, lock files, launchctl, executable discovery, streaming subprocesses). `DarwinGateway` is the live macOS implementation, and `DependencyInjection` wires it into handlers and data sources so application logic no longer reaches directly into `Process`, `flock`, `getrusage`, or `which`.
+
+**ProcessExecutor two-seam split for a testable timeout (#340)**: Running a user script with a timeout has two responsibilities that must be split so the timeout is testable. The **OS primitive** is `ProcessGateway.runProcess(executable:arguments:environment:)` (live in `DarwinGateway`): it spawns the child, drains stdout/stderr *without* blocking a thread-pool thread (`readabilityHandler`, not `readDataToEndOfFile` — the old blocking drain parked two pool threads per call for the child's whole lifetime and was the pool-exhaustion cause), and on task **cancellation** terminates the child (SIGTERM → SIGKILL after a 500 ms grace, targeting the direct pid) and resumes *immediately* with `CancellationError` — it does **not** wait for the pipes to EOF, so a SIGTERM-ignoring script whose orphaned grandchild holds the pipe open cannot stall the return. The **timeout race** lives one layer up in `ProcessExecutor` (`ProcessExecutorImpl`, its own covered module): it races `@Dependency(\.continuousClock).sleep(timeoutMs)` against `gateway.runProcess(...)` and, on timeout, cancels the run task (which kills the child) and returns `(-1, "", "timed out …")`; `timeoutMs == nil` disables the race for long-lived tools (yt-dlp/ffmpeg). This split is what makes the oracle deterministic: the pre-#340 tests could only assert a timeout by spawning a real subprocess and measuring wall-clock, so the pass/fail hinged on CI scheduling and flaked. Now `ProcessExecutorImplTests` drives the race with a fake hung gateway + `ImmediateClock`/`TestClock` (zero real time), and `DarwinGatewayRunProcessTests` keeps only thin real-subprocess smokes with **no** timing oracle. Both `CustomScriptLyricsDataSourceImpl` and `YouTubeWallpaperDataSourceImpl` now delegate their live `processRunner` to `@Dependency(\.processExecutor)` (captured at init so a construction-time override sticks), removing two duplicated `executeProcess` statics — including the residual `waitUntilExit()` on the YouTube side that #308 had removed from the lyrics side. `ProcessExecutor` is a DataSource-tier collaborator over the gateway, not an upper layer reaching down, so the adjacent-layer rule (`architecture-boundaries.md`) holds: DataSource → ProcessExecutor → ProcessGateway.
 
 **AudioTapGateway CoreAudio boundary (#313)**: `AudioTapGateway` (Domain) wraps the imperative CoreAudio calls of the process-tap capture chain (tap → aggregate device → IOProc), and `CoreAudioTapGateway` is the live 1:1 pass-through implementation — fully symmetric to `ProcessGateway`/`DarwinGateway`. The protocol signature is deliberately CoreAudio-shaped (`CATapDescription`, `AudioStreamBasicDescription`, `AudioDeviceIOBlock`): type-erasing those would force per-callback conversion — allocation on the RT-safe IOProc path. Domain's `import CoreAudio` follows the same contract-layer exception as the Interactor protocols' Combine import. A GitHub survey (2026-07) found no maintained SPM library wrapping the macOS 14.4+ process-tap API (`SimplyCoreAudio` is stale and pre-dates it; `AudioCap` is sample code), so absorbing CoreAudio behind a third-party wrapper was rejected; if one matures later, this Gateway protocol is the single swap point. Rule of thumb for future gateways: protocol in Domain (platform-typed signatures allowed when the boundary's shape is the contract), live implementation in its own Support module, `liveValue` in `DependencyInjection/GatewayRegistration.swift`. The same shape covers non-gateway Support modules too: `FrequencyAnalyzer` is consumed through Domain's `FrequencyAnalyzing` protocol, built via the injected `FrequencyAnalyzerFactory` (a factory because the analyzer is rebuilt at runtime — bar count follows the overlay width, sample rate follows the tap — and the UseCase memoizes across rebuilds).
 
