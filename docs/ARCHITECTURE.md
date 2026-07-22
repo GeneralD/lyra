@@ -62,7 +62,7 @@ graph TD
     Domain --> Entity
 
     CLI -.-> CommandHandler
-    Presenters -.-> Interactor
+    Presenters -.-> Interactor & Support
     CommandHandler -.-> UseCase & Support
     Interactor -.-> UseCase
     UseCase -.-> Repository & Support
@@ -149,6 +149,7 @@ graph LR
         FileWatchGateway[FileWatchGateway]
         DeveloperLog[DeveloperLog]
         ProcessExecutor[ProcessExecutor]
+        RandomSource[RandomSource]
     end
 
     subgraph DataStore
@@ -160,6 +161,7 @@ graph LR
     ProcessHandler -.-> DarwinGateway
     ServiceHandler -.-> DarwinGateway
     BenchmarkHandler -.-> DarwinGateway
+    HealthHandler -.-> LyricsDataSource & MetadataDataSource & WallpaperDataSource & ConfigRepository
     TrackInteractor -.-> PlaybackUseCase & MetadataUseCase & LyricsUseCase & ConfigUseCase
     ScreenInteractor -.-> ConfigUseCase
     WallpaperInteractor -.-> WallpaperUseCase & ConfigUseCase
@@ -177,7 +179,7 @@ graph LR
     MetadataUseCase -.-> MetadataRepository
     MetadataRepository -.-> MetadataDataSource & SQLiteDataStore
     WallpaperUseCase -.-> WallpaperRepository
-    WallpaperRepository -.-> WallpaperDataSource
+    WallpaperRepository -.-> WallpaperDataSource & SQLiteDataStore
     MediaRemoteDataSource -.-> DarwinGateway
     WallpaperDataSource -.-> DarwinGateway
     LyricsDataSource -.-> ProcessExecutor
@@ -217,6 +219,7 @@ graph LR
     style FileWatchGateway fill:#d57,stroke:#333,color:#fff
     style DeveloperLog fill:#d57,stroke:#333,color:#fff
     style ProcessExecutor fill:#d57,stroke:#333,color:#fff
+    style RandomSource fill:#d57,stroke:#333,color:#fff
     style SQLiteDataStore fill:#a75,stroke:#333,color:#fff
 ```
 
@@ -249,9 +252,9 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | View | `Views` | SwiftUI views + `AppWindow` (NSWindow subclass). Feature dirs: `Header/`, `Lyrics/`, `Ripple/`, `Overlay/`, `Shared/` |
 | Presenter | `Presenters` | `Track/` (Header, Lyrics), `Wallpaper/` (Wallpaper, Ripple), `App/` (AppPresenter), `Config/` (`ConfigStatusPresenter`, #41). DecodeEffect engine, RippleState |
 | Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler`, `BenchmarkHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. BenchmarkHandler: CPU/memory measurement via `ProcessGateway`. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
-| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer`, `FileWatchGateway`, `DeveloperLog` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT to per-bar magnitude conversion (pure computation behind Domain's `FrequencyAnalyzing` / `FrequencyAnalyzerFactory`); `FileWatchGateway` owns the DispatchSource-based config watch — directory + file two-tier (`ConfigWatchGateway` implementation, consumed by `ConfigDataSource`, #41); `DeveloperLog` (`FileDeveloperLog`) is a general write-only config-gated diagnostic sink (StandardOutput family, not a DataStore), injected as a cross-cutting service — the lyrics-resolution trace (#331) is its first instance; `ProcessExecutor` (`ProcessExecutorImpl`) is the DataSource-tier collaborator that adds a clock-driven timeout + capture over `ProcessGateway.runProcess`, shared by the lyrics and YouTube DataSources so neither carries its own subprocess plumbing (#340) |
+| Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer`, `FileWatchGateway`, `DeveloperLog`, `ProcessExecutor`, `RandomSource` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT to per-bar magnitude conversion (pure computation behind Domain's `FrequencyAnalyzing` / `FrequencyAnalyzerFactory`); `FileWatchGateway` owns the DispatchSource-based config watch — directory + file two-tier (`ConfigWatchGateway` implementation, consumed by `ConfigDataSource`, #41); `DeveloperLog` (`FileDeveloperLog`) is a general write-only config-gated diagnostic sink (StandardOutput family, not a DataStore), injected as a cross-cutting service — the lyrics-resolution trace (#331) is its first instance; `ProcessExecutor` (`ProcessExecutorImpl`) is the DataSource-tier collaborator that adds a clock-driven timeout + capture over `ProcessGateway.runProcess`, shared by the lyrics and YouTube DataSources so neither carries its own subprocess plumbing (#340); `RandomSource` (`SystemRandomSource`) provides injectable randomness consumed by Presenters (`DecodeEffect`, wallpaper shuffle) so random behavior is deterministic under test |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor`, `SpectrumInteractor`, `ConfigInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
-| DI Wiring | `DependencyInjection` | All liveValue registrations, FontMetrics, HealthCheck |
+| DI Wiring | `DependencyInjection` | All liveValue registrations; also hosts two thin boundary pieces with no module of their own — `AppKitFontMetrics` (`FontMetricsProvider` live, consumed by Views' `SwiftUIResolver`) and the `healthCheckers` aggregation (the `HealthCheckable` implementations live beside their APIs in the DataSource/Repository modules) |
 | Entity | `Entity` | Pure data types, zero external dependencies |
 | Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
 | UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase`, `WallpaperUseCase`, `SpectrumUseCase` | Business logic only, no cross-UseCase deps |
