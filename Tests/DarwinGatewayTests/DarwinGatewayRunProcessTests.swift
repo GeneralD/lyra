@@ -77,6 +77,23 @@ struct DarwinGatewayRunProcessTests {
         await #expect(throws: CancellationError.self) { try await task.value }
     }
 
+    @Test("a call from an already-cancelled task throws immediately without spawning")
+    func preCancelledCallThrowsWithoutSpawning() async {
+        let marker = NSTemporaryDirectory() + "lyra-runproc-\(UUID().uuidString).marker"
+        defer { try? FileManager.default.removeItem(atPath: marker) }
+
+        let task = Task { [gateway] in
+            // Hold until cancellation is definitely observed, so runProcess enters with the
+            // flag already set and takes the register-guard bail-out — no child is spawned.
+            while !Task.isCancelled { await Task.yield() }
+            return try await gateway.runProcess(
+                executable: "/bin/sh", arguments: ["-c", "echo x > '\(marker)'"], environment: [:])
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(!FileManager.default.fileExists(atPath: marker), "a pre-cancelled call must not spawn")
+    }
+
     @Test("cancellation SIGKILLs a child that ignores SIGTERM")
     func cancellationForceKillsStubbornChild() async throws {
         let pidFile = NSTemporaryDirectory() + "lyra-runproc-\(UUID().uuidString).pid"
