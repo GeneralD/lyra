@@ -58,9 +58,9 @@ extension DarwinGateway {
                 }
 
                 // Close the launch/cancel race: if cancellation requested termination before
-                // we had a pid, kill the child now that it is running.
-                if let pid = state.markLaunched(process.processIdentifier) {
-                    terminateProcess(pid)
+                // the child existed, kill it now that it is running.
+                if let killTarget = state.markLaunched(process) {
+                    terminateProcess(killTarget)
                 }
 
                 group.notify(queue: .global()) {
@@ -74,8 +74,8 @@ extension DarwinGateway {
             // the pipe open long past the kill, and the executor's timeout must return
             // promptly regardless (#340). The child is signalled here; the leaked drain
             // finishes and is ignored (resume-once) whenever the grandchild finally exits.
-            let (killPid, continuation) = state.requestCancel()
-            if let killPid { terminateProcess(killPid) }
+            let (killTarget, continuation) = state.requestCancel()
+            if let killTarget { terminateProcess(killTarget) }
             continuation?.resume(throwing: CancellationError())
         }
     }
@@ -98,13 +98,19 @@ private func drainPipe(
 }
 
 /// SIGTERM, then SIGKILL after a short grace if the child ignores the polite signal —
-/// so a script trapping SIGTERM cannot outlive the executor's timeout. Targets the
-/// specific pid (never the process group) so lyra itself is never at risk; a shell
-/// script's own grandchildren are outside this guarantee.
-private func terminateProcess(_ pid: Int32) {
-    kill(pid, SIGTERM)
+/// so a script trapping SIGTERM cannot outlive the executor's timeout. Both signals are
+/// gated on this `Process` instance's own `isRunning` rather than `kill(pid, 0)`: while
+/// it is true the child is unreaped and the pid is still ours, so a pid recycled to an
+/// unrelated process after a prompt exit can never be targeted. The captured instance
+/// also keeps Foundation's reaping alive through the grace window. Targets the specific
+/// pid (never the process group) so lyra itself is never at risk; a shell script's own
+/// grandchildren are outside this guarantee.
+private func terminateProcess(_ process: Process) {
+    guard process.isRunning else { return }
+    kill(process.processIdentifier, SIGTERM)
     DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(500)) {
-        if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+        guard process.isRunning else { return }
+        kill(process.processIdentifier, SIGKILL)
     }
 }
 
@@ -117,9 +123,8 @@ private final class RunProcessState: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private var continuation: Continuation?
     private var resumed = false
-    private var launched = false
     private var terminateRequested = false
-    private var pid: Int32?
+    private var launched: Process?
     private var stdout = Data()
     private var stderr = Data()
 
@@ -137,27 +142,27 @@ private final class RunProcessState: @unchecked Sendable {
     var stdoutTrimmed: String { lock.withLock { Self.trimmed(stdout) } }
     var stderrTrimmed: String { lock.withLock { Self.trimmed(stderr) } }
 
-    /// Marks the child launched, recording its pid. Returns the pid iff a termination was
-    /// already requested (cancel raced ahead of the pid) so the caller kills it now.
-    func markLaunched(_ newPid: Int32) -> Int32? {
+    /// Marks the child launched, recording the `Process` instance (not just its pid, so
+    /// a later kill can verify identity via `isRunning`). Returns it iff a termination
+    /// was already requested (cancel raced ahead of the launch) so the caller kills now.
+    func markLaunched(_ newProcess: Process) -> Process? {
         lock.withLock {
-            launched = true
-            pid = newPid
-            return terminateRequested ? newPid : nil
+            launched = newProcess
+            return terminateRequested ? newProcess : nil
         }
     }
 
-    /// Handles cancellation atomically: records the request, and returns the pid to kill
-    /// (if the child is already launched) plus the continuation to resume-throw (if it is
-    /// set and not yet resumed). The caller performs the kill and resume outside the lock.
-    func requestCancel() -> (killPid: Int32?, continuation: Continuation?) {
+    /// Handles cancellation atomically: records the request, and returns the `Process`
+    /// to kill (if the child is already launched) plus the continuation to resume-throw
+    /// (if it is set and not yet resumed). The caller performs both outside the lock.
+    func requestCancel() -> (killTarget: Process?, continuation: Continuation?) {
         lock.withLock {
             terminateRequested = true
-            let killPid = launched ? pid : nil
-            guard !resumed else { return (killPid, nil) }
+            let killTarget = launched
+            guard !resumed else { return (killTarget, nil) }
             resumed = true
             defer { continuation = nil }
-            return (killPid, continuation)
+            return (killTarget, continuation)
         }
     }
 
