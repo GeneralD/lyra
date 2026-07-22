@@ -58,13 +58,21 @@ struct DarwinGatewayRunProcessTests {
 
     @Test("cancelling the task terminates the child and throws instead of waiting it out")
     func cancellationTerminatesChild() async throws {
+        let pidFile = NSTemporaryDirectory() + "lyra-runproc-\(UUID().uuidString).pid"
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
+
         let task = Task {
             try await gateway.runProcess(
-                executable: "/bin/sh", arguments: ["-c", "sleep 5"], environment: [:])
+                executable: "/bin/sh",
+                arguments: ["-c", "echo $$ > '\(pidFile)'; sleep 5"],
+                environment: [:])
         }
-        // Let the child actually spawn before cancelling (real-process smoke, not a
-        // state-polling assertion — a short spawn delay is acceptable here).
-        try await Task.sleep(for: .milliseconds(50))
+
+        let deadline = ContinuousClock.now + .seconds(1)
+        while !FileManager.default.fileExists(atPath: pidFile), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
     }
