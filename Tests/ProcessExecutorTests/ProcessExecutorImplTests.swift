@@ -70,20 +70,34 @@ struct ProcessExecutorImplTests {
         #expect(gateway.lastCall?.environment == ["A": "b"])
     }
 
-    @Test("a non-finite timeout is treated as no timeout — never traps on Int(Double)")
-    func nonFiniteTimeoutDoesNotTrap() async throws {
-        let gateway = FakeProcessGateway(.returns((status: 0, stdout: "ok", stderr: "")))
+    // MARK: - Invalid non-nil timeouts
+
+    @Test(
+        "a non-nil but invalid timeout clamps instead of disabling — a bad config can't hang forever",
+        arguments: [
+            (timeoutMs: 0.0, expected: "timed out after 1ms"),
+            (timeoutMs: -5.0, expected: "timed out after 1ms"),
+            (timeoutMs: Double.nan, expected: "timed out after 5000ms"),
+            (timeoutMs: Double.infinity, expected: "timed out after 5000ms"),
+        ])
+    func invalidTimeoutClamps(timeoutMs: Double, expected: String) async throws {
+        let gateway = FakeProcessGateway(.hang)
         let executor = withDependencies {
+            $0.continuousClock = ImmediateClock()
             $0.processGateway = gateway
         } operation: {
             ProcessExecutorImpl()
         }
 
+        // Only `nil` may disable the timeout: a configured `timeout_ms` of 0, a negative
+        // value, or NaN/±inf must still bound the child (pre-#340 contract, #341 review).
+        // The clamp also keeps `Int(Double)` from trapping on the non-finite values.
         let result = try await executor.run(
-            executable: "/bin/echo", arguments: [], environment: [:], timeoutMs: .nan)
+            executable: "/bin/sh", arguments: ["-c", "sleep 10"], environment: [:],
+            timeoutMs: timeoutMs)
 
-        #expect(result.status == 0)
-        #expect(result.stdout == "ok")
+        #expect(result.status == -1)
+        #expect(result.stderr.contains(expected))
     }
 
     // MARK: - Launch failure

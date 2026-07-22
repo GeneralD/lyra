@@ -16,9 +16,11 @@ import Dependencies
 public protocol ProcessExecutor: Sendable {
     /// - Parameters:
     ///   - timeoutMs: milliseconds before the child is killed and a
-    ///     `(-1, "", "timed out after …ms")` result returned. `nil` (or a
-    ///     non-finite / ≤ 0 value) disables the timeout — used for long-lived,
-    ///     low-frequency tools like yt-dlp / ffmpeg, which must run to completion.
+    ///     `(-1, "", "timed out after …ms")` result returned. Only `nil` disables
+    ///     the timeout — used for long-lived, low-frequency tools like yt-dlp /
+    ///     ffmpeg, which must run to completion. Non-nil values are normalized:
+    ///     finite ones clamp to 1 ms … 1 h, non-finite ones fall back to a 5 s
+    ///     default — a configured timeout can never disable itself by accident.
     /// - Returns: the child's exit status plus trimmed stdout/stderr.
     func run(
         executable: String, arguments: [String], environment: [String: String], timeoutMs: Double?

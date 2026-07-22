@@ -14,16 +14,18 @@ extension ProcessExecutorImpl: ProcessExecutor {
     ) async throws -> (status: Int32, stdout: String, stderr: String) {
         let gateway = self.gateway
 
-        // No timeout: run to completion. `nil`, non-finite, and ≤ 0 all mean "don't
-        // race a timer" — used for long-lived tools (yt-dlp/ffmpeg) that must finish.
-        guard let timeoutMs, timeoutMs.isFinite, timeoutMs > 0 else {
+        // No timeout: run to completion. Only `nil` means "don't race a timer" — used
+        // for long-lived tools (yt-dlp/ffmpeg) that must finish.
+        guard let timeoutMs else {
             return try await gateway.runProcess(
                 executable: executable, arguments: arguments, environment: environment)
         }
 
-        // Clamp to a finite sane window (1 ms … 1 h) before `Int(Double)`, which traps
-        // on NaN/±inf/out-of-range — a pathological config value must not crash the daemon.
-        let clampedMs = Int(min(max(timeoutMs, 1), 3_600_000))
+        // A non-nil but invalid value clamps instead of disabling: a config typo like
+        // `timeout_ms = 0` (or NaN/±inf) must still bound the child — the pre-#340
+        // contract. Finite values clamp to a sane window (1 ms … 1 h), non-finite ones
+        // fall back to the 5 s default; both keep `Int(Double)` from trapping.
+        let clampedMs = timeoutMs.isFinite ? Int(min(max(timeoutMs, 1), 3_600_000)) : 5000
         let clock = self.clock
 
         return try await withThrowingTaskGroup(of: Outcome.self) { group in
