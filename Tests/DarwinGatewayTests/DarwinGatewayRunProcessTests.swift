@@ -80,17 +80,24 @@ struct DarwinGatewayRunProcessTests {
     @Test("cancellation SIGKILLs a child that ignores SIGTERM")
     func cancellationForceKillsStubbornChild() async throws {
         let pidFile = NSTemporaryDirectory() + "lyra-runproc-\(UUID().uuidString).pid"
-        defer { try? FileManager.default.removeItem(atPath: pidFile) }
+        let readyFile = NSTemporaryDirectory() + "lyra-runproc-\(UUID().uuidString).ready"
+        defer {
+            try? FileManager.default.removeItem(atPath: pidFile)
+            try? FileManager.default.removeItem(atPath: readyFile)
+        }
 
-        // The child records its own pid, traps (ignores) SIGTERM, then sleeps far past any
-        // reasonable window — only the SIGTERM→SIGKILL escalation can stop it.
+        // The child records its own pid, traps (ignores) SIGTERM, then signals readiness.
         let task = Task {
             try await gateway.runProcess(
                 executable: "/bin/sh",
-                arguments: ["-c", "echo $$ > '\(pidFile)'; trap '' TERM; sleep 3"],
+                arguments: ["-c", "echo $$ > '\(pidFile)'; trap '' TERM; echo ready > '\(readyFile)'; sleep 3"],
                 environment: [:])
         }
-        try await Task.sleep(for: .milliseconds(100))  // let it record its pid + install the trap
+
+        let deadline = ContinuousClock.now + .seconds(1)
+        while !FileManager.default.fileExists(atPath: readyFile), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
 
