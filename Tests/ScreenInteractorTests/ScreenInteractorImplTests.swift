@@ -12,6 +12,7 @@ import Testing
 private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var style: AppStyle = .init()
     var appStyle: AppStyle { style }
+    func reload() -> ConfigReloadOutcome { .updated(appStyle) }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }

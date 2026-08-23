@@ -149,7 +149,7 @@ private func makeConfig() throws -> ConfigLoadResult {
 private struct StubConfigDataSource: ConfigDataSource {
     var loadResult: ConfigLoadResult?
     func load() -> ConfigLoadResult? { loadResult }
-    func tryDecode() throws -> String { "" }
+    func tryDecode(strictOptionalSections: Bool) throws -> String { "" }
     func template(format: ConfigFormat) -> String? { nil }
     func writeTemplate(format: ConfigFormat, force: Bool) throws -> String { "" }
     var existingConfigPath: String? { nil }

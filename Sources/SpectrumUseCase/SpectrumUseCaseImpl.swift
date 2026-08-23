@@ -17,15 +17,31 @@ public final class SpectrumUseCaseImpl: @unchecked Sendable {
     // outside that scope.
     @Dependency(\.audioCaptureRepository) private var repository
     @Dependency(\.frequencyAnalyzerFactory) private var analyzerFactory
-    /// Memoized analyzer plus the per-channel bar count and tap sample rate it
-    /// was built for. The displayed bar count is derived from the overlay width
-    /// (cava style), so it changes on resize. The sample rate is read from the
-    /// tap at construction (#299) and fixed for the tap's lifetime; a tap
-    /// recreation (play/pause, source change) picks up any new device rate and
-    /// triggers a rebuild via the changed `window.sampleRate`.
-    private var analyzer: (bars: Int, sampleRate: Double, engine: any FrequencyAnalyzing)?
+    /// Memoized analyzer plus the full set of build inputs it was created for.
+    /// The displayed bar count is derived from the overlay width (cava style),
+    /// so it changes on resize; the sample rate is read from the tap at
+    /// construction (#299) and fixed for the tap's lifetime, so a tap recreation
+    /// (play/pause, source change) picks up any new device rate. The band
+    /// settings (`fft_size`, `min_db`/`max_db`, `scale`, `min_freq`/`max_freq`)
+    /// can now change live via config hot-reload (#41 PR3), so they are part of
+    /// the memo key too — keying on only bars+sampleRate silently reused the old
+    /// engine and ignored those edits until a resize/restart (#41 PR3 review, F5).
+    private var analyzer: (spec: AnalyzerSpec, engine: any FrequencyAnalyzing)?
 
     public init() {}
+}
+
+/// The full set of inputs `FrequencyAnalyzerFactory.analyzer(...)` is built
+/// from, so the memo invalidates the instant any one of them changes.
+private struct AnalyzerSpec: Equatable {
+    let fftSize: Int
+    let bars: Int
+    let minDb: Double
+    let maxDb: Double
+    let linearScale: Bool
+    let minFrequency: Double
+    let maxFrequency: Double
+    let sampleRate: Double
 }
 
 extension SpectrumUseCaseImpl: SpectrumUseCase {
@@ -62,18 +78,16 @@ extension SpectrumUseCaseImpl {
             + analyzer.magnitudes(of: window.right)
     }
 
-    /// The analyzer for the current per-channel bar count and tap sample rate,
-    /// rebuilt only when either changes (a window resize or an output-device
-    /// rate change); everything else is launch-static.
+    /// The analyzer for the current per-channel bar count, tap sample rate, and
+    /// live band settings — rebuilt the moment any of them changes (a window
+    /// resize, an output-device rate change, or a config hot-reload of the band
+    /// parameters, #41 PR3 review, F5).
     private func resolvedAnalyzer(
         for style: SpectrumStyle, bars: Int, sampleRate: Double
     ) -> any FrequencyAnalyzing {
-        if let analyzer, analyzer.bars == bars, analyzer.sampleRate == sampleRate {
-            return analyzer.engine
-        }
-        let engine = analyzerFactory.analyzer(
+        let spec = AnalyzerSpec(
             fftSize: style.fftSize,
-            barCount: bars,
+            bars: bars,
             minDb: style.minDb,
             maxDb: style.maxDb,
             linearScale: style.scale == .linear,
@@ -81,7 +95,20 @@ extension SpectrumUseCaseImpl {
             maxFrequency: style.maxFreq,
             sampleRate: sampleRate
         )
-        analyzer = (bars, sampleRate, engine)
+        if let analyzer, analyzer.spec == spec {
+            return analyzer.engine
+        }
+        let engine = analyzerFactory.analyzer(
+            fftSize: spec.fftSize,
+            barCount: spec.bars,
+            minDb: spec.minDb,
+            maxDb: spec.maxDb,
+            linearScale: spec.linearScale,
+            minFrequency: spec.minFrequency,
+            maxFrequency: spec.maxFrequency,
+            sampleRate: spec.sampleRate
+        )
+        analyzer = (spec, engine)
         return engine
     }
 }

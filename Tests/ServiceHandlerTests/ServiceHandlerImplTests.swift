@@ -20,6 +20,9 @@ private struct StubGateway: ProcessGateway {
     func run(executable: String, arguments: [String]) -> Int32 { 0 }
     func runInteractiveShell(_ command: String) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runProcess(executable: String, arguments: [String], environment: [String: String]) async throws -> (
+        status: Int32, stdout: String, stderr: String
+    ) { fatalError("unused") }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         AsyncStream { $0.finish() }
     }

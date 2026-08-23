@@ -239,7 +239,14 @@ struct YouTubeWallpaperResolveTests {
 
     @Test("public init helper closures execute successfully")
     func publicInitHelpers() async throws {
-        let dataSource = YouTubeWallpaperDataSourceImpl()
+        // The live processRunner closure now delegates to a ProcessExecutor captured at
+        // init (#340), so construct the DataSource inside the override to prove the no-arg
+        // init wired the closure — without spawning a real subprocess.
+        let dataSource = withDependencies {
+            $0.processExecutor = StubProcessExecutor(result: (status: 0, stdout: "", stderr: ""))
+        } operation: {
+            YouTubeWallpaperDataSourceImpl()
+        }
         let fm = FileManager.default
         let tempDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -267,27 +274,10 @@ struct YouTubeWallpaperResolveTests {
         #expect(fm.fileExists(atPath: originalPath))
     }
 
-    @Test("executeProcess captures status, stdout, and stderr")
-    func executeProcessCapturesStreams() async throws {
-        let result = try await YouTubeWallpaperDataSourceImpl.executeProcess(
-            executablePath: "/bin/sh",
-            arguments: ["-c", "echo hello; echo boom 1>&2; exit 7"]
-        )
-
-        #expect(result.status == 7)
-        #expect(result.stdout == "hello")
-        #expect(result.stderr == "boom")
-    }
-
-    @Test("executeProcess throws when executable cannot be launched")
-    func executeProcessThrows() async {
-        await #expect(throws: (any Error).self) {
-            _ = try await YouTubeWallpaperDataSourceImpl.executeProcess(
-                executablePath: "/definitely/missing/executable",
-                arguments: []
-            )
-        }
-    }
+    // The real-subprocess coverage (status/stdout/stderr capture, launch failure) that
+    // used to exercise YouTube's own `executeProcess` static now lives on the shared
+    // primitive `DarwinGateway.runProcess` (#340); the resolve tests below still stub the
+    // `processRunner` seam, so they are unaffected by the consolidation.
 
     @Test("error descriptions include contextual details")
     func errorDescriptions() {
@@ -408,8 +398,20 @@ private struct StubGateway: ProcessGateway {
     func run(executable: String, arguments: [String]) -> Int32 { 0 }
     func runInteractiveShell(_ command: String) -> Int32 { 0 }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runProcess(executable: String, arguments: [String], environment: [String: String]) async throws -> (
+        status: Int32, stdout: String, stderr: String
+    ) { fatalError("unused") }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         AsyncStream { continuation in continuation.finish() }
+    }
+}
+
+private struct StubProcessExecutor: ProcessExecutor {
+    let result: (status: Int32, stdout: String, stderr: String)
+    func run(
+        executable: String, arguments: [String], environment: [String: String], timeoutMs: Double?
+    ) async throws -> (status: Int32, stdout: String, stderr: String) {
+        result
     }
 }
 

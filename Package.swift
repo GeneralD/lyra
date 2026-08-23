@@ -6,7 +6,23 @@ let package = Package(
     name: "Lyra",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "lyra", targets: ["CLI"])
+        .executable(name: "lyra", targets: ["CLI"]),
+        // Library surface for external reuse — e.g. the planned `lyra-screensaver`
+        // `.saver` bundle (#325), which reuses lyra's video-wallpaper pipeline rather
+        // than re-implementing it. The product exposes the single `LyraKit` umbrella
+        // target (below), which `@_exported import`s the reuse surface:
+        //   • Entity / Domain — data types + `@Dependency` keys and protocols
+        //   • Presenters       — `WallpaperPresenter` / `WallpaperPlaybackController`
+        //                        (the AVPlayer loop/trim/cycle engine, NSWindow-free)
+        //   • DependencyInjection — liveValue wiring so `@Dependency` resolves to the
+        //                        real implementations without the consumer re-registering
+        //                        the graph.
+        // Product name ≠ importable module in SwiftPM (target names are the modules), so
+        // the umbrella target lets a consumer write a single `import LyraKit`. A lighter
+        // wallpaper-only product (splitting the DI registrations per feature so a consumer
+        // can avoid linking MediaRemote/Audio) is a possible follow-up if the `.saver`
+        // binary needs trimming; see #325.
+        .library(name: "LyraKit", targets: ["LyraKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
@@ -43,6 +59,19 @@ let package = Package(
                     "-Xlinker", "__info_plist",
                     "-Xlinker", "Sources/CLI/Info.plist",
                 ])
+            ]
+        ),
+
+        // ── LyraKit (umbrella for external reuse, #325) ──
+        // Pure `@_exported import` facade so a consumer of the `LyraKit` product
+        // can `import LyraKit` once instead of importing each re-exported module.
+        .target(
+            name: "LyraKit",
+            dependencies: [
+                "Entity",
+                "Domain",
+                "Presenters",
+                "DependencyInjection",
             ]
         ),
 
@@ -89,6 +118,14 @@ let package = Package(
                 "Domain"
             ]
         ),
+
+        // ── FileWatchGateway ──
+        .target(
+            name: "FileWatchGateway",
+            dependencies: [
+                "Domain"
+            ]
+        ),
         .target(
             name: "AppKitScreenProvider",
             dependencies: [
@@ -101,6 +138,15 @@ let package = Package(
             name: "RandomSource",
             dependencies: [
                 "Domain"
+            ]
+        ),
+
+        // ── DeveloperLog ──
+        .target(
+            name: "DeveloperLog",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
@@ -203,8 +249,10 @@ let package = Package(
                 "AppKitScreenProvider",
                 "Domain",
                 "RandomSource",
+                "DeveloperLog",
                 "TrackInteractor",
                 "ScreenInteractor",
+                "ConfigInteractor",
                 "WallpaperInteractor",
                 "SpectrumInteractor",
                 "ConfigUseCase",
@@ -225,9 +273,11 @@ let package = Package(
                 "MediaRemoteDataSource",
                 "WallpaperDataSource",
                 "AudioTapDataSource",
+                "ProcessExecutor",
                 "SQLiteDataStore",
                 "DarwinGateway",
                 "CoreAudioTapGateway",
+                "FileWatchGateway",
                 "FrequencyAnalyzer",
                 "ProcessHandler",
                 "VersionHandler",
@@ -251,6 +301,13 @@ let package = Package(
         ),
         .target(
             name: "ScreenInteractor",
+            dependencies: [
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .target(
+            name: "ConfigInteractor",
             dependencies: [
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -376,6 +433,7 @@ let package = Package(
             name: "ConfigDataSource",
             dependencies: [
                 "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Files", package: "Files"),
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ]
@@ -419,6 +477,15 @@ let package = Package(
             dependencies: [
                 "Domain",
                 .product(name: "Atomics", package: "swift-atomics"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // ── ProcessExecutor (clock-driven timeout over ProcessGateway, #340) ──
+        .target(
+            name: "ProcessExecutor",
+            dependencies: [
+                "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -468,6 +535,14 @@ let package = Package(
             name: "ScreenInteractorTests",
             dependencies: [
                 "ScreenInteractor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+        .testTarget(
+            name: "ConfigInteractorTests",
+            dependencies: [
+                "ConfigInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
@@ -528,6 +603,10 @@ let package = Package(
             name: "CoreAudioTapGatewayTests",
             dependencies: ["CoreAudioTapGateway"]
         ),
+        .testTarget(
+            name: "FileWatchGatewayTests",
+            dependencies: ["FileWatchGateway", "Domain"]
+        ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
             name: "AsyncRunnableCommandTests",
@@ -547,8 +626,24 @@ let package = Package(
         ),
         .testTarget(name: "AppTests", dependencies: ["App"]),
         .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
+        .testTarget(
+            name: "ProcessExecutorTests",
+            dependencies: [
+                "ProcessExecutor",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
+        .testTarget(
+            name: "DeveloperLogTests",
+            dependencies: [
+                "DeveloperLog",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
         .testTarget(
             name: "ProcessHandlerTests",
             dependencies: [
@@ -703,7 +798,21 @@ let package = Package(
             dependencies: [
                 "ConfigDataSource",
                 "Domain",
+                "FileWatchGateway",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "TOMLKit", package: "TOMLKit"),
+            ]
+        ),
+        .testTarget(
+            name: "ConfigHotReloadTests",
+            dependencies: [
+                "ConfigUseCase",
+                "ConfigInteractor",
+                "ConfigRepository",
+                "ConfigDataSource",
+                "Domain",
+                "Entity",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
@@ -711,6 +820,7 @@ let package = Package(
             dependencies: [
                 "LyricsDataSource",
                 "Domain",
+                "ConfigDataSource",
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Papyrus", package: "papyrus"),
             ]

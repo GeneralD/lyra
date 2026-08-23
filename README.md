@@ -107,6 +107,16 @@ Or create `~/.config/lyra/config.toml` (or `config.json`) manually. All fields a
 
 Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 
+### Live reload
+
+The daemon watches the config directory for edits and re-validates on every save — no `lyra restart` needed to pick up a config file change. Saves are debounced briefly to coalesce rapid writes, then applied automatically. The watch arms even when no config file exists yet, so a config created after the daemon starts (via `lyra config init` or a manual save) is picked up without a restart, as long as its directory (`~/.config/lyra`) already exists.
+
+This now covers every visual element: config validation, the header and lyrics styling (fonts, colors, sizes, decode effect, and artwork all re-render live), the lyrics `[lyrics] fallback_command`/`timeout_ms` settings (re-read on every fallback invocation), the ripple and spectrum overlays (their styling and their `enabled` toggle both take effect live), the wallpaper source (swapping the video, changing playback mode, or removing it entirely all apply live without blacking out the overlay), and the screen selection (`[screen]` selector and debounce). No `lyra restart` is required for any config edit.
+
+If an edit breaks the config's required structure (invalid TOML/JSON, or bad values in the core text/wallpaper/spectrum sections), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
+
+A malformed optional `[ai]` or `[lyrics]` section is tolerated instead of blocking the whole edit: that section is skipped while the rest of the valid config still applies, exactly as it does at startup (so no "shattered" sphere appears for it). `lyra healthcheck` still reports a malformed `[ai]`/`[lyrics]` so the problem stays discoverable.
+
 ### Top-level
 
 | Key | Type | Default | Description |
@@ -464,6 +474,42 @@ own subprocess timeout so one dead endpoint cannot eat the whole budget,
 and remember that `timeout_ms` covers the entire `fallback_command` run —
 budget it above your per-source timeout with headroom.
 
+### `[developer]` — diagnostic toggles (optional)
+
+Off by default. A home for opt-in developer/debug toggles — currently the
+lyrics-resolution trace. When a song's lyrics fail to appear (or the wrong
+lyrics show), turn it on to record exactly *why* each attempt was accepted or
+rejected — the generated candidates, and for every tier (LRCLIB exact match,
+validated fuzzy search, custom script) the title-similarity score and
+duration delta behind each accept/reject.
+
+```toml
+[developer]
+lyrics_resolution = true
+# lyrics_resolution_file = "~/my-lyra-trace.log"   # optional; default is below
+```
+
+- `lyrics_resolution` — enable the trace (default `false`).
+- `lyrics_resolution_file` — where to append. Omit (or leave blank) to use
+  the default `${XDG_CACHE_HOME:-~/.cache}/lyra/lyrics-debug.log` — this is the
+  only place `$XDG_CACHE_HOME` applies. In an explicit path, `~` is expanded but
+  environment variables are **not** (the value is otherwise used verbatim).
+
+The value is read once at startup, so toggling it takes a `lyra restart`.
+Each resolution appends a block like:
+
+```text
+=== lyrics resolve  candidates=4 ===
+candidates: Yesterday/The Beatles/180s | Yesterday/The Beatles/125s | ...
+tierA Yesterday/The Beatles/180s get -> miss
+tierB Yesterday/The Beatles/180s search '...' -> found Yesterday/The Beatles/125s [synced] REJECT [titleSim=1.00 durΔ=55s]
+result: none
+```
+
+The trace contains the titles and artists you play (i.e. your listening
+history), so it stays a local file and is never uploaded anywhere — share
+excerpts by hand only.
+
 ### Screen selection
 
 | Value | Behavior |
@@ -626,6 +672,48 @@ endpoint = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
 api_key = "sk-..."
 ```
+
+## Architecture
+
+lyra is built with VIPER + Clean Architecture, with Swift Package targets
+enforcing layer boundaries at compile time:
+
+```text
+View → Presenter → Interactor → UseCase → Repository → DataSource
+```
+
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full module
+dependency graphs, the layer/module breakdown, and the per-decision rationale
+(Key Design Decisions).
+
+## Use as a library (LyraKit)
+
+<p align="center">
+  <a href="docs/LyraKit.md"><img src="assets/lyrakit-wordmark.png" alt="LyraKit" width="360"></a>
+</p>
+
+lyra's building blocks are also published as a Swift library, **LyraKit**, so
+you can embed lyra's video-wallpaper pipeline in your own macOS app or
+screensaver instead of re-implementing it. A single `import LyraKit` gives you
+the wallpaper resolver, the ready-made `AVPlayer` engine (`WallpaperPresenter`),
+and the dependency wiring — it reads the same `~/.config/lyra/config.toml`
+`[wallpaper]` set and `~/.cache/lyra/wallpapers/` cache the daemon uses.
+
+```swift
+// Package.swift
+.package(url: "https://github.com/GeneralD/lyra.git", from: "2.22.0"),
+// target dependency:
+.product(name: "LyraKit", package: "lyra"),
+```
+
+```swift
+import LyraKit
+
+let presenter = WallpaperPresenter()   // reads ~/.config/lyra [wallpaper]
+presenter.start()                      // resolves + plays; observe presenter.player
+```
+
+See **[docs/LyraKit.md](docs/LyraKit.md)** for the full integration guide.
 
 ## Requirements
 

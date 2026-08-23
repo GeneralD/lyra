@@ -23,10 +23,12 @@ public final class HeaderPresenter: ObservableObject {
     @Published public private(set) var titleColor: ColorStyle = .solid("#FFFFFFD9")
     @Published public private(set) var artistColor: ColorStyle = .solid("#FFFFFFD9")
 
-    public private(set) var titleStyle: TextAppearance = .init()
-    public private(set) var artistStyle: TextAppearance = .init()
-    public private(set) var artworkSize: Double = 96
-    public private(set) var artworkOpacity: Double = 1.0
+    // These font, size, and color properties are @Published because hot reload
+    // reapplies them and the View must redraw (#41 PR2).
+    @Published public private(set) var titleStyle: TextAppearance = .init()
+    @Published public private(set) var artistStyle: TextAppearance = .init()
+    @Published public private(set) var artworkSize: Double = 96
+    @Published public private(set) var artworkOpacity: Double = 1.0
 
     private var titleEffect: DecodeEffectState?
     private var artistEffect: DecodeEffectState?
@@ -34,24 +36,19 @@ public final class HeaderPresenter: ObservableObject {
     private var artistTarget: String?
     private var artworkData: Data?
     private var processingColor: ColorStyle = .solid("#4ADE80FF")
+    // Tracks whether AI processing is active. applyStyle() preserves processingColor
+    // while scrambling and restores the configured colors otherwise, preventing config
+    // hot reload from breaking the color state introduced in #57.
+    private var isAIProcessing = false
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.trackInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
 
     public init() {}
 
     public func start() {
-        let config = interactor.decodeEffectConfig
-        let style = interactor.textLayout
-        titleStyle = style.title
-        artistStyle = style.artist
-        titleColor = style.title.color
-        artistColor = style.artist.color
-        processingColor = config.processingColor
-        artworkSize = interactor.artworkStyle.size
-        artworkOpacity = interactor.artworkStyle.opacity
-        titleEffect = DecodeEffectState(config: config)
-        artistEffect = DecodeEffectState(config: config)
+        applyStyle()
 
         interactor.trackChange
             .receive(on: DispatchQueue.main)
@@ -66,6 +63,15 @@ public final class HeaderPresenter: ObservableObject {
                 self?.receiveArtwork(data)
             }
             .store(in: &cancellables)
+
+        // Subscribe once at startup. Each config change emits appStyleChanges and calls
+        // applyStyle() without replacing the subscription.
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.applyStyle()
+            }
+            .store(in: &cancellables)
     }
 
     public func stop() {
@@ -73,10 +79,24 @@ public final class HeaderPresenter: ObservableObject {
         titleEffect?.stop()
         artistEffect?.stop()
     }
+
+    /// Idempotently reapplies config values. Called once at startup and for each
+    /// `appStyleChanges` ping. Preserves processingColor during AI processing.
+    private func applyStyle() {
+        let style = interactor.textLayout
+        titleStyle = style.title
+        artistStyle = style.artist
+        artworkSize = interactor.artworkStyle.size
+        artworkOpacity = interactor.artworkStyle.opacity
+        processingColor = interactor.decodeEffectConfig.processingColor
+        titleColor = isAIProcessing ? processingColor : style.title.color
+        artistColor = isAIProcessing ? processingColor : style.artist.color
+    }
 }
 
 extension HeaderPresenter {
     private func receive(_ update: TrackUpdate) {
+        isAIProcessing = update.aiResolving
         guard update.aiResolving else {
             revealTitle(update.title)
             revealArtist(update.artist)
@@ -99,10 +119,10 @@ extension HeaderPresenter {
             displayTitle = " "
             return
         }
-        guard let effect = titleEffect else { return }
         guard titleTarget != text else { return }
         titleTarget = text
         titlePhase = .revealing
+        let effect = makeTitleEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
         }
@@ -119,16 +139,36 @@ extension HeaderPresenter {
             displayArtist = " "
             return
         }
-        guard let effect = artistEffect else { return }
         guard artistTarget != text else { return }
         artistTarget = text
         artistPhase = .revealing
+        let effect = makeArtistEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText
         }
         effect.decode(to: text) { [weak self] in
             self?.artistPhase = .revealed
         }
+    }
+
+    /// Recreates `titleEffect` and `artistEffect` from live config whenever a reveal or
+    /// processing cycle begins. `DecodeEffectState` captures `duration` and `charsets` as
+    /// immutable values at initialization, so `applyStyle()` cannot update an existing effect.
+    /// Rebuilding only after the reveal dedup guard accepts a new animation applies
+    /// `config.toml` decode-effect edits to the next cycle without disturbing one in progress.
+    /// `applyStyle()` never touches these effects, so config pings cannot interrupt a scramble.
+    private func makeTitleEffect() -> DecodeEffectState {
+        titleEffect?.stop()
+        let effect = DecodeEffectState(config: interactor.decodeEffectConfig)
+        titleEffect = effect
+        return effect
+    }
+
+    private func makeArtistEffect() -> DecodeEffectState {
+        artistEffect?.stop()
+        let effect = DecodeEffectState(config: interactor.decodeEffectConfig)
+        artistEffect = effect
+        return effect
     }
 }
 
@@ -143,10 +183,11 @@ extension HeaderPresenter {
     }
 
     private func startProcessingTitle(_ text: String?) {
-        guard let effect = titleEffect, let text, !text.isEmpty else { return }
+        guard let text, !text.isEmpty else { return }
         titleTarget = nil
         titleColor = processingColor
         titlePhase = .revealing
+        let effect = makeTitleEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayTitle = displayText
         }
@@ -154,10 +195,11 @@ extension HeaderPresenter {
     }
 
     private func startProcessingArtist(_ text: String?) {
-        guard let effect = artistEffect, let text, !text.isEmpty else { return }
+        guard let text, !text.isEmpty else { return }
         artistTarget = nil
         artistColor = processingColor
         artistPhase = .revealing
+        let effect = makeArtistEffect()
         effect.onUpdate = { [weak self] displayText in
             self?.displayArtist = displayText
         }

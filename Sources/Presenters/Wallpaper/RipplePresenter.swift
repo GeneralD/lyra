@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreFoundation
 import Dependencies
 import Domain
@@ -14,8 +15,14 @@ public final class RipplePresenter: ObservableObject {
     /// `CACurrentMediaTime()` of the last processed mouse-move event, used to
     /// throttle ripple work to roughly 30 Hz during rapid motion (#271).
     private var lastMouseMoveTime: CFTimeInterval = 0
+    /// The ripple config last applied by `applyStyle()`, used to diff against a
+    /// hot-reload ping so the monitor and `RippleState` are only reworked on a
+    /// meaningful change (#41 PR3).
+    private var appliedRipple: RippleStyle?
+    private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.wallpaperInteractor) private var interactor
+    @Dependency(\.configInteractor) private var configInteractor
 
     /// Drives whether `RippleView` keeps its per-frame `TimelineView` running.
     /// Stays `false` while no ripple is alive so an enabled-but-idle ripple
@@ -82,13 +89,65 @@ public final class RipplePresenter: ObservableObject {
     }
 
     public func start() {
-        let config = interactor.rippleConfig
-        rippleState = RippleState(config: config)
+        // Idempotent: a second start() without an intervening stop() must not
+        // stack duplicate subscriptions on the shared publisher.
+        guard cancellables.isEmpty else { return }
+        applyStyle()
 
-        guard config.enabled else { return }
+        // Subscribe once at startup. Each config change emits a Void ping and calls
+        // applyStyle() without ever replacing this subscription (#41 PR3).
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.applyStyle() }
+            .store(in: &cancellables)
+    }
+
+    /// Idempotently reflects the live ripple config. Called once at startup and for
+    /// each `appStyleChanges` ping. `RippleState` freezes enabled/idle/duration at
+    /// construction, so it is rebuilt only when one of those changes — never on an
+    /// unrelated edit, which would wipe live ripples (color/radius/shape are read
+    /// live in `drawingContexts`). The global mouse monitor is attached/detached
+    /// only when `enabled` flips, so a disabled ripple installs none and a re-enable
+    /// never double-registers.
+    private func applyStyle() {
+        let config = interactor.rippleConfig
+        let previous = appliedRipple
+        appliedRipple = config
+
+        let framesDiffer =
+            previous == nil
+            || previous!.enabled != config.enabled
+            || previous!.idle != config.idle
+            || previous!.duration != config.duration
+        if framesDiffer {
+            rippleState = RippleState(config: config)
+            // The fresh state's cursor position starts at `.zero`, so clear the
+            // hover flag too: otherwise, with the cursor still inside the overlay,
+            // the per-frame `idle()` would spawn idle ripples at the screen origin
+            // until a new mouse move re-establishes the position (#41 PR3 review,
+            // F3). A real mouse move re-sets both together.
+            mouseInScreen = false
+        }
+
+        guard previous?.enabled != config.enabled else { return }
+        if config.enabled {
+            attachMouseMonitor()
+        } else {
+            detachMouseMonitor()
+            setAnimating(false)
+        }
+    }
+
+    private func attachMouseMonitor() {
+        guard mouseMonitor == nil else { return }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             self?.handleGlobalMouseMove()
         }
+    }
+
+    private func detachMouseMonitor() {
+        mouseMonitor.map(NSEvent.removeMonitor)
+        mouseMonitor = nil
     }
 
     /// Bridges a global mouse-move callback onto the MainActor and forwards it
@@ -122,12 +181,19 @@ public final class RipplePresenter: ObservableObject {
     }
 
     public func stop() {
-        mouseMonitor.map(NSEvent.removeMonitor)
-        mouseMonitor = nil
+        cancellables.removeAll()
+        detachMouseMonitor()
+        // Clear the applied-config sentinel so a restart re-attaches from
+        // scratch: retained, an unchanged enabled config would diff as "no
+        // change" and never re-attach the monitor this stop() just detached.
+        appliedRipple = nil
     }
 
-    /// Called from DisplayLink at frame rate.
+    /// Called from DisplayLink at frame rate. The handler is always installed now
+    /// (#41 PR3), so a disabled ripple bails on the first guard and pays no
+    /// per-frame cost — enabling it at runtime resumes idle spawning immediately.
     public func idle() {
+        guard isEnabled else { return }
         spawnIdleRippleWhileHovering()
         setAnimating(rippleState?.pruneAndCheckLiveness() ?? false)
     }

@@ -96,3 +96,4 @@ public struct SpectrumStyle {
 }
 
 extension SpectrumStyle: Sendable {}
+extension SpectrumStyle: Equatable {}

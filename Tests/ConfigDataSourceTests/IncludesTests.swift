@@ -85,4 +85,41 @@ struct IncludesTests {
         #expect(config?.screen == ScreenSelector.main)
         #expect(config?.ai == nil)
     }
+
+    @Test("includedConfigPaths resolves relative and absolute includes, keeping missing files for the watch")
+    func includedConfigPathsResolution() throws {
+        defer { tearDown() }
+
+        let lyraDir = tempDir + "/lyra"
+        let outsideDir = tempDir + "/outside"
+        try FileManager.default.createDirectory(atPath: lyraDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: outsideDir, withIntermediateDirectories: true)
+        try "screen = \"main\"".write(toFile: lyraDir + "/koko.toml", atomically: true, encoding: .utf8)
+        try "screen = \"main\"".write(toFile: outsideDir + "/shared.toml", atomically: true, encoding: .utf8)
+        try """
+        includes = ["koko.toml", "\(outsideDir)/shared.toml", "missing.toml"]
+        """.write(toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
+
+        // tempDir acts as $XDG_CONFIG_HOME, so findConfigFile resolves <tempDir>/lyra/config.toml.
+        let paths = ConfigDataSourceImpl(configHome: tempDir).includedConfigPaths
+
+        // Compare by suffix: the Files library canonicalizes /var/... to /private/var/...
+        // The missing include stays in the list: the hot-reload watch needs its
+        // parent directory so that creating the file later fires an event.
+        #expect(paths.count == 3)
+        #expect(paths.contains { $0.hasSuffix("/lyra/koko.toml") })
+        #expect(paths.contains { $0.hasSuffix("/outside/shared.toml") })
+        #expect(paths.contains { $0.hasSuffix("/lyra/missing.toml") })
+    }
+
+    @Test("includedConfigPaths is empty for a JSON config (includes is TOML-only)")
+    func includedConfigPathsEmptyForJson() throws {
+        defer { tearDown() }
+
+        let lyraDir = tempDir + "/lyra"
+        try FileManager.default.createDirectory(atPath: lyraDir, withIntermediateDirectories: true)
+        try "{\"screen\": \"main\"}".write(toFile: lyraDir + "/config.json", atomically: true, encoding: .utf8)
+
+        #expect(ConfigDataSourceImpl(configHome: tempDir).includedConfigPaths.isEmpty)
+    }
 }

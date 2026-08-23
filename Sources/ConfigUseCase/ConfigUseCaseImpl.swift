@@ -1,15 +1,48 @@
 import Dependencies
 import Domain
+import os
 
 public final class ConfigUseCaseImpl: @unchecked Sendable {
     @Dependency(\.configRepository) private var repository
-    private lazy var cachedAppStyle: AppStyle = repository.loadAppStyle()
+    private let store: OSAllocatedUnfairLock<AppStyle>
 
-    public init() {}
+    public init() {
+        @Dependency(\.configRepository) var repository
+        // Load once at startup, preserving the previous single-load behavior in mutable storage.
+        store = OSAllocatedUnfairLock(initialState: repository.loadAppStyle())
+    }
 }
 
 extension ConfigUseCaseImpl: ConfigUseCase {
-    public var appStyle: AppStyle { cachedAppStyle }
+    public var appStyle: AppStyle { store.withLock { $0 } }
+
+    public func reload() -> ConfigReloadOutcome {
+        // Captured once so the existence check and the reported failure path can
+        // never disagree, even if the file appears/vanishes mid-reload (atomic save).
+        let existingPath = repository.existingConfigPath
+        let fileExists = existingPath != nil
+        // Lenient: a malformed optional [ai]/[lyrics] section degrades to nil (exactly
+        // as startup does) rather than discarding valid text/wallpaper edits. Only a
+        // malformed required structure fails validation and keeps the previous style (#330).
+        switch repository.validate(strictOptionalSections: false) {
+        case .loaded:
+            let style = repository.loadAppStyle()
+            store.withLock { $0 = style }
+            return .updated(style)
+        case .defaults where !fileExists:
+            let style = repository.loadAppStyle()
+            store.withLock { $0 = style }
+            return .updated(style)
+        case .defaults:
+            // An empty tryDecode result for an existing file indicates a read failure,
+            // such as during an atomic save. Retain the previous value.
+            return .invalid(.init(path: existingPath ?? "", reason: .unreadable))
+        case .unreadable(let path):
+            return .invalid(.init(path: path, reason: .unreadable))
+        case .decodeError(let path, let error):
+            return .invalid(.init(path: path, reason: .decode(error)))
+        }
+    }
 
     public func template(format: ConfigFormat) -> String? {
         repository.template(format: format)
@@ -21,5 +54,9 @@ extension ConfigUseCaseImpl: ConfigUseCase {
 
     public var existingConfigPath: String? {
         repository.existingConfigPath
+    }
+
+    public func watchChanges(onChange: @escaping @Sendable () -> Void) -> (any ConfigWatchToken)? {
+        repository.watchChanges(onChange: onChange)
     }
 }

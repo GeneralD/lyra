@@ -16,6 +16,10 @@ extension WallpaperInteractorImpl: WallpaperInteractor {
         configService.appStyle.wallpaper?.mode ?? .cycle
     }
 
+    public var wallpaperSource: WallpaperStyle? {
+        configService.appStyle.wallpaper
+    }
+
     public func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         let appStyle = configService.appStyle
         guard let wallpaper = appStyle.wallpaper, !wallpaper.items.isEmpty else {

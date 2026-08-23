@@ -388,6 +388,7 @@ private struct StubConfigUseCase: ConfigUseCase {
     var forceTracker: ForceTracker?
 
     var appStyle: AppStyle { .init() }
+    func reload() -> ConfigReloadOutcome { .updated(appStyle) }
     var existingConfigPath: String? { existingPath }
 
     func template(format: ConfigFormat) -> String? { templateResult }
@@ -436,6 +437,9 @@ private final class ProcessGatewaySpy: ProcessGateway, @unchecked Sendable {
         return runStatus
     }
     func runCapturingOutput(executable: String, arguments: [String]) -> String? { nil }
+    func runProcess(executable: String, arguments: [String], environment: [String: String]) async throws -> (
+        status: Int32, stdout: String, stderr: String
+    ) { fatalError("unused") }
     func runStreaming(executable: String, arguments: [String]) -> AsyncStream<String> {
         AsyncStream { $0.finish() }
     }

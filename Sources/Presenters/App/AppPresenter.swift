@@ -14,6 +14,7 @@ public final class AppPresenter: ObservableObject {
     @Published public private(set) var layout: ScreenLayout = .init()
 
     @Dependency(\.screenInteractor) private var screenInteractor
+    @Dependency(\.configInteractor) private var configInteractor
     @Dependency(\.continuousClock) private var clock
 
     private let vacantTicks = PassthroughSubject<Void, Never>()
@@ -31,6 +32,10 @@ public final class AppPresenter: ObservableObject {
             .receive(on: DispatchQueue.main)
             .map { interactor.resolveLayout() }
             .sink { [weak self] layout in self?.layout = layout }
+            .store(in: &cancellables)
+        configInteractor.appStyleChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.applyConfigChange() }
             .store(in: &cancellables)
         startVacantPollingIfNeeded()
     }
@@ -68,6 +73,25 @@ public final class AppPresenter: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { layout in handler(layout) }
             .store(in: &cancellables)
+    }
+
+    /// Reacts to a config hot-reload ping. The screen selector or debounce may
+    /// have changed, so re-resolve the layout (a new selector can pick a
+    /// different display) and restart vacant polling to pick up a new
+    /// selector/debounce — all without a daemon restart.
+    private func applyConfigChange() {
+        layout = screenInteractor.resolveLayout()
+        restartVacantPolling()
+    }
+
+    /// Cancel any in-flight vacant poll and re-arm from the live selector/debounce.
+    /// Handles all three transitions: became vacant (starts), no longer vacant
+    /// (the guard in `startVacantPollingIfNeeded` leaves it stopped), and a
+    /// changed debounce interval (restarts with the new period).
+    private func restartVacantPolling() {
+        vacantTask?.cancel()
+        vacantTask = nil
+        startVacantPollingIfNeeded()
     }
 
     private func startVacantPollingIfNeeded() {
