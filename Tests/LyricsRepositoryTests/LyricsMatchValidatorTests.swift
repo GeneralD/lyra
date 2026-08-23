@@ -56,6 +56,36 @@ struct LyricsMatchValidatorTests {
         #expect(validator.isValid(candidate: candidate, result: result))
     }
 
+    @Test("a dash-remaster suffix on the canonical title still matches the played title (#326)")
+    func dashRemasterSuffixMatches() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: 125)
+        let result = LyricsResult(
+            trackName: "Yesterday - Remastered 2009", artistName: "The Beatles", duration: 125, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a parenthetical remaster suffix still matches (#326)")
+    func parentheticalRemasterSuffixMatches() {
+        let candidate = Track(title: "Bohemian Rhapsody", artist: "Queen", duration: 355)
+        let result = LyricsResult(
+            trackName: "Bohemian Rhapsody (Remastered 2011)", artistName: "Queen", duration: 355, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a candidate that itself carries a suffix matches the plain canonical title (#326)")
+    func candidateSuffixMatchesPlainResult() {
+        let candidate = Track(title: "Imagine - Remastered", artist: "John Lennon", duration: 183)
+        let result = LyricsResult(trackName: "Imagine", artistName: "John Lennon", duration: 183, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a shorter title sharing only a character prefix is invalid — word boundaries are respected (#326)")
+    func partialWordPrefixIsInvalid() {
+        let candidate = Track(title: "Yes", artist: "Yes", duration: 200)
+        let result = LyricsResult(trackName: "Yesterday", artistName: "The Beatles", duration: 200, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
     // MARK: - Reason accessors for the debug log (#331)
 
     @Test("titleSimilarity is 1.0 for identical normalized titles")
@@ -92,5 +122,100 @@ struct LyricsMatchValidatorTests {
         let candidate = Track(title: "!!!", artist: "X", duration: nil)
         let result = LyricsResult(trackName: "???", duration: nil)
         #expect(validator.titleSimilarity(candidate: candidate, result: result) == 1.0)
+    }
+
+    // MARK: - Duration tolerance graduated by title confidence (#326)
+    //
+    // Every case below is a real rejection from the #331 trace log. An exact title is
+    // strong evidence that this IS the song, so duration drops from a gate to a sanity
+    // check; a merely-fuzzy title leaves duration as the only discriminator and stays
+    // strict.
+
+    @Test("an exact title survives a fade/edit-length difference — 白日, durΔ 12s (#326)")
+    func exactTitleToleratesEditLengthDrift() {
+        let candidate = Track(title: "白日", artist: "King Gnu", duration: 288)
+        let result = LyricsResult(trackName: "白日", artistName: "King Gnu", duration: 276, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an exact title survives an album-vs-single length difference — 残響散歌, durΔ 46s (#326)")
+    func exactTitleToleratesAlbumVersionDrift() {
+        let candidate = Track(title: "残響散歌", artist: "Aimer", duration: 228)
+        let result = LyricsResult(trackName: "残響散歌", artistName: "Aimer", duration: 182, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an exact title still rejects a live/medley-scale difference — Endless Rain, durΔ 463s (#326)")
+    func exactTitleRejectsMedleyScaleDrift() {
+        let candidate = Track(title: "Endless Rain", artist: "X JAPAN", duration: 859)
+        let result = LyricsResult(trackName: "Endless Rain", artistName: "X JAPAN", duration: 396, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an exact title still rejects a TV-size catalog entry — My Dearest, 336s vs 95s (#326)")
+    func exactTitleRejectsTVSizeEntry() {
+        let candidate = Track(title: "My Dearest", artist: "supercell", duration: 336)
+        let result = LyricsResult(trackName: "My Dearest", artistName: "supercell", duration: 95, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a merely-fuzzy title keeps the strict duration tolerance (#326)")
+    func fuzzyTitleKeepsStrictDurationTolerance() {
+        // "shapeofyou" vs "shapesofyou" clears the 0.6 similarity bar but is neither an
+        // exact match nor a whole-token prefix, so duration stays the only discriminator.
+        let candidate = Track(title: "Shape of You", artist: "Ed Sheeran", duration: 288)
+        let result = LyricsResult(trackName: "Shapes of You", artistName: "Ed Sheeran", duration: 276, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a remaster suffix carries the relaxed tolerance too — the remaster is a different cut (#326)")
+    func remasterSuffixToleratesDurationDrift() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: 145)
+        let result = LyricsResult(
+            trackName: "Yesterday - Remastered 2009", artistName: "The Beatles", duration: 125, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a non-positive duration means 'unknown', not a zero-length track — Numb 0s (#326)")
+    func nonPositiveDurationIsTreatedAsUnknown() {
+        // The media source reports 0 when it fails to read a duration. Comparing that as a
+        // real length rejected every catalog entry and poisoned the cache on replay.
+        let candidate = Track(title: "Numb", artist: "Linkin Park", duration: 0)
+        let result = LyricsResult(trackName: "Numb", artistName: "Linkin Park", duration: 203, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+        #expect(validator.durationDelta(candidate: candidate, result: result) == nil)
+    }
+
+    @Test("a short track keeps an absolute tolerance floor rather than a tiny ratio (#326)")
+    func shortTrackKeepsToleranceFloor() {
+        // 30% of a 30s interlude is 9s — below the floor, so the floor governs.
+        let candidate = Track(title: "Interlude", artist: "X", duration: 45)
+        let result = LyricsResult(trackName: "Interlude", artistName: "X", duration: 30, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("the same title by a different artist keeps the strict duration tolerance (#326)")
+    func differentArtistKeepsStrictDurationTolerance() {
+        // Unrelated songs share a title constantly. Duration used to separate them
+        // implicitly; once it is relaxed on an exact title, the artist has to do it
+        // explicitly — otherwise a 48s gap fits inside 30% of the catalog duration.
+        let candidate = Track(title: "Hello", artist: "Adele", duration: 295)
+        let result = LyricsResult(trackName: "Hello", artistName: "Lionel Richie", duration: 247, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a missing artist is absent evidence, not agreement — the strict tolerance stands (#326)")
+    func missingArtistKeepsStrictDurationTolerance() {
+        let candidate = Track(title: "白日", artist: "King Gnu", duration: 288)
+        let result = LyricsResult(trackName: "白日", artistName: nil, duration: 276, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an artist that differs only by a trailing credit still counts as agreement (#326)")
+    func artistWithTrailingCreditStillAgrees() {
+        let candidate = Track(title: "残響散歌", artist: "Aimer", duration: 228)
+        let result = LyricsResult(
+            trackName: "残響散歌", artistName: "Aimer feat. someone", duration: 182, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
     }
 }

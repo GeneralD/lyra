@@ -197,10 +197,15 @@ extension TrackInteractorImpl {
                                             lyricsState: .loading
                                         ))
 
-                                    let result =
-                                        candidates.isEmpty
-                                        ? await lyrics.fetchLyrics(track: rawTrack)
-                                        : await lyrics.fetchLyrics(candidates: candidates)
+                                    // Always go through the candidates path, matching
+                                    // `TrackHandlerImpl.infoWithLyrics`. Only that path
+                                    // validates before caching and re-validates on read;
+                                    // the single-track entry point does neither, so an
+                                    // empty-candidates fallback into it could store a
+                                    // loosely-matched LRCLIB row that then poisons every
+                                    // later play (#326).
+                                    let result = await lyrics.fetchLyrics(
+                                        candidates: candidates.isEmpty ? [rawTrack] : candidates)
                                     guard !Task.isCancelled else {
                                         unsafeSubject.send(completion: .finished)
                                         return

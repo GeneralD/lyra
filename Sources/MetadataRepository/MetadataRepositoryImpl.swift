@@ -13,12 +13,17 @@ public struct MetadataRepositoryImpl {
 
 extension MetadataRepositoryImpl: MetadataRepository {
     public func resolve(track: Track) async -> [Track] {
-        let llmCandidates = await resolveLLM(track: track)
-        let mbCandidates = await resolveMusicBrainz(track: track)
-        let regexCandidates = await regexDataSource.resolve(track: track).map {
+        // The three sources are independent, so run them concurrently instead of
+        // serially — an unset/slow LLM no longer blocks MusicBrainz and Regex behind
+        // its full timeout (#326 cause 1). The merge order (LLM > MusicBrainz > Regex >
+        // raw) and thus dedup precedence is unchanged, since the awaits are re-joined
+        // in the same order.
+        async let llmCandidates = resolveLLM(track: track)
+        async let mbCandidates = resolveMusicBrainz(track: track)
+        async let regexCandidates = regexDataSource.resolve(track: track).map {
             Track(title: $0.title, artist: $0.artist, duration: track.duration)
         }
-        return dedupedByIdentity(llmCandidates + mbCandidates + regexCandidates + [track])
+        return dedupedByIdentity(await llmCandidates + mbCandidates + regexCandidates + [track])
     }
 
     public func isAIMetadataCached(track: Track) async -> Bool {

@@ -115,7 +115,11 @@ struct LyricsRepositoryEdgeCaseTests {
 
     @Test("candidates returns LRCLIB display name when present, not the first candidate's")
     func candidatesPreservesLRCLIBDisplay() async {
-        let raw = LyricsResult(trackName: "Raw", artistName: "RawArtist", syncedLyrics: "[00:01.00] Line")
+        // The canonical title carries a remaster suffix, so it validates via token-prefix
+        // (#326) yet still differs from the candidate — proving the LRCLIB display name,
+        // not candidates.first's, is what surfaces.
+        let raw = LyricsResult(
+            trackName: "Display Title (Remastered)", artistName: "RawArtist", syncedLyrics: "[00:01.00] Line")
 
         await withDependencies {
             $0.lyricsCache = TrackingLyricsCache(stored: nil)
@@ -126,7 +130,7 @@ struct LyricsRepositoryEdgeCaseTests {
                 Track(title: "Display Title", artist: "Display Artist"),
                 Track(title: "Alt", artist: "AltArtist"),
             ])
-            #expect(result?.trackName == "Raw")
+            #expect(result?.trackName == "Display Title (Remastered)")
             #expect(result?.artistName == "RawArtist")
             #expect(result?.syncedLyrics == "[00:01.00] Line")
         }

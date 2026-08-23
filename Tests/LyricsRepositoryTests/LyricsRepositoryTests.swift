@@ -198,8 +198,10 @@ struct LyricsRepositoryTests {
 
         @Test("matched candidate's display name is preserved, not overridden by first candidate")
         func preservesMatchedCandidateDisplay() async {
+            // The canonical title carries a remaster suffix (validates via token-prefix,
+            // #326); display keeps LRCLIB's resolved title/artist, not candidates.first's.
             let lrclibResult = LyricsResult(
-                trackName: "Resolved Title", artistName: "Resolved Artist",
+                trackName: "Real Title (Remastered)", artistName: "Resolved Artist",
                 plainLyrics: "Lyrics body"
             )
 
@@ -215,7 +217,7 @@ struct LyricsRepositoryTests {
                     Track(title: "Garbled Title", artist: "Garbled Artist"),
                     Track(title: "Real Title", artist: "Real Artist"),
                 ])
-                #expect(result?.trackName == "Resolved Title")
+                #expect(result?.trackName == "Real Title (Remastered)")
                 #expect(result?.artistName == "Resolved Artist")
                 #expect(result?.plainLyrics == "Lyrics body")
             }
@@ -436,6 +438,55 @@ struct LyricsRepositoryTests {
                 #expect(key == nil)
             }
         }
+
+        @Test("Tier A validates before caching — an exact-get hit that fails validation is not returned or cached (#326)")
+        func tierARejectsInvalidExactHit() async {
+            // LRCLIB's /api/get does loose matching and can return a different song.
+            // Tier A must validate it before caching, just like Tier B/C — otherwise the
+            // wrong song is cached and later discarded on read, forcing endless re-fetches.
+            let wrongSong = LyricsResult(
+                trackName: "Completely Different Song", artistName: "Someone Else", plainLyrics: "wrong")
+            let spy = KeyCapturingLyricsCache()
+
+            await withDependencies {
+                $0.lyricsCache = spy
+                $0.lyricsDataSource = StubLyricsDataSource(getResult: wrongSong, searchResult: nil)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let result = await repo.fetchLyrics(candidates: [Track(title: "My Song", artist: "My Artist")])
+                #expect(result == nil, "a validation-failing exact hit must not be accepted")
+                let key = await spy.lastWriteKey
+                #expect(key == nil, "a validation-failing exact hit must not be cached")
+            }
+        }
+
+        @Test("a Tier A hit with a remaster-suffixed title is cached and survives re-validation on the next read (#326)")
+        func tierARemasterHitSurvivesReadRevalidation() async {
+            // Reproduces #326 cause 2: Tier A cached an unvalidated remaster-suffixed title,
+            // which the read-side re-validation then discarded, so every replay re-fetched
+            // live. Here the DataSource succeeds once (first play) then fails (a network
+            // blip on replay); the second play must still be served from the cache.
+            let remastered = LyricsResult(
+                trackName: "Yesterday - Remastered 2009", artistName: "The Beatles",
+                syncedLyrics: "[00:01.00] Yesterday")
+            let cache = InMemoryLyricsCache()
+            let candidate = Track(title: "Yesterday", artist: "The Beatles")
+
+            await withDependencies {
+                $0.lyricsCache = cache
+                $0.lyricsDataSource = OnceLyricsDataSource(first: remastered)
+                $0.customScriptLyricsDataSource = StubLyricsDataSource(getResult: nil, searchResult: nil)
+            } operation: {
+                let repo = LyricsRepositoryImpl()
+                let first = await repo.fetchLyrics(candidates: [candidate])
+                #expect(first?.syncedLyrics == "[00:01.00] Yesterday")
+                let second = await repo.fetchLyrics(candidates: [candidate])
+                #expect(
+                    second?.syncedLyrics == "[00:01.00] Yesterday",
+                    "the validated Tier A row must survive read re-validation instead of forcing a re-fetch")
+            }
+        }
     }
 }
 
@@ -513,4 +564,24 @@ private struct FailingLyricsDataSource: LyricsDataSource {
         Issue.record("DataSource.search must not be called when a cache entry already satisfies the request")
         return nil
     }
+}
+
+private actor InMemoryLyricsCache: LyricsDataStore {
+    private var store: [String: LyricsResult] = [:]
+    private func key(_ title: String, _ artist: String) -> String { "\(title)\t\(artist)" }
+    func read(title: String, artist: String) async -> LyricsResult? { store[key(title, artist)] }
+    func write(title: String, artist: String, result: LyricsResult) async throws { store[key(title, artist)] = result }
+}
+
+// Succeeds on the first `get`, then returns nil — simulates a live re-fetch that
+// works once and then hits a transient network blip on replay.
+private actor OnceLyricsDataSource: LyricsDataSource {
+    private let first: LyricsResult
+    private var used = false
+    init(first: LyricsResult) { self.first = first }
+    func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        defer { used = true }
+        return used ? nil : first
+    }
+    func search(query: String) async -> [LyricsResult]? { nil }
 }

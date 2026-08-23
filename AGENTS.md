@@ -94,8 +94,21 @@ Shared conventions:
   OS integration work.
 - Metadata and lyrics resolution never short-circuit on first success: all
   metadata sources (LLM/MusicBrainz/Regex) are queried and merged, and every
-  lyrics tier (LRCLIB exact match, validated fuzzy search, user
-  `fallback_command` script) is tried across all candidates before giving up.
+  lyrics tier (LRCLIB exact match, fuzzy search, user `fallback_command`
+  script) is tried across all candidates before giving up. All three tiers
+  validate before caching (#326) -- an unvalidated write is discarded by the
+  read-side re-validation on every later play, so it re-fetches forever.
+  Candidates are probed in waves of 4 -- concurrent within a wave, sequential
+  across waves -- which keeps the confidence ordering (the first wave to hit
+  wins, highest-priority candidate first) while cutting a tier from N network
+  round-trips to ceil(N / 4). Do not flatten this into one all-at-once fan-out:
+  it would lose the ordering and burst up to 17 requests at free APIs. A wave
+  consumes completions incrementally and cancels the stragglers once a hit is
+  final, so a fast hit never waits out a sibling's timeout -- but "final" means
+  every higher-priority offset has already reported, so do not return on first
+  arrival. Route every caller through `fetchLyrics(candidates:)` (pass
+  `[track]` when the candidate list is empty); the single-track entry point
+  neither validates before caching nor re-validates on read.
   An opt-in `[developer] lyrics_resolution` trace (#331) records each tier's
   accept/reject with its reason (title similarity, duration delta) to a local
   file for diagnosing intermittent misses; it is off by default and
