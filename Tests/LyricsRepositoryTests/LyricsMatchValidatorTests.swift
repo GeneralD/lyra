@@ -123,4 +123,74 @@ struct LyricsMatchValidatorTests {
         let result = LyricsResult(trackName: "???", duration: nil)
         #expect(validator.titleSimilarity(candidate: candidate, result: result) == 1.0)
     }
+
+    // MARK: - Duration tolerance graduated by title confidence (#326)
+    //
+    // Every case below is a real rejection from the #331 trace log. An exact title is
+    // strong evidence that this IS the song, so duration drops from a gate to a sanity
+    // check; a merely-fuzzy title leaves duration as the only discriminator and stays
+    // strict.
+
+    @Test("an exact title survives a fade/edit-length difference — 白日, durΔ 12s (#326)")
+    func exactTitleToleratesEditLengthDrift() {
+        let candidate = Track(title: "白日", artist: "King Gnu", duration: 288)
+        let result = LyricsResult(trackName: "白日", artistName: "King Gnu", duration: 276, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an exact title survives an album-vs-single length difference — 残響散歌, durΔ 46s (#326)")
+    func exactTitleToleratesAlbumVersionDrift() {
+        let candidate = Track(title: "残響散歌", artist: "Aimer", duration: 228)
+        let result = LyricsResult(trackName: "残響散歌", artistName: "Aimer", duration: 182, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an exact title still rejects a live/medley-scale difference — Endless Rain, durΔ 463s (#326)")
+    func exactTitleRejectsMedleyScaleDrift() {
+        let candidate = Track(title: "Endless Rain", artist: "X JAPAN", duration: 859)
+        let result = LyricsResult(trackName: "Endless Rain", artistName: "X JAPAN", duration: 396, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an exact title still rejects a TV-size catalog entry — My Dearest, 336s vs 95s (#326)")
+    func exactTitleRejectsTVSizeEntry() {
+        let candidate = Track(title: "My Dearest", artist: "supercell", duration: 336)
+        let result = LyricsResult(trackName: "My Dearest", artistName: "supercell", duration: 95, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a merely-fuzzy title keeps the strict duration tolerance (#326)")
+    func fuzzyTitleKeepsStrictDurationTolerance() {
+        // "shapeofyou" vs "shapesofyou" clears the 0.6 similarity bar but is neither an
+        // exact match nor a whole-token prefix, so duration stays the only discriminator.
+        let candidate = Track(title: "Shape of You", artist: "Ed Sheeran", duration: 288)
+        let result = LyricsResult(trackName: "Shapes of You", artistName: "Ed Sheeran", duration: 276, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a remaster suffix carries the relaxed tolerance too — the remaster is a different cut (#326)")
+    func remasterSuffixToleratesDurationDrift() {
+        let candidate = Track(title: "Yesterday", artist: "The Beatles", duration: 145)
+        let result = LyricsResult(
+            trackName: "Yesterday - Remastered 2009", artistName: "The Beatles", duration: 125, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a non-positive duration means 'unknown', not a zero-length track — Numb 0s (#326)")
+    func nonPositiveDurationIsTreatedAsUnknown() {
+        // The media source reports 0 when it fails to read a duration. Comparing that as a
+        // real length rejected every catalog entry and poisoned the cache on replay.
+        let candidate = Track(title: "Numb", artist: "Linkin Park", duration: 0)
+        let result = LyricsResult(trackName: "Numb", artistName: "Linkin Park", duration: 203, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+        #expect(validator.durationDelta(candidate: candidate, result: result) == nil)
+    }
+
+    @Test("a short track keeps an absolute tolerance floor rather than a tiny ratio (#326)")
+    func shortTrackKeepsToleranceFloor() {
+        // 30% of a 30s interlude is 9s — below the floor, so the floor governs.
+        let candidate = Track(title: "Interlude", artist: "X", duration: 45)
+        let result = LyricsResult(trackName: "Interlude", artistName: "X", duration: 30, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
 }
