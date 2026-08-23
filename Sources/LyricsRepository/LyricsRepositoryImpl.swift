@@ -88,30 +88,84 @@ extension LyricsRepositoryImpl: LyricsRepository {
     }
 }
 
+// MARK: - Candidate probing
+
+extension LyricsRepositoryImpl {
+    // What probing one candidate produced: the lyrics it accepted (nil on a miss or a
+    // rejection) plus the trace lines it wants recorded (empty when the debug log is off).
+    private struct ProbeOutcome: Sendable {
+        let result: LyricsResult?
+        let trace: [String]
+
+        static func miss(_ trace: [String]) -> Self { Self(result: nil, trace: trace) }
+        static func hit(_ result: LyricsResult, _ trace: [String]) -> Self { Self(result: result, trace: trace) }
+    }
+
+    // How many candidates a tier probes concurrently. Deliberately small: the sources are
+    // free community APIs and a user-supplied script, and a 17-candidate track (the
+    // observed maximum) firing 17 requests at once is a burst none of them asked for.
+    private static let waveSize = 4
+
+    // Candidates arrive in confidence order (LLM > MusicBrainz > Regex > raw) and the
+    // serial loop this replaces walked them one network round-trip at a time, so a track
+    // with N candidates cost N × the 10s timeout *per tier* — the "lyrics only show up
+    // halfway through the song" complaint in #326. The trace log measured N at up to 17.
+    //
+    // Probing all of them at once would fix the latency but lose the ordering. Instead,
+    // probe in waves: concurrent *within* a wave, sequential *across* waves, taking the
+    // highest-priority hit of the first wave that yields one. Every candidate in a wave
+    // outranks every candidate in the next, so the result is exactly what the serial loop
+    // picked — reached in ceil(N / waveSize) round-trips instead of N.
+    private func attempt(
+        over candidates: [Track],
+        probe: @escaping @Sendable (Track) async -> ProbeOutcome
+    ) async -> TierAttempt {
+        guard !candidates.isEmpty else { return TierAttempt(result: nil, trace: []) }
+
+        let probed = await withTaskGroup(of: (offset: Int, candidate: Track, outcome: ProbeOutcome).self) { group in
+            for (offset, candidate) in candidates.prefix(Self.waveSize).enumerated() {
+                group.addTask { (offset, candidate, await probe(candidate)) }
+            }
+            // Restore candidate order: the trace must read the same way regardless of
+            // which request happened to come back first, or the log stops being a record
+            // of what was tried in what priority.
+            return await group.reduce(into: [(offset: Int, candidate: Track, outcome: ProbeOutcome)]()) {
+                $0.append($1)
+            }
+            .sorted { $0.offset < $1.offset }
+        }
+        let trace = probed.flatMap(\.outcome.trace)
+
+        guard let hit = probed.first(where: { $0.outcome.result != nil }), let result = hit.outcome.result else {
+            let rest = await attempt(over: Array(candidates.dropFirst(Self.waveSize)), probe: probe)
+            return TierAttempt(result: rest.result, trace: trace + rest.trace)
+        }
+        await store(result, track: hit.candidate)
+        return TierAttempt(result: result, trace: trace)
+    }
+}
+
 // MARK: - Tier A: LRCLIB exact match
 
 extension LyricsRepositoryImpl {
     private func tierAExactMatch(candidates: [Track], tracing: Bool) async -> TierAttempt {
-        var trace: [String] = []
-        for c in candidates where !c.artist.isEmpty {
+        await attempt(over: candidates.filter { !$0.artist.isEmpty }) { c in
             guard let result = await dataSource.get(title: c.title, artist: c.artist, duration: c.duration) else {
-                if tracing { trace.append("tierA \(describe(c)) get -> miss") }
-                continue
+                return .miss(tracing ? ["tierA \(describe(c)) get -> miss"] : [])
             }
             // Validate before caching, symmetric with Tier B/C. LRCLIB's /api/get does its
             // own loose matching and can return a different song; caching that unvalidated
             // used to poison the entry so the read-side re-validation discarded it forever,
             // forcing a live re-fetch on every replay (#326). A validated write is stable.
             guard validator.isValid(candidate: c, result: result) else {
-                if tracing { trace.append("tierA \(describe(c)) get -> \(describe(result)) REJECT [\(rejectReason(c, result))]") }
-                continue
+                return .miss(
+                    tracing ? ["tierA \(describe(c)) get -> \(describe(result)) REJECT [\(rejectReason(c, result))]"] : [])
             }
-            if tracing { trace.append("tierA \(describe(c)) get -> \(describe(result)) ACCEPT") }
-            let displayResult = displayAdjusted(result, candidate: c)
-            await store(displayResult, track: c)
-            return TierAttempt(result: displayResult, trace: trace)
+            return .hit(
+                displayAdjusted(result, candidate: c),
+                tracing ? ["tierA \(describe(c)) get -> \(describe(result)) ACCEPT"] : []
+            )
         }
-        return TierAttempt(result: nil, trace: trace)
     }
 }
 
@@ -119,12 +173,10 @@ extension LyricsRepositoryImpl {
 
 extension LyricsRepositoryImpl {
     private func tierBValidatedSearch(candidates: [Track], tracing: Bool) async -> TierAttempt {
-        var trace: [String] = []
-        for c in candidates {
+        await attempt(over: candidates) { c in
             let query = c.artist.isEmpty ? c.title : "\(c.title) \(c.artist)"
             guard let responses = await dataSource.search(query: query) else {
-                if tracing { trace.append("tierB \(describe(c)) search '\(query)' -> no response") }
-                continue
+                return .miss(tracing ? ["tierB \(describe(c)) search '\(query)' -> no response"] : [])
             }
             // LRCLIB fuzzy search can return several lyric-bearing results, only some
             // of which pass validation. Validate every candidate response — not just
@@ -133,15 +185,14 @@ extension LyricsRepositoryImpl {
             let lyricBearing = responses.filter { $0.syncedLyrics != nil || $0.plainLyrics != nil }
             let valid = lyricBearing.filter { validator.isValid(candidate: c, result: $0) }
             guard let matched = valid.first(where: { $0.syncedLyrics != nil }) ?? valid.first else {
-                if tracing { trace.append("tierB \(describe(c)) search '\(query)' -> \(tierBMissReason(c, responses, lyricBearing))") }
-                continue
+                return .miss(
+                    tracing ? ["tierB \(describe(c)) search '\(query)' -> \(tierBMissReason(c, responses, lyricBearing))"] : [])
             }
-            if tracing { trace.append("tierB \(describe(c)) search '\(query)' -> \(describe(matched)) ACCEPT") }
-            let displayResult = displayAdjusted(matched, candidate: c)
-            await store(displayResult, track: c)
-            return TierAttempt(result: displayResult, trace: trace)
+            return .hit(
+                displayAdjusted(matched, candidate: c),
+                tracing ? ["tierB \(describe(c)) search '\(query)' -> \(describe(matched)) ACCEPT"] : []
+            )
         }
-        return TierAttempt(result: nil, trace: trace)
     }
 }
 
@@ -149,22 +200,19 @@ extension LyricsRepositoryImpl {
 
 extension LyricsRepositoryImpl {
     private func tierCCustomScript(candidates: [Track], tracing: Bool) async -> TierAttempt {
-        var trace: [String] = []
-        for c in candidates where !c.artist.isEmpty {
+        await attempt(over: candidates.filter { !$0.artist.isEmpty }) { c in
             guard let result = await customScriptDataSource.get(title: c.title, artist: c.artist, duration: c.duration) else {
-                if tracing { trace.append("tierC \(describe(c)) script -> miss") }
-                continue
+                return .miss(tracing ? ["tierC \(describe(c)) script -> miss"] : [])
             }
             guard validator.isValid(candidate: c, result: result) else {
-                if tracing { trace.append("tierC \(describe(c)) script -> \(describe(result)) REJECT [\(rejectReason(c, result))]") }
-                continue
+                return .miss(
+                    tracing ? ["tierC \(describe(c)) script -> \(describe(result)) REJECT [\(rejectReason(c, result))]"] : [])
             }
-            if tracing { trace.append("tierC \(describe(c)) script -> \(describe(result)) ACCEPT") }
-            let displayResult = displayAdjusted(result, candidate: c)
-            await store(displayResult, track: c)
-            return TierAttempt(result: displayResult, trace: trace)
+            return .hit(
+                displayAdjusted(result, candidate: c),
+                tracing ? ["tierC \(describe(c)) script -> \(describe(result)) ACCEPT"] : []
+            )
         }
-        return TierAttempt(result: nil, trace: trace)
     }
 }
 
