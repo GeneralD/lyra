@@ -102,7 +102,13 @@ Shared conventions:
   across waves -- which keeps the confidence ordering (the first wave to hit
   wins, highest-priority candidate first) while cutting a tier from N network
   round-trips to ceil(N / 4). Do not flatten this into one all-at-once fan-out:
-  it would lose the ordering and burst up to 17 requests at free APIs.
+  it would lose the ordering and burst up to 17 requests at free APIs. A wave
+  consumes completions incrementally and cancels the stragglers once a hit is
+  final, so a fast hit never waits out a sibling's timeout -- but "final" means
+  every higher-priority offset has already reported, so do not return on first
+  arrival. Route every caller through `fetchLyrics(candidates:)` (pass
+  `[track]` when the candidate list is empty); the single-track entry point
+  neither validates before caching nor re-validates on read.
   An opt-in `[developer] lyrics_resolution` trace (#331) records each tier's
   accept/reject with its reason (title similarity, duration delta) to a local
   file for diagnosing intermittent misses; it is off by default and

@@ -340,8 +340,11 @@ to the candidate title — otherwise the result is rejected as "no match" even
 though the script exited cleanly with non-empty lyrics. (The same validator
 also checks duration when both sides have one: 5 seconds when the title is
 only a fuzzy match, widening to `max(20s, 30% of the catalog duration)` once
-the title matches exactly, since the same song legitimately ships at
-different lengths — TV size, album versus single cut, fade-out differences.
+the title matches exactly *and* the artist agrees, since the same song
+legitimately ships at different lengths — TV size, album versus single cut,
+fade-out differences. The artist has to agree because titles do not identify
+a song on their own; without that check the wider tolerance would start
+accepting same-title songs by unrelated artists.
 The script's JSON response has no `duration` field, so that half of the check
 never has grounds to reject a Tier C result today.) An accurate `track_name`
 therefore matters for more than display purposes.
