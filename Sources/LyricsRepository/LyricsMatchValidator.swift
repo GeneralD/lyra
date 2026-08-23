@@ -76,8 +76,22 @@ extension LyricsMatchValidator {
     // misreports a length (a whole stream read as one 1975s "track") would otherwise buy
     // itself a proportionally huge tolerance and validate anything.
     private func durationTolerance(candidate: Track, result: LyricsResult, catalogDuration: Double) -> Double {
-        guard titleMatchesExactly(candidate: candidate, result: result) else { return durationToleranceSeconds }
+        guard titleMatchesExactly(candidate: candidate, result: result),
+            artistMatches(candidate: candidate, result: result)
+        else { return durationToleranceSeconds }
         return max(exactTitleDurationToleranceFloor, catalogDuration * exactTitleDurationToleranceRatio)
+    }
+
+    // Positive artist evidence, required before the relaxed tolerance is granted. Titles
+    // are not unique — unrelated songs share one all the time — and an exact *title* match
+    // alone would hand such a pair a tolerance wide enough to swallow the very length
+    // difference that used to separate them. Duration was doing that work implicitly; now
+    // that it is relaxed, the artist has to do it explicitly. A missing artist on either
+    // side is *absent* evidence rather than agreement, so it keeps the strict gate.
+    private func artistMatches(candidate: Track, result: LyricsResult) -> Bool {
+        guard let resultArtist = result.artistName, !resultArtist.isEmpty, !candidate.artist.isEmpty else { return false }
+        if Self.isTokenPrefix(Self.tokens(candidate.artist), Self.tokens(resultArtist)) { return true }
+        return Self.similarity(Self.normalized(candidate.artist), Self.normalized(resultArtist)) >= titleSimilarityThreshold
     }
 
     // A media source that cannot read a length reports 0 (or a negative), which is

@@ -122,26 +122,47 @@ extension LyricsRepositoryImpl {
     ) async -> TierAttempt {
         guard !candidates.isEmpty else { return TierAttempt(result: nil, trace: []) }
 
-        let probed = await withTaskGroup(of: (offset: Int, candidate: Track, outcome: ProbeOutcome).self) { group in
-            for (offset, candidate) in candidates.prefix(Self.waveSize).enumerated() {
-                group.addTask { (offset, candidate, await probe(candidate)) }
+        let wave = Array(candidates.prefix(Self.waveSize))
+        let settled = await withTaskGroup(of: (offset: Int, outcome: ProbeOutcome).self) { group in
+            for (offset, candidate) in wave.enumerated() {
+                group.addTask { (offset, await probe(candidate)) }
             }
-            // Restore candidate order: the trace must read the same way regardless of
-            // which request happened to come back first, or the log stops being a record
-            // of what was tried in what priority.
-            return await group.reduce(into: [(offset: Int, candidate: Track, outcome: ProbeOutcome)]()) {
-                $0.append($1)
+            // Probes finish out of order, so outcomes are keyed by offset rather than by
+            // arrival. The accumulator is mutable because the wave can be abandoned
+            // mid-flight by the early exit below.
+            var byOffset: [Int: ProbeOutcome] = [:]
+            for await (offset, outcome) in group {
+                byOffset[offset] = outcome
+                // A hit is only final once every higher-priority offset has reported a
+                // miss — until then one of them could still outrank it. Once it is final,
+                // whatever is still in flight can only produce losers, so cancel rather
+                // than pay their timeouts: waiting for them would hand back, as latency,
+                // exactly the early return the serial loop used to get for free.
+                guard Self.isSettled(byOffset, waveSize: wave.count) else { continue }
+                group.cancelAll()
+                break
             }
-            .sorted { $0.offset < $1.offset }
+            return byOffset
         }
-        let trace = probed.flatMap(\.outcome.trace)
 
-        guard let hit = probed.first(where: { $0.outcome.result != nil }), let result = hit.outcome.result else {
+        // Re-keyed into candidate order, so the trace reads the same way regardless of
+        // which request happened to come back first.
+        let reported = wave.indices.compactMap { offset in settled[offset].map { (offset: offset, outcome: $0) } }
+        let trace = reported.flatMap(\.outcome.trace)
+
+        guard let hit = reported.first(where: { $0.outcome.result != nil }), let result = hit.outcome.result else {
             let rest = await attempt(over: Array(candidates.dropFirst(Self.waveSize)), probe: probe)
             return TierAttempt(result: rest.result, trace: trace + rest.trace)
         }
-        await store(result, track: hit.candidate)
+        await store(result, track: wave[hit.offset])
         return TierAttempt(result: result, trace: trace)
+    }
+
+    // Settled once the contiguous run of reported offsets contains a hit — nothing still
+    // unreported outranks it — or once every offset in the wave has reported.
+    private static func isSettled(_ byOffset: [Int: ProbeOutcome], waveSize: Int) -> Bool {
+        let reported = (0..<waveSize).prefix { byOffset[$0] != nil }
+        return reported.count == waveSize || reported.contains { byOffset[$0]?.result != nil }
     }
 }
 

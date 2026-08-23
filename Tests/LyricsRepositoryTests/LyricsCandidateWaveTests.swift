@@ -69,6 +69,43 @@ struct LyricsCandidateWaveTests {
         #expect(await source.maxConcurrent == 4)
     }
 
+    @Test("a settled wave cancels the probes still in flight instead of waiting them out")
+    func aSettledWaveCancelsStragglers() async {
+        // The serial loop returned the moment candidate 0 hit. Collecting the whole wave
+        // would hand that back as latency: a fast hit would sit behind three siblings on
+        // their 10s timeout. Once the hit is final, the stragglers must be cancelled.
+        let source = CancellationObservingDataSource(hitTitle: "c0")
+
+        await withDependencies {
+            $0.lyricsCache = NoopCache()
+            $0.lyricsDataSource = source
+        } operation: {
+            let repo = LyricsRepositoryImpl()
+            let result = await repo.fetchLyrics(
+                candidates: (0..<4).map { Track(title: "c\($0)", artist: "Artist") })
+            #expect(result?.plainLyrics == "lyrics")
+        }
+
+        #expect(await source.cancelled == ["c1", "c2", "c3"])
+    }
+
+    @Test("early exit still waits for a higher-priority probe that has not reported yet")
+    func earlyExitDoesNotOutrankAPendingHigherPriorityProbe() async {
+        // c2 hits immediately while c0 — which outranks it — is still in flight. Returning
+        // c2 here would be the wave silently reordering candidates by response time.
+        let source = SlowHitDataSource(fastHit: "c2", slowHit: "c0")
+
+        await withDependencies {
+            $0.lyricsCache = NoopCache()
+            $0.lyricsDataSource = source
+        } operation: {
+            let repo = LyricsRepositoryImpl()
+            let result = await repo.fetchLyrics(
+                candidates: (0..<4).map { Track(title: "c\($0)", artist: "Artist") })
+            #expect(result?.trackName == "c0")
+        }
+    }
+
     @Test("a hit in a later wave is still found once every earlier wave misses")
     func laterWaveHitIsStillReached() async {
         let source = RecordingLyricsDataSource(hits: ["c5": "late lyrics"])
@@ -127,6 +164,51 @@ private actor ConcurrencyProbingDataSource: LyricsDataSource {
         }
         inFlight -= 1
         return nil
+    }
+
+    func search(query: String) async -> [LyricsResult]? { nil }
+}
+
+// Hits on one title; every other probe parks on a cancellable sleep standing in for a
+// request sitting on its timeout, and records that it was cancelled rather than waited out.
+private actor CancellationObservingDataSource: LyricsDataSource {
+    private let hitTitle: String
+    private var cancelledTitles: Set<String> = []
+
+    init(hitTitle: String) { self.hitTitle = hitTitle }
+
+    var cancelled: [String] { cancelledTitles.sorted() }
+
+    func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        guard title != hitTitle else {
+            return LyricsResult(trackName: title, artistName: artist, plainLyrics: "lyrics")
+        }
+        do {
+            try await Task.sleep(for: .seconds(30))
+        } catch {
+            cancelledTitles.insert(title)
+        }
+        return nil
+    }
+
+    func search(query: String) async -> [LyricsResult]? { nil }
+}
+
+// Two hits where the *lower-priority* one answers first, so a wave that returned on first
+// arrival would pick the wrong candidate.
+private actor SlowHitDataSource: LyricsDataSource {
+    private let fastHit: String
+    private let slowHit: String
+
+    init(fastHit: String, slowHit: String) {
+        self.fastHit = fastHit
+        self.slowHit = slowHit
+    }
+
+    func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
+        guard title == fastHit || title == slowHit else { return nil }
+        if title == slowHit { try? await Task.sleep(for: .milliseconds(50)) }
+        return LyricsResult(trackName: title, artistName: artist, plainLyrics: "lyrics")
     }
 
     func search(query: String) async -> [LyricsResult]? { nil }

@@ -193,4 +193,29 @@ struct LyricsMatchValidatorTests {
         let result = LyricsResult(trackName: "Interlude", artistName: "X", duration: 30, plainLyrics: "lyrics")
         #expect(validator.isValid(candidate: candidate, result: result))
     }
+
+    @Test("the same title by a different artist keeps the strict duration tolerance (#326)")
+    func differentArtistKeepsStrictDurationTolerance() {
+        // Unrelated songs share a title constantly. Duration used to separate them
+        // implicitly; once it is relaxed on an exact title, the artist has to do it
+        // explicitly — otherwise a 48s gap fits inside 30% of the catalog duration.
+        let candidate = Track(title: "Hello", artist: "Adele", duration: 295)
+        let result = LyricsResult(trackName: "Hello", artistName: "Lionel Richie", duration: 247, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("a missing artist is absent evidence, not agreement — the strict tolerance stands (#326)")
+    func missingArtistKeepsStrictDurationTolerance() {
+        let candidate = Track(title: "白日", artist: "King Gnu", duration: 288)
+        let result = LyricsResult(trackName: "白日", artistName: nil, duration: 276, plainLyrics: "lyrics")
+        #expect(!validator.isValid(candidate: candidate, result: result))
+    }
+
+    @Test("an artist that differs only by a trailing credit still counts as agreement (#326)")
+    func artistWithTrailingCreditStillAgrees() {
+        let candidate = Track(title: "残響散歌", artist: "Aimer", duration: 228)
+        let result = LyricsResult(
+            trackName: "残響散歌", artistName: "Aimer feat. someone", duration: 182, plainLyrics: "lyrics")
+        #expect(validator.isValid(candidate: candidate, result: result))
+    }
 }
