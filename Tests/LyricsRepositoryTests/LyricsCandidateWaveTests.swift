@@ -199,6 +199,7 @@ private actor CancellationObservingDataSource: LyricsDataSource {
 private actor SlowHitDataSource: LyricsDataSource {
     private let fastHit: String
     private let slowHit: String
+    private var fastAnswered = false
 
     init(fastHit: String, slowHit: String) {
         self.fastHit = fastHit
@@ -207,8 +208,22 @@ private actor SlowHitDataSource: LyricsDataSource {
 
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         guard title == fastHit || title == slowHit else { return nil }
-        if title == slowHit { try? await Task.sleep(for: .milliseconds(50)) }
+        await settle(title)
         return LyricsResult(trackName: title, artistName: artist, plainLyrics: "lyrics")
+    }
+
+    // The slow hit answers only once the fast one already has. Ordering the two by a
+    // delay would make the premise a bet on the scheduler; gating it on the fast hit's
+    // own arrival makes it a fact, and costs nothing when the machine is loaded.
+    private func settle(_ title: String) async {
+        guard title == slowHit else {
+            fastAnswered = true
+            return
+        }
+        let deadline = ContinuousClock.now + .seconds(3)
+        while !fastAnswered, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 
     func search(query: String) async -> [LyricsResult]? { nil }
