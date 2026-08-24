@@ -160,6 +160,7 @@ private struct MockLyricsDataSource: LyricsDataSource {
     var getResult: LyricsResult?
     var searchResults: [LyricsResult]?
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { getResult }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { searchResults }
 }
 
@@ -186,6 +187,7 @@ private actor QueryCapturingDataSource: LyricsDataSource {
     }
 
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { nil }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? {
         lastSearchQuery = query
         return searchResults
@@ -198,12 +200,14 @@ private struct ArtistFilteringDataSource: LyricsDataSource {
         guard !artist.isEmpty else { return nil }
         return result
     }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
 private struct SecondQueryMatchDataSource: LyricsDataSource {
     let matchResult: LyricsResult
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { nil }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? {
         guard query.contains("Match") else { return nil }
         return [matchResult]

@@ -138,6 +138,7 @@ private actor RecordingLyricsDataSource: LyricsDataSource {
         return LyricsResult(trackName: title, artistName: artist, plainLyrics: lyrics)
     }
 
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
@@ -166,6 +167,7 @@ private actor ConcurrencyProbingDataSource: LyricsDataSource {
         return nil
     }
 
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
@@ -191,6 +193,7 @@ private actor CancellationObservingDataSource: LyricsDataSource {
         return nil
     }
 
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
@@ -226,6 +229,7 @@ private actor SlowHitDataSource: LyricsDataSource {
         }
     }
 
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
