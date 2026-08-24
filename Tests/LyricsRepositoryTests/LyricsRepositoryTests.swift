@@ -512,6 +512,7 @@ private struct StubLyricsDataSource: LyricsDataSource {
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         getHandler?(title, artist, duration) ?? getResult
     }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { searchResult }
 }
 
@@ -522,6 +523,7 @@ private final class SpyLyricsDataSource: LyricsDataSource, @unchecked Sendable {
     init(searchResult: [LyricsResult]? = nil) { self.searchResult = searchResult }
 
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { nil }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? {
         searchQuery = query
         return searchResult
@@ -541,6 +543,7 @@ private struct QueryMatchingSearchDataSource: LyricsDataSource {
     let resultsByQuery: [String: [LyricsResult]]
 
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { getResult }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { resultsByQuery[query] }
 }
 
@@ -560,6 +563,11 @@ private struct FailingLyricsDataSource: LyricsDataSource {
         Issue.record("DataSource.get must not be called when a cache entry already satisfies the request")
         return nil
     }
+    func search(trackName: String) async -> [LyricsResult]? {
+        Issue.record("DataSource.search must not be called when a cache entry already satisfies the request")
+        return nil
+    }
+
     func search(query: String) async -> [LyricsResult]? {
         Issue.record("DataSource.search must not be called when a cache entry already satisfies the request")
         return nil
@@ -583,5 +591,6 @@ private actor OnceLyricsDataSource: LyricsDataSource {
         defer { used = true }
         return used ? nil : first
     }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }

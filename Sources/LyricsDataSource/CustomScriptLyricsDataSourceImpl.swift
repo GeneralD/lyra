@@ -93,6 +93,9 @@ extension CustomScriptLyricsDataSourceImpl: LyricsDataSource {
 
     public func search(query: String) async -> [LyricsResult]? { nil }
 
+    // The script contract is a single title+artist lookup; it has no search endpoint.
+    public func search(trackName: String) async -> [LyricsResult]? { nil }
+
     /// Expands `$LYRA_CONFIG_DIR` / `$LYRA_CACHE_DIR` (and their `${…}` forms) in a
     /// fallback_command element, so configs can locate scripts relative to lyra's own
     /// directories instead of hardcoding machine-specific absolute paths.

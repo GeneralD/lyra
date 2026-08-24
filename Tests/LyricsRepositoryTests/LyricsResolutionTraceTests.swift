@@ -208,7 +208,9 @@ struct LyricsResolutionTraceTests {
             await LyricsRepositoryImpl().fetchLyrics(candidates: [Track(title: "Song", artist: "", duration: 200)])
         }
         #expect(result == nil)
-        #expect(spy.records.joined(separator: "\n").contains("search 'Song'"))
+        // The closing quote is the assertion: an empty artist must not be concatenated
+        // into a `"Song "` query with a trailing space.
+        #expect(spy.records.joined(separator: "\n").contains("search q='Song'"))
     }
 
     @Test("an enabled log shows durΔ=n/a and [plain] for a reject with no duration and plain lyrics")
@@ -282,12 +284,14 @@ private struct CacheStub: LyricsDataStore {
 private struct GetStub: LyricsDataSource {
     let result: LyricsResult?
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { result }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
 private struct SearchOnlyStub: LyricsDataSource {
     let searchResult: [LyricsResult]?
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? { nil }
+    func search(trackName: String) async -> [LyricsResult]? { nil }
     func search(query: String) async -> [LyricsResult]? { searchResult }
 }
 

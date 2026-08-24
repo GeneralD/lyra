@@ -12,6 +12,10 @@ public protocol LRCLib {
     @GET("/api/search")
     func search(q: String) async throws -> [LyricsResult]
 
+    // `@KeyMapping(.snakeCase)` sends this as `track_name`.
+    @GET("/api/search")
+    func search(trackName: String) async throws -> [LyricsResult]
+
     @GET("/api/search?q=test")
     func healthCheck() async throws -> Response
 }

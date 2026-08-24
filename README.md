@@ -485,9 +485,10 @@ budget it above your per-source timeout with headroom.
 Off by default. A home for opt-in developer/debug toggles — currently the
 lyrics-resolution trace. When a song's lyrics fail to appear (or the wrong
 lyrics show), turn it on to record exactly *why* each attempt was accepted or
-rejected — the generated candidates, and for every tier (LRCLIB exact match,
-validated fuzzy search, custom script) the title-similarity score and
-duration delta behind each accept/reject.
+rejected — the generated candidates, how each was screened and normalized
+before searching, and for every tier (LRCLIB exact match, validated fuzzy
+search, custom script) the query that was sent plus the title-similarity score
+and duration delta behind each accept/reject.
 
 ```toml
 [developer]
@@ -507,10 +508,25 @@ Each resolution appends a block like:
 ```text
 === lyrics resolve  candidates=4 ===
 candidates: Yesterday/The Beatles/180s | Yesterday/The Beatles/125s | ...
+screen 【歌ってみた】Yesterday/Some Uploader/180s -> title 'Yesterday'
 tierA Yesterday/The Beatles/180s get -> miss
-tierB Yesterday/The Beatles/180s search '...' -> found Yesterday/The Beatles/125s [synced] REJECT [titleSim=1.00 durΔ=55s]
-result: none
+tierB Yesterday/The Beatles/180s search track_name='Yesterday' -> found Yesterday/The Beatles/125s [synced] REJECT [titleSim=1.00 durΔ=55s]
+tierB Yesterday/The Beatles/180s search q='Yesterday The Beatles' -> Yesterday/The Beatles/178s valid
+tierB Yesterday/The Beatles/180s -> Yesterday/The Beatles/178s ACCEPT
+result: Yesterday/The Beatles
 ```
+
+A `screen` line appears only when a candidate was changed before searching:
+either its title was normalized (as above) or it was judged something no lyrics
+catalog holds (`-> not a song [runtime 5400s]`), in which case the LRCLIB tiers
+skip it and only a custom script is offered it.
+
+Tier B queries LRCLIB's two search indexes and logs each one separately —
+`track_name='…'` for the structured index, `q='…'` for the free-text one — so a
+`tierB` line reports what a single index answered, and the final `ACCEPT` line
+names the result that won. The free-text index is consulted whenever the
+structured one produced nothing that both validated *and* agreed on the artist,
+which is why the example above shows two probes for one candidate.
 
 The trace contains the titles and artists you play (i.e. your listening
 history), so it stays a local file and is never uploaded anywhere — share

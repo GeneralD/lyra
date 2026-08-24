@@ -30,6 +30,20 @@ public struct LyricsResult {
 
     public static let empty = LyricsResult()
 
+    // Drops the synced timings, keeping the words. A cover runs at its own tempo and
+    // length, so the original's timings scroll out of step with what is playing; the text
+    // itself is still right (#343). When there is no plain copy to fall back on the
+    // result is returned unchanged — silently having nothing to show would be worse than
+    // showing timings that drift.
+    public func withoutSyncedLyrics() -> LyricsResult {
+        guard let plainLyrics, !plainLyrics.isEmpty else { return self }
+        return LyricsResult(
+            id: id, trackName: trackName, artistName: artistName, albumName: albumName,
+            duration: duration, instrumental: instrumental,
+            plainLyrics: plainLyrics, syncedLyrics: nil
+        )
+    }
+
     public func withDisplay(title: String, artist: String) -> LyricsResult {
         LyricsResult(
             id: id, trackName: title, artistName: artist, albumName: albumName,
