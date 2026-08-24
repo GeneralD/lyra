@@ -47,6 +47,15 @@ extension LyricsDataSourceImpl: LyricsDataSource {
             return nil
         }
     }
+
+    public func search(trackName: String) async -> [LyricsResult]? {
+        do {
+            return try await apiSession.withAPI { try await $0.search(trackName: trackName) }
+        } catch {
+            log(error, operation: "search(track_name)")
+            return nil
+        }
+    }
 }
 
 extension LyricsDataSourceImpl {
