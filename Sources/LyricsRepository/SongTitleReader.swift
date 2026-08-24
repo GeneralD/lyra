@@ -18,16 +18,18 @@ enum SongTitle: Equatable {
 // marker removed before the search (#343).
 //
 // Measured against the resolution trace log, over the 980 distinct candidates whose Tier B
-// search came back with nothing: 97 (9.9%) are screened out here as things no lyrics
-// catalog holds — radio programmes, lessons, hours-long streams — and 238 (24.3%) have
-// their title rewritten, almost all of them covers whose *title*, never their artist,
-// carried the decoration that made the search miss. That is reach, not recall: a rewritten
-// title still has to find a match.
+// search came back with nothing: 86 (8.8%) are screened out here as things no lyrics
+// catalog holds — dated radio programmes, hours-long streams — and 231 (23.6%) have their
+// title rewritten, almost all of them covers whose *title*, never their artist, carried
+// the decoration that made the search miss. That is reach, not recall: a rewritten title
+// still has to find a match.
 //
-// Deliberately conservative. A false positive here drops a real song, so this screens only
-// on evidence that is hard to misread: a broadcast timestamp, an explicit instructional
-// marker, a runtime no song has. Gear reviews titled plainly (`MEINL`) are not caught by
-// design — widening the net to reach them would start costing real songs.
+// Deliberately conservative, and narrowed further in review (#344). A false positive here
+// drops a real song out of both LRCLIB tiers, while a false negative only spends one
+// search that was returning nothing anyway — so the screen fires only on evidence a song
+// title essentially cannot carry: a broadcast timestamp, a runtime no song has. Lessons
+// and gear reviews titled plainly (`MEINL`) are not caught by design; widening the net to
+// reach them is what starts costing real songs.
 struct SongTitleReader {
     let longestPlausibleSongSeconds: Double
 
@@ -50,7 +52,6 @@ struct SongTitleReader {
 extension SongTitleReader {
     private func notASongReason(_ track: Track) -> String? {
         if let stamp = Self.broadcastStamp(track.title) { return "broadcast stamp '\(stamp)'" }
-        if let marker = Self.nonSongMarker(track.title) { return "non-song marker '\(marker)'" }
         guard let duration = track.duration, duration > longestPlausibleSongSeconds else { return nil }
         return String(format: "runtime %.0fs", duration)
     }
@@ -68,18 +69,13 @@ extension SongTitleReader {
             .map { String(title[$0]) }
     }
 
-    // Words that announce the video is *about* something rather than a performance of it.
-    // Drawn from titles observed in the trace log, not guessed: extend this from measured
-    // misses, since every addition is a chance to drop a real song.
-    private static let nonSongMarkers = [
-        "解説", "講座", "レクチャー", "教則", "要約", "実況", "検証", "開封",
-        "使ってみた", "やってみた", "入門", "講義",
-        "tutorial", "unboxing", "how to",
-    ]
-
-    private static func nonSongMarker(_ title: String) -> String? {
-        nonSongMarkers.first { title.range(of: $0, options: .caseInsensitive) != nil }
-    }
+    // A vocabulary of instructional words (`解説`, `tutorial`, `how to`, …) used to screen
+    // here too, and was removed in review (#344). Matched as bare substrings they are not
+    // conservative at all: `how to` hits any English title containing those two words, and
+    // "How to Save a Life" is a real song that would then be dropped from both LRCLIB
+    // tiers with nothing to recover it. The trade is lopsided — a false positive loses a
+    // song, a false negative only wastes one search that was returning nothing anyway —
+    // so screening keeps only evidence a song title essentially cannot carry.
 }
 
 // MARK: - Cover markers
@@ -196,9 +192,26 @@ extension SongTitleReader {
     // structure. `「葬送のフリーレン」 2ndクール…` keeps both halves because it does not end
     // where it opened.
     private static func unwrapped(_ text: String) -> String {
-        guard text.count > 2, let first = text.first, let last = text.last,
-            pairs.contains(where: { $0.open == first && $0.close == last })
+        guard text.count > 2, let first = text.first,
+            let pair = pairs.first(where: { $0.open == first }),
+            enclosesWhole(text, pair)
         else { return text }
         return String(text.dropFirst().dropLast())
+    }
+
+    // Matching first and last character is not enough — they can belong to two different
+    // groups, and dropping them then corrupts the title into `Song) (Live` (#344 review).
+    // Track the nesting depth instead: the opening bracket encloses the whole title only
+    // when its own partner is the final character, i.e. the depth first returns to zero
+    // at the very end.
+    private static func enclosesWhole(_ text: String, _ pair: (open: Character, close: Character)) -> Bool {
+        let steps = text.map { character -> Int in
+            guard character != pair.open else { return 1 }
+            guard character != pair.close else { return -1 }
+            return 0
+        }
+        let depths = steps.reduce(into: [Int]()) { $0.append(($0.last ?? 0) + $1) }
+        guard depths.last == 0 else { return false }
+        return !depths.dropLast().contains(0)
     }
 }

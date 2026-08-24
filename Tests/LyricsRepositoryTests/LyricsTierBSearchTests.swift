@@ -11,10 +11,11 @@ struct LyricsTierBSearchTests {
     private func resolve(
         _ candidate: Track,
         dataSource: any LyricsDataSource,
-        script: any LyricsDataSource = NeverCalledScript()
+        script: any LyricsDataSource = NeverCalledScript(),
+        cache: any LyricsDataStore = EmptyCache()
     ) async -> LyricsResult? {
         await withDependencies {
-            $0.lyricsCache = EmptyCache()
+            $0.lyricsCache = cache
             $0.lyricsDataSource = dataSource
             $0.customScriptLyricsDataSource = script
         } operation: {
@@ -76,10 +77,10 @@ struct LyricsTierBSearchTests {
     @Test("a title no catalog could hold is never searched, but is still offered to the user script")
     func screenedCandidateSkipsLRCLibButReachesTierC() async {
         let spy = SearchSpy(byTrackName: nil, byQuery: nil)
-        let scripted = LyricsResult(trackName: "ドラム解説", artistName: "Channel", plainLyrics: "words")
+        let scripted = LyricsResult(trackName: "2026/08/16 の放送", artistName: "Channel", plainLyrics: "words")
 
         let result = await resolve(
-            Track(title: "ドラム解説", artist: "Channel", duration: 200),
+            Track(title: "2026/08/16 の放送", artist: "Channel", duration: 200),
             dataSource: spy,
             script: GetStub(result: scripted)
         )
@@ -88,6 +89,51 @@ struct LyricsTierBSearchTests {
         #expect(await spy.getCalls.isEmpty)
         #expect(await spy.trackNameQueries.isEmpty)
         #expect(await spy.freeTextQueries.isEmpty)
+    }
+
+    // MARK: - Which index's answer is believed
+
+    @Test("a structured answer that fails validation still falls back — non-empty is not an answer")
+    func invalidStructuredAnswerFallsBack() async {
+        // The hole this replaced (#344 review): the fallback was gated on the array being
+        // empty, so a full page of rows that all fail validation ended the search.
+        let noise = LyricsResult(
+            trackName: "Different Song Entirely", artistName: "Someone", duration: 400, plainLyrics: "noise")
+        let hit = LyricsResult(trackName: "Song", artistName: "Band", duration: 200, plainLyrics: "lyrics")
+        let spy = SearchSpy(byTrackName: [noise], byQuery: [hit])
+
+        let result = await resolve(Track(title: "Song", artist: "Band", duration: 200), dataSource: spy)
+
+        #expect(result?.plainLyrics == "lyrics")
+        #expect(await spy.freeTextQueries == ["Song Band"])
+    }
+
+    @Test("a structured answer naming a different performer yields to a free-text answer that agrees")
+    func agreeingFreeTextAnswerOutranksStructured() async {
+        // Both validate: an exact title plus a matching duration is all `isValid` asks, and
+        // the structured query never named an artist to disagree with. Agreement is the
+        // only signal separating the two.
+        let sameTitle = LyricsResult(trackName: "Song", artistName: "Other", duration: 200, plainLyrics: "other")
+        let agreeing = LyricsResult(trackName: "Song", artistName: "Band", duration: 200, plainLyrics: "band")
+        let spy = SearchSpy(byTrackName: [sameTitle], byQuery: [agreeing])
+
+        let result = await resolve(Track(title: "Song", artist: "Band", duration: 200), dataSource: spy)
+
+        #expect(result?.plainLyrics == "band")
+    }
+
+    @Test("the precise index's answer stands when the free-text one disagrees on the performer too")
+    func structuredAnswerStandsAgainstADisagreeingFallback() async {
+        // Uploads credited to a channel rather than a performer are the common case, so
+        // agreement is a preference, not a requirement — neither answer having it leaves
+        // the narrower index's ranking as the better evidence.
+        let structured = LyricsResult(trackName: "Song", duration: 200, plainLyrics: "structured")
+        let free = LyricsResult(trackName: "Song", artistName: "Other", duration: 200, plainLyrics: "free")
+        let spy = SearchSpy(byTrackName: [structured], byQuery: [free])
+
+        let result = await resolve(Track(title: "Song", artist: "Band", duration: 200), dataSource: spy)
+
+        #expect(result?.plainLyrics == "structured")
     }
 
     // MARK: - Synced lyrics are kept only when the timings can be trusted
@@ -143,6 +189,25 @@ struct LyricsTierBSearchTests {
         let result = await resolve(Track(title: "Song", artist: "Band", duration: 200), dataSource: spy)
 
         #expect(result?.syncedLyrics == "[00:01.00] tight")
+    }
+
+    @Test("a cache hit demotes on the same rule — rows written before it existed are not grandfathered")
+    func cacheHitAlsoDemotesUntrustworthySynced() async {
+        // Rows cached before the timing-trust rule landed still validate under the relaxed
+        // duration tolerance, so a cache hit that skipped the demotion would serve their
+        // drifting timings forever (#344 review).
+        let loose = LyricsResult(
+            trackName: "Song", artistName: "Band", duration: 240,
+            plainLyrics: "lyrics", syncedLyrics: "[00:01.00] lyrics")
+        let spy = SearchSpy(byTrackName: nil, byQuery: nil)
+
+        let result = await resolve(
+            Track(title: "Song", artist: "Band", duration: 200), dataSource: spy, cache: SeededCache(result: loose))
+
+        #expect(result?.syncedLyrics == nil)
+        #expect(result?.plainLyrics == "lyrics")
+        #expect(await spy.getCalls.isEmpty)
+        #expect(await spy.trackNameQueries.isEmpty)
     }
 
     @Test("Tier A demotes on the same rule — every tier hands results back through one path")
@@ -208,5 +273,11 @@ private struct NeverCalledScript: LyricsDataSource {
 
 private struct EmptyCache: LyricsDataStore {
     func read(title: String, artist: String) async -> LyricsResult? { nil }
+    func write(title: String, artist: String, result: LyricsResult) async throws {}
+}
+
+private struct SeededCache: LyricsDataStore {
+    let result: LyricsResult?
+    func read(title: String, artist: String) async -> LyricsResult? { result }
     func write(title: String, artist: String, result: LyricsResult) async throws {}
 }

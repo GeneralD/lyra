@@ -109,6 +109,20 @@ Shared conventions:
   arrival. Route every caller through `fetchLyrics(candidates:)` (pass
   `[track]` when the candidate list is empty); the single-track entry point
   neither validates before caching nor re-validates on read.
+  A candidate's title is read once up front by `SongTitleReader` (#343): cover
+  decoration is stripped, and a title carrying evidence a song essentially
+  cannot carry -- a broadcast clock/date stamp, a runtime longer than any song
+  -- is screened out of the LRCLIB tiers but is **still offered to Tier C**,
+  whose user script may index what LRCLIB does not. Keep that screen narrow: a
+  false positive drops a real song with nothing to recover it, while a false
+  negative costs one search that was returning nothing anyway, so do not
+  re-add substring vocabularies (`解説`, `how to`) -- those words occur inside
+  real song titles and were deleted in review (#344). The normalized title is
+  the search key, the validation subject, and the cache identity at once --
+  derive it once, never per tier. Tier B asks LRCLIB's two search indexes
+  (`track_name=` then `q=`) and decides between them on **validated** answers,
+  never on whether a response array was empty; local artist agreement is the
+  arbiter. The artist is never sent to either index as a server-side filter.
   An opt-in `[developer] lyrics_resolution` trace (#331) records each tier's
   accept/reject with its reason (title similarity, duration delta) to a local
   file for diagnosing intermittent misses; it is off by default and

@@ -61,12 +61,16 @@ extension LyricsRepositoryImpl: LyricsRepository {
             // that never matched this candidate — a poisoned entry that would otherwise
             // short-circuit the validated tiers forever. Re-validate on read; an invalid
             // entry is skipped so Tier A/B/C can overwrite it with a real match.
+            // Through `accepted` like every tier, not returned raw: rows written before the
+            // timing-trust rule existed can validate under the relaxed duration tolerance
+            // while running far enough off to scroll out of step, and a cache hit that
+            // skipped the demotion would serve those drifting timings forever (#344 review).
             if validator.isValid(candidate: candidate, result: cached) {
                 if tracing {
                     trace.append("cache HIT  \(describe(candidate)) -> \(describe(cached))")
                     flush(trace, outcome: "cache")
                 }
-                return cached
+                return accepted(cached, candidate: candidate)
             }
             if tracing {
                 trace.append(
@@ -207,45 +211,88 @@ extension LyricsRepositoryImpl {
 extension LyricsRepositoryImpl {
     private func tierBValidatedSearch(candidates: [Track], tracing: Bool) async -> TierAttempt {
         await attempt(over: candidates) { c in
-            let attempted = await searchResponses(for: c)
-            guard let responses = attempted.responses else {
-                return .miss(tracing ? ["tierB \(describe(c)) \(attempted.form) -> no response"] : [])
+            let structured = await probeSearch(c, using: .structured, tracing: tracing)
+            // An artist-agreeing hit from the precise index is the strongest evidence
+            // either index can offer; nothing the free-text one returns would outrank it,
+            // so stop here and skip the second request.
+            if let hit = structured.match, validator.artistAgrees(candidate: c, result: hit) {
+                return .hit(accepted(hit, candidate: c), structured.trace + acceptTrace(c, hit, tracing))
             }
-            // LRCLIB fuzzy search can return several lyric-bearing results, only some
-            // of which pass validation. Validate every candidate response — not just
-            // the first — and accept the best valid one, so a noisy leading result
-            // can't sink an otherwise-matching later hit.
-            let lyricBearing = responses.filter { $0.syncedLyrics != nil || $0.plainLyrics != nil }
-            let valid = lyricBearing.filter { validator.isValid(candidate: c, result: $0) }
-            guard let matched = preferred(among: valid, candidate: c) else {
-                return .miss(
-                    tracing
-                        ? ["tierB \(describe(c)) \(attempted.form) -> \(tierBMissReason(c, responses, lyricBearing))"] : [])
+            // Otherwise the free-text index still gets its turn. Deciding the fallback on
+            // an *empty* structured array was the hole (#344 review): rows that all fail
+            // validation — or that match the title while naming a different performer —
+            // are precisely the disagreement the second index exists to resolve, so
+            // stopping at "the array was non-empty" lost exactly those cases.
+            let free = await probeSearch(c, using: .freeText, tracing: tracing)
+            guard let best = arbitrated(structured.match, free.match, candidate: c) else {
+                return .miss(structured.trace + free.trace)
             }
-            return .hit(
-                accepted(matched, candidate: c),
-                tracing ? ["tierB \(describe(c)) \(attempted.form) -> \(describe(matched)) ACCEPT"] : []
-            )
+            return .hit(accepted(best, candidate: c), structured.trace + free.trace + acceptTrace(c, best, tracing))
         }
     }
 
-    // LRCLIB exposes two search indexes, and they disagree in both directions.
+    // LRCLIB's two search indexes, which disagree in both directions.
+    private enum SearchIndex { case structured, freeText }
+
+    // One index's answer: the best result that survived validation (nil when none did),
+    // plus the trace lines describing what was asked and what came back.
+    private struct SearchProbe {
+        let match: LyricsResult?
+        let trace: [String]
+    }
+
+    private func probeSearch(_ c: Track, using index: SearchIndex, tracing: Bool) async -> SearchProbe {
+        let asked = await search(c, using: index)
+        guard let responses = asked.responses else {
+            return SearchProbe(match: nil, trace: tracing ? ["tierB \(describe(c)) \(asked.form) -> no response"] : [])
+        }
+        // LRCLIB fuzzy search can return several lyric-bearing results, only some of
+        // which pass validation. Validate every response — not just the first — so a
+        // noisy leading result can't sink an otherwise-matching later hit.
+        let lyricBearing = responses.filter { $0.syncedLyrics != nil || $0.plainLyrics != nil }
+        let valid = lyricBearing.filter { validator.isValid(candidate: c, result: $0) }
+        guard let matched = preferred(among: valid, candidate: c) else {
+            return SearchProbe(
+                match: nil,
+                trace: tracing
+                    ? ["tierB \(describe(c)) \(asked.form) -> \(tierBMissReason(c, responses, lyricBearing))"] : [])
+        }
+        return SearchProbe(
+            match: matched,
+            trace: tracing ? ["tierB \(describe(c)) \(asked.form) -> \(describe(matched)) valid"] : [])
+    }
+
     // `track_name=` ranks clean catalog titles first — the free-text form answers `白日`
     // with `King Gnu - 白日`, whose title the validator then fails on similarity — but it
     // is also the narrower index: measured over the trace log's response-bearing
     // candidates, 10 of 40 came back empty from `track_name=` while `q=` still found them
-    // (`TIGER&DRAGON` among them). So ask the precise index first and fall back, rather
-    // than trading one recall problem for another (#343).
+    // (`TIGER&DRAGON` among them). So ask the precise index first and fall back (#343).
     //
-    // The artist is never sent. As a server-side filter it is a hard cut on a field that
-    // is routinely a channel name or a cover credit, and agreement is checked locally
-    // afterwards anyway — sending it returned nothing at all across a 45-candidate sample.
-    private func searchResponses(for c: Track) async -> (responses: [LyricsResult]?, form: String) {
-        if let structured = await dataSource.search(trackName: c.title), !structured.isEmpty {
-            return (structured, "search track_name='\(c.title)'")
+    // The artist is never sent to either. As a server-side filter it is a hard cut on a
+    // field that is routinely a channel name or a cover credit, and agreement is checked
+    // locally afterwards anyway — sending it returned nothing at all across a
+    // 45-candidate sample.
+    private func search(_ c: Track, using index: SearchIndex) async -> (responses: [LyricsResult]?, form: String) {
+        guard index == .structured else {
+            let query = c.artist.isEmpty ? c.title : "\(c.title) \(c.artist)"
+            return (await dataSource.search(query: query), "search q='\(query)'")
         }
-        let query = c.artist.isEmpty ? c.title : "\(c.title) \(c.artist)"
-        return (await dataSource.search(query: query), "search q='\(query)'")
+        return (await dataSource.search(trackName: c.title), "search track_name='\(c.title)'")
+    }
+
+    // The structured query named no artist, so its answer can be a same-titled song by
+    // another performer that validated on title and a ±5 s duration alone. When the
+    // free-text answer — whose query *did* carry the artist — agrees on the performer, it
+    // wins; failing that the precise index's answer stands, since requiring agreement
+    // outright would discard the uploads whose artist is a channel name (#342).
+    private func arbitrated(_ structured: LyricsResult?, _ free: LyricsResult?, candidate: Track) -> LyricsResult? {
+        guard let free else { return structured }
+        guard validator.artistAgrees(candidate: candidate, result: free) else { return structured ?? free }
+        return free
+    }
+
+    private func acceptTrace(_ c: Track, _ result: LyricsResult, _ tracing: Bool) -> [String] {
+        tracing ? ["tierB \(describe(c)) -> \(describe(result)) ACCEPT"] : []
     }
 }
 

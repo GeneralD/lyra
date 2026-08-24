@@ -119,22 +119,15 @@ struct SongTitleReaderTests {
         #expect(reason.contains("2026/08/16"))
     }
 
+    // An instructional vocabulary (`解説`, `how to`, `tutorial`, …) used to screen here
+    // and was removed in review (#344): matched as bare substrings those words also
+    // occur inside real song titles, and a screen is unrecoverable — the candidate
+    // never reaches either LRCLIB tier. These titles are what that cost looked like.
     @Test(
-        "an instructional marker screens the title out",
-        arguments: ["解説", "講座", "レクチャー", "教則", "要約", "実況", "検証", "開封", "入門", "講義"])
-    func japaneseNonSongMarkers(marker: String) {
-        guard case .notASong(let reason) = reader.read(track("ドラム\(marker)")) else {
-            Issue.record("expected \(marker) to screen the title out")
-            return
-        }
-        #expect(reason.contains(marker))
-    }
-
-    @Test("English instructional markers match case-insensitively")
-    func englishNonSongMarkers() {
-        #expect(reader.read(track("How To Play Drums")) != .song("How To Play Drums"))
-        #expect(reader.read(track("Cymbal UNBOXING")) != .song("Cymbal UNBOXING"))
-        #expect(reader.read(track("Drum Tutorial")) != .song("Drum Tutorial"))
+        "a title that merely reads instructionally is still searched",
+        arguments: ["How to Save a Life", "検証", "入門", "Boys Don\u{2019}t Cry"])
+    func instructionalWordingIsNotScreened(title: String) {
+        #expect(reader.read(track(title)) == .song(title))
     }
 
     @Test("a runtime longer than any plausible song screens the title out")
@@ -158,6 +151,27 @@ struct SongTitleReaderTests {
         #expect(strict.read(track("Song", duration: 600)) != .song("Song"))
     }
 
+    // MARK: - Bracket structure survives normalization
+
+    @Test("two sibling groups are structure, not a wrapper — matching ends alone prove nothing")
+    func siblingGroupsAreNotUnwrapped() {
+        // Naively "first and last character pair up" would strip these into `Song) (Live`
+        // and `Song A」 / 「Song B`, corrupting a title that was never decorated (#344 review).
+        #expect(reader.read(track("(Song) (Live)")) == .song("(Song) (Live)"))
+        #expect(reader.read(track("\u{300c}Song A\u{300d} / \u{300c}Song B\u{300d}")) == .song("\u{300c}Song A\u{300d} / \u{300c}Song B\u{300d}"))
+    }
+
+    @Test("a pair that really does wrap the whole title is decoration and comes off")
+    func wholeTitleWrapperIsUnwrapped() {
+        #expect(reader.read(track("\u{300c}Song\u{300d}")) == .song("Song"))
+        #expect(reader.read(track("\u{3010}Song\u{3011}")) == .song("Song"))
+    }
+
+    @Test("a nested pair inside a wrapper does not fool the depth check")
+    func nestedPairInsideWrapperIsStillAWrapper() {
+        #expect(reader.read(track("(Song (Live))")) == .song("Song (Live)"))
+    }
+
     // MARK: - A cover marker outranks every screen
 
     @Test("a cover marker beats the runtime screen — a long take is still a performance")
@@ -165,8 +179,8 @@ struct SongTitleReaderTests {
         #expect(reader.read(track("Song 叩いてみた", duration: 5400)) == .song("Song"))
     }
 
-    @Test("a cover marker beats an instructional marker — the video is a performance, not a lesson")
-    func coverBeatsNonSongMarker() {
-        #expect(reader.read(track("Song 叩いてみた【解説付き】")) == .song("Song 【解説付き】"))
+    @Test("a cover marker beats the broadcast screen — a dated upload is still a performance")
+    func coverBeatsBroadcastStamp() {
+        #expect(reader.read(track("Song 叩いてみた 2026/08/16")) == .song("Song 2026/08/16"))
     }
 }

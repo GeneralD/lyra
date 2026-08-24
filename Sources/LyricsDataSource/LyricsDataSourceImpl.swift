@@ -43,7 +43,7 @@ extension LyricsDataSourceImpl: LyricsDataSource {
         do {
             return try await apiSession.withAPI { try await $0.search(q: query) }
         } catch {
-            log(error, operation: "search")
+            log(error, operation: "search(q)")
             return nil
         }
     }

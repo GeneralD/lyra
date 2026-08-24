@@ -37,6 +37,16 @@ struct LyricsMatchValidator {
         else { return nil }
         return abs(candidateDuration - resultDuration)
     }
+
+    // Exposed for Tier B's arbitration between the two search indexes (#344 review). The
+    // structured query names no artist, so an exact title plus a ±5 s duration is enough
+    // for `isValid` to pass a same-titled song by someone else entirely — agreement here
+    // is the only signal that separates the two. It stays a *preference* rather than a
+    // requirement, because the played artist is routinely a channel name or a cover
+    // credit; a missing artist on either side is absent evidence, not agreement.
+    func artistAgrees(candidate: Track, result: LyricsResult) -> Bool {
+        artistMatches(candidate: candidate, result: result)
+    }
 }
 
 extension LyricsMatchValidator {
