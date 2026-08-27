@@ -10,17 +10,6 @@ import Views
 
 @testable import AppRouter
 
-@MainActor
-private func waitUntil(
-    timeout: Duration = .seconds(3),
-    condition: @escaping @MainActor () -> Bool
-) async {
-    let deadline = ContinuousClock.now + timeout
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
 private func sameLayout(_ lhs: ScreenLayout?, _ rhs: ScreenLayout) -> Bool {
     guard let lhs else { return false }
     return lhs.windowFrame == rhs.windowFrame
@@ -227,7 +216,7 @@ struct AppDependencyBootstrapTests {
 
         headerPresenter.start()
         lyricsPresenter.start()
-        await waitUntil {
+        await drain {
             headerPresenter.displayTitle == "Bootstrap Song"
                 && headerPresenter.displayArtist == "Bootstrap Artist"
                 && lyricsPresenter.displayLyricLines == ["Alpha", "Beta"]
@@ -395,7 +384,7 @@ struct AppRouterTests {
         )
 
         router.start()
-        await waitUntil {
+        await drain {
             let headerPresenter: HeaderPresenter? = value(named: "headerPresenter", from: router)
             let lyricsPresenter: LyricsPresenter? = value(named: "lyricsPresenter", from: router)
             return headerPresenter?.displayTitle == "Router Song"
@@ -549,13 +538,13 @@ struct AppRouterTests {
         router.start()
         defer { router.stop() }
 
-        await waitUntil { window.attachedPlayers.count == 1 }
+        await drain { window.attachedPlayers.count == 1 }
         #expect(window.attachedPlayers.count == 1)
         #expect(window.appliedWallpaperScales.contains(1.4))
         #expect(driver.startedWindow === window)
 
         screenInteractor.updateLayout(updatedLayout)
-        await waitUntil { sameLayout(window.appliedLayouts.last, updatedLayout) }
+        await drain { sameLayout(window.appliedLayouts.last, updatedLayout) }
 
         #expect(window.appliedLayouts.count == 1)
         #expect(sameLayout(window.appliedLayouts.last, updatedLayout))
@@ -599,7 +588,7 @@ struct AppRouterTests {
         router.start()
         defer { router.stop() }
 
-        await waitUntil { window.attachedPlayers.count == 1 }
+        await drain { window.attachedPlayers.count == 1 }
         #expect(window.attachedPlayers.count == 1)
 
         // The reload removed [wallpaper]: the source is now nil and the resolve
@@ -609,7 +598,7 @@ struct AppRouterTests {
         wallpaperInteractor.items = []
         configInteractor.ping()
 
-        await waitUntil { window.detachCallCount == 1 }
+        await drain { window.detachCallCount == 1 }
         #expect(window.detachCallCount == 1)
     }
 
@@ -835,7 +824,7 @@ struct AccessibilityHooksTests {
             lyricsPresenter.stop()
             headerPresenter.stop()
         }
-        await waitUntil {
+        await drain {
             headerPresenter.displayTitle == "Accessible Song"
                 && lyricsPresenter.displayLyricLines == ["First", "Second"]
         }

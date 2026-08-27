@@ -50,7 +50,10 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 
 ### Testing Guidelines
 
-**Async test timing**: Never use fixed `Task.sleep` to wait for state changes in Presenter/Interactor tests. CI environments have variable load, and fixed delays cause flaky failures. Always use polling helpers:
+**Async test timing**: Never use fixed `Task.sleep` to wait for state changes in Presenter/Interactor tests. CI environments have variable load, and fixed delays cause flaky failures. Pick the wait by *what* you are waiting on:
+
+- **Work that lands on the main queue in order** — a `@MainActor` `Task`, an `AsyncStream` consumed there, a `.receive(on: DispatchQueue.main)` hop — is a wait on *scheduling order*, not on time. Step the queue with `drain(until:)` (`Tests/AppRouterTests/TestSupport/Drain.swift`, adopted there first — #347): each `Task.yield()` re-enqueues the test behind everything already queued on main, so the wait is bounded in rounds, never in seconds. A deadline poll is **not** deterministic here: when CI stalls the main queue, the poll's expired continuation runs *before* the `.receive(on:)` block queued behind it and asserts on state that lands a moment later. Do **not** reach for `withMainSerialExecutor` / `uncheckedUseMainSerialExecutor` to cover thread-pool tasks too: the hook is process-wide, and under Swift Testing's parallel run it stalled tests in six unrelated targets (#347).
+- **Work on the thread pool or outside Swift's executors** — a nonisolated `Task`, a spawned subprocess, a `DispatchSource`, a framework callback — cannot be drained. Poll the real condition to a deadline:
 
 ```swift
 // Good — poll until condition is met
