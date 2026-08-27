@@ -10,17 +10,6 @@ import Views
 
 @testable import AppRouter
 
-@MainActor
-private func waitUntil(
-    timeout: Duration = .seconds(3),
-    condition: @escaping @MainActor () -> Bool
-) async {
-    let deadline = ContinuousClock.now + timeout
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
 private func sameLayout(_ lhs: ScreenLayout?, _ rhs: ScreenLayout) -> Bool {
     guard let lhs else { return false }
     return lhs.windowFrame == rhs.windowFrame
@@ -199,7 +188,7 @@ struct AppLaunchEnvironmentTests {
 }
 
 @MainActor
-@Suite("AppDependencyBootstrap")
+@Suite("AppDependencyBootstrap", .timeLimit(.minutes(1)))
 struct AppDependencyBootstrapTests {
     @Test("injects fixture track data for presenters in UI test mode")
     func injectsFixtureTrackData() async {
@@ -227,12 +216,10 @@ struct AppDependencyBootstrapTests {
 
         headerPresenter.start()
         lyricsPresenter.start()
-        await waitUntil {
-            headerPresenter.displayTitle == "Bootstrap Song"
-                && headerPresenter.displayArtist == "Bootstrap Artist"
-                && lyricsPresenter.displayLyricLines == ["Alpha", "Beta"]
-                && lyricsPresenter.lyricsState == .success(.plain(["Alpha", "Beta"]))
-        }
+        await settle(headerPresenter.$displayTitle) { $0 == "Bootstrap Song" }
+        await settle(headerPresenter.$displayArtist) { $0 == "Bootstrap Artist" }
+        await settle(lyricsPresenter.$displayLyricLines) { $0 == ["Alpha", "Beta"] }
+        await settle(lyricsPresenter.$lyricsState) { $0 == .success(.plain(["Alpha", "Beta"])) }
 
         #expect(headerPresenter.displayTitle == "Bootstrap Song")
         #expect(headerPresenter.displayArtist == "Bootstrap Artist")
@@ -323,7 +310,7 @@ struct AppDependencyBootstrapTests {
 }
 
 @MainActor
-@Suite("AppRouter")
+@Suite("AppRouter", .timeLimit(.minutes(1)))
 struct AppRouterTests {
     @Test("public init uses default factories")
     func publicInit() {
@@ -374,7 +361,7 @@ struct AppRouterTests {
     }
 
     @Test("start applies bootstrap fixture graph and stop tears it down")
-    func startAndStop() async {
+    func startAndStop() async throws {
         let window = SpyWindow()
         let driver = SpyFrameScheduler()
 
@@ -395,25 +382,21 @@ struct AppRouterTests {
         )
 
         router.start()
-        await waitUntil {
-            let headerPresenter: HeaderPresenter? = value(named: "headerPresenter", from: router)
-            let lyricsPresenter: LyricsPresenter? = value(named: "lyricsPresenter", from: router)
-            return headerPresenter?.displayTitle == "Router Song"
-                && headerPresenter?.displayArtist == "Router Artist"
-                && lyricsPresenter?.displayLyricLines == ["One", "Two"]
-        }
+        let headerPresenter = try #require(value(named: "headerPresenter", from: router) as HeaderPresenter?)
+        let lyricsPresenter = try #require(value(named: "lyricsPresenter", from: router) as LyricsPresenter?)
+        await settle(headerPresenter.$displayTitle) { $0 == "Router Song" }
+        await settle(headerPresenter.$displayArtist) { $0 == "Router Artist" }
+        await settle(lyricsPresenter.$displayLyricLines) { $0 == ["One", "Two"] }
 
         let appPresenter: AppPresenter? = value(named: "appPresenter", from: router)
-        let headerPresenter: HeaderPresenter? = value(named: "headerPresenter", from: router)
-        let lyricsPresenter: LyricsPresenter? = value(named: "lyricsPresenter", from: router)
         let wallpaperPresenter: WallpaperPresenter? = value(named: "wallpaperPresenter", from: router)
         let ripplePresenter: RipplePresenter? = value(named: "ripplePresenter", from: router)
         let appWindow: AnyObject? = value(named: "appWindow", from: router)
 
         #expect(appPresenter?.layout.windowFrame == CGRect(x: 0, y: 0, width: 1280, height: 720))
-        #expect(headerPresenter?.displayTitle == "Router Song")
-        #expect(headerPresenter?.displayArtist == "Router Artist")
-        #expect(lyricsPresenter?.displayLyricLines == ["One", "Two"])
+        #expect(headerPresenter.displayTitle == "Router Song")
+        #expect(headerPresenter.displayArtist == "Router Artist")
+        #expect(lyricsPresenter.displayLyricLines == ["One", "Two"])
         #expect(wallpaperPresenter != nil)
         #expect(ripplePresenter != nil)
         #expect(appWindow === window)
@@ -549,13 +532,13 @@ struct AppRouterTests {
         router.start()
         defer { router.stop() }
 
-        await waitUntil { window.attachedPlayers.count == 1 }
+        await settle(window.$attachedPlayers) { $0.count == 1 }
         #expect(window.attachedPlayers.count == 1)
         #expect(window.appliedWallpaperScales.contains(1.4))
         #expect(driver.startedWindow === window)
 
         screenInteractor.updateLayout(updatedLayout)
-        await waitUntil { sameLayout(window.appliedLayouts.last, updatedLayout) }
+        await settle(window.$appliedLayouts) { sameLayout($0.last, updatedLayout) }
 
         #expect(window.appliedLayouts.count == 1)
         #expect(sameLayout(window.appliedLayouts.last, updatedLayout))
@@ -599,7 +582,7 @@ struct AppRouterTests {
         router.start()
         defer { router.stop() }
 
-        await waitUntil { window.attachedPlayers.count == 1 }
+        await settle(window.$attachedPlayers) { $0.count == 1 }
         #expect(window.attachedPlayers.count == 1)
 
         // The reload removed [wallpaper]: the source is now nil and the resolve
@@ -609,7 +592,7 @@ struct AppRouterTests {
         wallpaperInteractor.items = []
         configInteractor.ping()
 
-        await waitUntil { window.detachCallCount == 1 }
+        await settle(window.$detachCallCount) { $0 == 1 }
         #expect(window.detachCallCount == 1)
     }
 
@@ -694,9 +677,9 @@ struct AppRouterTests {
     final class SpyWindow: OverlayWindow {
         var showCallCount = 0
         var closeCallCount = 0
-        var detachCallCount = 0
-        var appliedLayouts: [ScreenLayout] = []
-        var attachedPlayers: [AVPlayer] = []
+        @Published var detachCallCount = 0
+        @Published var appliedLayouts: [ScreenLayout] = []
+        @Published var attachedPlayers: [AVPlayer] = []
         var appliedWallpaperScales: [Double] = []
 
         func show() {
@@ -774,7 +757,7 @@ struct AppRouterTests {
 }
 
 @MainActor
-@Suite("Accessibility hooks")
+@Suite("Accessibility hooks", .timeLimit(.minutes(1)))
 struct AccessibilityHooksTests {
     private struct EnabledRippleWallpaperInteractor: WallpaperInteractor {
         var rippleConfig: RippleStyle { .init(enabled: true) }
@@ -835,10 +818,8 @@ struct AccessibilityHooksTests {
             lyricsPresenter.stop()
             headerPresenter.stop()
         }
-        await waitUntil {
-            headerPresenter.displayTitle == "Accessible Song"
-                && lyricsPresenter.displayLyricLines == ["First", "Second"]
-        }
+        await settle(headerPresenter.$displayTitle) { $0 == "Accessible Song" }
+        await settle(lyricsPresenter.$displayLyricLines) { $0 == ["First", "Second"] }
 
         render(HeaderView(presenter: headerPresenter), size: CGSize(width: 600, height: 120))
         render(LyricsColumnView(presenter: lyricsPresenter), size: CGSize(width: 600, height: 300))

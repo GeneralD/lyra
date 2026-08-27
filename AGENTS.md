@@ -192,8 +192,16 @@ Shared conventions:
 
 ## Testing Rules
 
-- Do not wait on async state with fixed `Task.sleep` delays. Poll until a
-  deadline instead.
+- Do not wait on async state with fixed `Task.sleep` delays. When the subject
+  publishes the state (a presenter's `@Published` property, a spy that
+  publishes what it recorded), await the publisher with `settle(_:until:)`
+  (AppRouterTests TestSupport, #347) and give the suite `.timeLimit` — a
+  deadline poll can expire *before* the `receive(on: .main)` block queued
+  behind it and assert too early. Poll to a deadline only for state with no
+  signal to await (thread-pool or out-of-process work: nonisolated `Task`,
+  subprocess, `DispatchSource`, framework callbacks). Never redirect the
+  global executor onto the main actor (`uncheckedUseMainSerialExecutor`):
+  the hook is process-wide and stalls unrelated targets in the parallel run.
 - Do not use `setenv` in tests. Inject config paths or environment-derived
   values through constructors or dependencies.
 - UI tests must select fixture graphs during app bootstrap in `AppDelegate`
