@@ -34,6 +34,7 @@ public final class SpectrumInteractorImpl: @unchecked Sendable {
     @Dependency(\.configUseCase) private var configService
     @Dependency(\.playbackUseCase) private var playbackService
     @Dependency(\.spectrumUseCase) private var spectrumService
+    @Dependency(\.errorLog) private var errorLog
     private let capturingSubject = CurrentValueSubject<Bool, Never>(false)
     private let processor = OSAllocatedUnfairLock(initialState: Processor.idle)
 
@@ -100,13 +101,13 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
                 failedAttempts = started ? 0 : failedAttempts + 1
                 guard started else {
                     let giveUp = failedAttempts >= maxCaptureAttempts
-                    fputs(
-                        "lyra: spectrum: startCapture(pid: \(pid)) failed "
+                    errorLog.record(
+                        .spectrum,
+                        "startCapture(pid: \(pid)) failed "
                             + "(attempt \(failedAttempts)/\(maxCaptureAttempts)); "
                             + (giveUp
-                                ? "giving up until the source changes\n"
-                                : "retrying on next now-playing tick\n"),
-                        stderr)
+                                ? "giving up until the source changes"
+                                : "retrying on next now-playing tick"))
                     continue
                 }
             }

@@ -85,6 +85,23 @@ Shared conventions:
   `AudioTapGateway`, #313).
 - Handlers, use cases, and repositories return data. `StandardOutput` formats
   and prints it. Never pass handler instances into output methods.
+- There are exactly three output paths, all Domain protocols resolved through
+  DI, and every one of them is a write-only sink -- never a DataStore.
+  `StandardOutput` carries CLI results, `DeveloperLog` carries config-gated
+  decision traces (#331), and `ErrorLog` carries always-on operational errors
+  to stderr (#345). **Never write `fputs` (or `print`, or `os.Logger`) directly
+  from a Source module** -- the only two live `fputs` calls are the injected
+  printers inside `PrintStandardOutput` and `StandardErrorLog`, and a fourth
+  hand-rolled path is what #345 removed. Report errors with
+  `errorLog.record(.subsystem, "<operation> failed: \(error)")`: the `lyra:`
+  prefix, the subsystem spelling, and the newline belong to the sink, and the
+  subsystem vocabulary is the closed `ErrorSubsystem` enum, so adding a source
+  means adding a case rather than inventing a string.
+- Suppressing a specific error is a rule that needs a test, not a comment.
+  LRCLIB's 404 means "no lyrics for this track" and must stay unreported so it
+  is distinguishable from a broken fetch (#318); that guard lives at the call
+  site (it is LRCLIB's contract, not the sink's business) and is pinned in both
+  directions by `LyricsErrorReportingTests`.
 - Views do not own business logic. Keep orchestration in Presenters and
   Interactors. The existing rendering-only dependency access patterns may stay,
   but do not add feature logic to SwiftUI views.

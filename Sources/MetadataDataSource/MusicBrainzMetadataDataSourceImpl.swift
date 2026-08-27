@@ -1,9 +1,11 @@
+import Dependencies
 import Domain
 import Foundation
 @preconcurrency import Papyrus
 import ScopedAPISession
 
 public struct MusicBrainzMetadataDataSourceImpl {
+    @Dependency(\.errorLog) private var errorLog
     private let apiSession: ScopedAPISession<any MusicBrainz>
 
     public init() {
@@ -40,7 +42,7 @@ extension MusicBrainzMetadataDataSourceImpl: MetadataDataSource {
                 guard !candidates.isEmpty else { continue }
                 return candidates
             } catch {
-                fputs("lyra: MusicBrainz search failed: \(error)\n", stderr)
+                errorLog.record(.musicBrainz, "search failed: \(error)")
             }
         }
 

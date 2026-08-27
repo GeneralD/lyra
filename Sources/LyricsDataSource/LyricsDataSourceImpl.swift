@@ -1,9 +1,11 @@
+import Dependencies
 import Domain
 import Foundation
 @preconcurrency import Papyrus
 import ScopedAPISession
 
 public struct LyricsDataSourceImpl {
+    @Dependency(\.errorLog) private var errorLog
     private let apiSession: ScopedAPISession<any LRCLib>
 
     public init() {
@@ -62,8 +64,13 @@ extension LyricsDataSourceImpl {
     // 404 is LRCLIB's regular "no lyrics for this track" answer; only transport
     // and server failures are worth surfacing so "no lyrics" and "fetch broken"
     // stay distinguishable in the daemon log (#318).
+    //
+    // The guard stays here rather than moving into the sink: that a 404 means "no
+    // lyrics" is LRCLIB's own contract, not something a general error log could know.
+    // What #345 changed is that it is now guarding a *dependency* — so the rule can
+    // finally be pinned by a test instead of resting on this comment.
     private func log(_ error: some Error, operation: String) {
         if let papyrusError = error as? PapyrusError, papyrusError.response?.statusCode == 404 { return }
-        fputs("lyra: LRCLIB \(operation) failed: \(error)\n", stderr)
+        errorLog.record(.lrclib, "\(operation) failed: \(error)")
     }
 }

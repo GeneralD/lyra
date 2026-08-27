@@ -150,6 +150,14 @@ let package = Package(
             ]
         ),
 
+        // ── ErrorLog ──
+        .target(
+            name: "ErrorLog",
+            dependencies: [
+                "Domain"
+            ]
+        ),
+
         // ── BenchmarkHandler ──
         .target(
             name: "BenchmarkHandler",
@@ -250,6 +258,7 @@ let package = Package(
                 "Domain",
                 "RandomSource",
                 "DeveloperLog",
+                "ErrorLog",
                 "TrackInteractor",
                 "ScreenInteractor",
                 "ConfigInteractor",
@@ -445,6 +454,7 @@ let package = Package(
                 "Domain",
                 "ScopedAPISession",
                 .product(name: "Papyrus", package: "papyrus"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
         .target(
@@ -636,6 +646,13 @@ let package = Package(
         ),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
+        .testTarget(
+            name: "ErrorLogTests",
+            dependencies: [
+                "ErrorLog",
+                "Domain",
+            ]
+        ),
         .testTarget(
             name: "DeveloperLogTests",
             dependencies: [

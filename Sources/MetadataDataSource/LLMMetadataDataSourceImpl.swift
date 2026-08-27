@@ -6,6 +6,7 @@ import ScopedAPISession
 
 public struct LLMMetadataDataSourceImpl {
     @Dependency(\.configDataSource) private var configDataSource
+    @Dependency(\.errorLog) private var errorLog
     private let sessionFactory: @Sendable (AIEndpoint) -> ScopedAPISession<any OpenAICompatible>
 
     public init() {
@@ -51,7 +52,7 @@ extension LLMMetadataDataSourceImpl {
         do {
             response = try await sessionFactory(config).withAPI { try await $0.chatCompletion(request: request) }
         } catch {
-            fputs("lyra: AI extraction failed: \(error)\n", stderr)
+            errorLog.record(.ai, "extraction failed: \(error)")
             return nil
         }
 
