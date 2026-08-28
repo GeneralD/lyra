@@ -3,6 +3,7 @@ import AppKit
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -24,16 +25,6 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
 // MARK: - Helpers
 
 @MainActor
-private func waitForReveal(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
-    let deadline = ContinuousClock.now + timeout
-    while presenter.titlePhase != .revealed || presenter.artistPhase != .revealed,
-        ContinuousClock.now < deadline
-    {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
-@MainActor
 private func fixtureArtworkData(color: NSColor = .red) throws -> Data {
     let image = NSImage(size: NSSize(width: 1, height: 1))
     image.lockFocus()
@@ -47,7 +38,7 @@ private func fixtureArtworkData(color: NSColor = .red) throws -> Data {
 @Suite("HeaderPresenter duplicate / artwork interactions")
 struct HeaderPresenterDuplicateTests {
 
-    @Suite("duplicate track suppression")
+    @Suite("duplicate track suppression", .timeLimit(.minutes(1)))
     struct DuplicateTrack {
         @MainActor
         @Test("sending same title twice does not re-trigger decode effect")
@@ -66,7 +57,8 @@ struct HeaderPresenterDuplicateTests {
 
                 // First send
                 subject.send(update)
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
                 #expect(presenter.displayTitle == "Same")
                 #expect(presenter.displayArtist == "Artist")
 
@@ -83,7 +75,7 @@ struct HeaderPresenterDuplicateTests {
         }
     }
 
-    @Suite("artwork stream")
+    @Suite("artwork stream", .timeLimit(.minutes(1)))
     struct ArtworkStream {
         @MainActor
         @Test("artwork updates without affecting title display")
@@ -104,17 +96,15 @@ struct HeaderPresenterDuplicateTests {
 
                 // Set up title first
                 trackSubject.send(update)
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
                 #expect(presenter.displayTitle == "Song")
                 #expect(presenter.artworkImage == nil)
 
                 // Send artwork
                 let imageData = try fixtureArtworkData()
                 artworkSubject.send(imageData)
-                let artDeadline = ContinuousClock.now + .seconds(3)
-                while presenter.artworkImage == nil, ContinuousClock.now < artDeadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$artworkImage) { $0 != nil }
 
                 let cachedImage = try #require(presenter.artworkImage)
                 // Title display must remain unchanged
@@ -148,7 +138,8 @@ struct HeaderPresenterDuplicateTests {
                 trackSubject.send(TrackUpdate(title: "New Song", artist: "New Artist"))
                 let artData = try fixtureArtworkData()
                 artworkSubject.send(artData)
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
 
                 // Both should have settled correctly
                 let cachedImage = try #require(presenter.artworkImage)
@@ -158,10 +149,7 @@ struct HeaderPresenterDuplicateTests {
                 // Now change artwork again
                 let newArtData = try fixtureArtworkData(color: .blue)
                 artworkSubject.send(newArtData)
-                let newArtDeadline = ContinuousClock.now + .seconds(3)
-                while presenter.artworkImage === cachedImage, ContinuousClock.now < newArtDeadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$artworkImage) { $0 !== cachedImage }
 
                 #expect(presenter.artworkImage != nil)
                 #expect(presenter.artworkImage !== cachedImage)

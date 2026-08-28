@@ -2,13 +2,14 @@ import Combine
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 import os
 
 @testable import Presenters
 
 @MainActor
-@Suite("ConfigStatusPresenter")
+@Suite("ConfigStatusPresenter", .timeLimit(.minutes(1)))
 struct ConfigStatusPresenterTests {
     @Test("invalidConfig 発火で @Published が更新される")
     func reflectsInvalid() async {
@@ -22,11 +23,11 @@ struct ConfigStatusPresenterTests {
         defer { presenter.stop() }
 
         subject.send(.init(path: "/c.toml", reason: .unreadable))
-        await waitUntil { presenter.invalidConfig != nil }
+        await settle(presenter.$invalidConfig) { $0 != nil }
         #expect(presenter.invalidConfig?.reason == .unreadable)
 
         subject.send(nil)
-        await waitUntil { presenter.invalidConfig == nil }
+        await settle(presenter.$invalidConfig) { $0 == nil }
         #expect(presenter.invalidConfig == nil)
     }
 

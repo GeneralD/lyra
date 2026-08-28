@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -74,26 +75,6 @@ private final class StubConfigInteractor: ConfigInteractor, @unchecked Sendable 
     func stop() {}
 }
 
-// MARK: - Helpers
-
-@MainActor
-private func waitForReveal(_ presenter: HeaderPresenter, timeout: Duration = .seconds(3)) async {
-    let deadline = ContinuousClock.now + timeout
-    while presenter.titlePhase != .revealed || presenter.artistPhase != .revealed,
-        ContinuousClock.now < deadline
-    {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
-@MainActor
-private func waitUntil(timeout: Duration = .seconds(3), _ condition: @MainActor () -> Bool) async {
-    let deadline = ContinuousClock.now + timeout
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
 // MARK: - Tests
 
 @Suite("HeaderPresenter")
@@ -141,7 +122,7 @@ struct HeaderPresenterTests {
         }
     }
 
-    @Suite("receive TrackUpdate")
+    @Suite("receive TrackUpdate", .timeLimit(.minutes(1)))
     struct Receive {
         @MainActor
         @Test("receiving a track update sets displayTitle via decode effect")
@@ -159,7 +140,8 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(update)
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
 
                 #expect(presenter.displayTitle == "Hello")
                 #expect(presenter.displayArtist == "World")
@@ -184,15 +166,12 @@ struct HeaderPresenterTests {
 
                 // First send a valid track and wait for decode to complete
                 subject.send(TrackUpdate(title: "Song", artist: "Artist"))
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
 
                 // Then send an idle (nil) update
                 subject.send(TrackUpdate())
-                // Wait for idle state
-                let deadline = ContinuousClock.now + .seconds(3)
-                while presenter.titlePhase != .idle, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$titlePhase) { $0 == .idle }
 
                 #expect(presenter.titlePhase == .idle)
                 #expect(presenter.artistPhase == .idle)
@@ -203,7 +182,7 @@ struct HeaderPresenterTests {
         }
     }
 
-    @Suite("AI processing indicator")
+    @Suite("AI processing indicator", .timeLimit(.minutes(1)))
     struct AIProcessing {
         private static let processing: ColorStyle = .solid("#FF00FF")
         private static let titleColor: ColorStyle = .solid("#112233")
@@ -238,7 +217,7 @@ struct HeaderPresenterTests {
 
                 subject.send(
                     TrackUpdate(title: "Song", artist: "Artist", lyricsState: .loading, aiResolving: true))
-                await waitUntil { presenter.titleColor == Self.processing }
+                await settle(presenter.$titleColor) { $0 == Self.processing }
 
                 #expect(presenter.titleColor == Self.processing)
                 #expect(presenter.artistColor == Self.processing)
@@ -271,10 +250,11 @@ struct HeaderPresenterTests {
 
                 subject.send(
                     TrackUpdate(title: "Song", artist: "Artist", lyricsState: .loading, aiResolving: true))
-                await waitUntil { presenter.titleColor == Self.processing }
+                await settle(presenter.$titleColor) { $0 == Self.processing }
 
                 subject.send(TrackUpdate(title: "AI Song", artist: "AI Artist", lyricsState: .resolved))
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
 
                 #expect(presenter.displayTitle == "AI Song")
                 #expect(presenter.displayArtist == "AI Artist")
@@ -297,7 +277,8 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(title: "Song", artist: "Artist", lyricsState: .resolved))
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
 
                 #expect(presenter.titleColor == Self.titleColor)
                 #expect(presenter.artistColor == Self.artistColor)
@@ -306,7 +287,7 @@ struct HeaderPresenterTests {
         }
     }
 
-    @Suite("stop")
+    @Suite("stop", .timeLimit(.minutes(1)))
     struct Stop {
         @MainActor
         @Test("stop cancels subscriptions and effects")
@@ -323,7 +304,8 @@ struct HeaderPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(title: "Song", artist: "Artist"))
-                await waitForReveal(presenter)
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
                 #expect(presenter.displayTitle == "Song")
 
                 presenter.stop()
@@ -337,7 +319,7 @@ struct HeaderPresenterTests {
         }
     }
 
-    @Suite("config hot reload")
+    @Suite("config hot reload", .timeLimit(.minutes(1)))
     struct HotReload {
         @MainActor
         @Test("appStyleChanges 発火で titleStyle/artworkSize/titleColor が新値に更新される")
@@ -374,7 +356,7 @@ struct HeaderPresenterTests {
                     textLayout: updatedLayout, artworkStyle: ArtworkStyle(size: 200, opacity: 0.4))
                 appStyleChanges.send(())
 
-                await waitUntil { presenter.titleStyle.fontSize == 32 }
+                await settle(presenter.$titleStyle) { $0.fontSize == 32 }
 
                 #expect(presenter.titleStyle.fontSize == 32)
                 #expect(presenter.titleStyle.fontWeight == "black")
@@ -407,7 +389,7 @@ struct HeaderPresenterTests {
 
                 subject.send(
                     TrackUpdate(title: "Song", artist: "Artist", lyricsState: .loading, aiResolving: true))
-                await waitUntil { presenter.titleColor == initialProcessing }
+                await settle(presenter.$titleColor) { $0 == initialProcessing }
 
                 // Config reloads while AI resolution is in flight; processingColor
                 // itself may also change (e.g. edited config), but the effective
@@ -417,7 +399,7 @@ struct HeaderPresenterTests {
                     decodeEffectConfig: .init(duration: 0, processingColor: updatedProcessing))
                 appStyleChanges.send(())
 
-                await waitUntil { presenter.titleColor == updatedProcessing }
+                await settle(presenter.$titleColor) { $0 == updatedProcessing }
 
                 #expect(presenter.titleColor == updatedProcessing)
                 #expect(presenter.artistColor == updatedProcessing)
@@ -426,7 +408,7 @@ struct HeaderPresenterTests {
         }
     }
 
-    @Suite("decode effect rebuild at reveal boundary (Codex review)")
+    @Suite("decode effect rebuild at reveal boundary (Codex review)", .timeLimit(.minutes(1)))
     struct DecodeEffectRebuildAtRevealBoundary {
         /// Deterministic stand-in for the default `ZeroRandomSource` test value —
         /// spelled out explicitly here because this test's whole assertion rests
@@ -459,7 +441,7 @@ struct HeaderPresenterTests {
                 // charsets = [.symbols] → pool[0] == "†" → placeholderLength 2 → "††".
                 subject.send(
                     TrackUpdate(title: "XY", artist: nil, lyricsState: .loading, aiResolving: true))
-                await waitUntil { presenter.displayTitle == "††" }
+                await settle(presenter.$displayTitle) { $0 == "††" }
                 #expect(presenter.displayTitle == "††")
 
                 // config.toml edit: charset switches to greek. applyStyle() must NOT
@@ -473,7 +455,7 @@ struct HeaderPresenterTests {
                 subject.send(
                     TrackUpdate(title: "XY", artist: nil, lyricsState: .loading, aiResolving: true))
                 // charsets = [.greek] → pool[0] == "Α" → "ΑΑ".
-                await waitUntil { presenter.displayTitle == "ΑΑ" }
+                await settle(presenter.$displayTitle) { $0 == "ΑΑ" }
 
                 #expect(presenter.displayTitle == "ΑΑ")
 

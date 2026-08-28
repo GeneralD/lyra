@@ -3,14 +3,10 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
-
-@MainActor
-private func waitForItemsLoaded(_ presenter: WallpaperPresenter, count: Int) async {
-    await waitUntil { presenter.items.count == count }
-}
 
 // MARK: - Stubs
 
@@ -105,7 +101,7 @@ private final class MutableWallpaperInteractor: WallpaperInteractor, @unchecked 
     private var _items: [ResolvedWallpaperItem]
     private var _mode: WallpaperPlaybackMode
     private var _completes = true
-    private var _resolveCount = 0
+    @Published private(set) var resolveCount = 0
 
     init(source: WallpaperStyle?, items: [ResolvedWallpaperItem], mode: WallpaperPlaybackMode = .cycle) {
         _source = source
@@ -128,12 +124,6 @@ private final class MutableWallpaperInteractor: WallpaperInteractor, @unchecked 
         lock.unlock()
     }
 
-    var resolveCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return _resolveCount
-    }
-
     var playbackMode: WallpaperPlaybackMode {
         lock.lock()
         defer { lock.unlock() }
@@ -151,7 +141,7 @@ private final class MutableWallpaperInteractor: WallpaperInteractor, @unchecked 
 
     func resolvedWallpapers() -> AsyncStream<ResolvedWallpaperItem> {
         lock.lock()
-        _resolveCount += 1
+        resolveCount += 1
         let emitted = _items
         let completes = _completes
         lock.unlock()
@@ -167,7 +157,7 @@ private final class MutableWallpaperInteractor: WallpaperInteractor, @unchecked 
 @Suite("WallpaperPresenter")
 struct WallpaperPresenterTests {
 
-    @Suite("start")
+    @Suite("start", .timeLimit(.minutes(1)))
     struct Resolve {
         @MainActor
         @Test("plays the first emitted item")
@@ -181,7 +171,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == url }
+                await settle(presenter.$wallpaperURL) { $0 == url }
 
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 5.0)
@@ -200,7 +190,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { !presenter.isLoading }
+                await settle(presenter.$isLoading) { !$0 }
 
                 #expect(presenter.wallpaperURL == nil)
                 #expect(presenter.startTime == nil)
@@ -223,7 +213,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == url }
+                await settle(presenter.$wallpaperURL) { $0 == url }
                 #expect(presenter.wallpaperURL == url)
 
                 presenter.stop()
@@ -243,7 +233,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == url }
+                await settle(presenter.$wallpaperURL) { $0 == url }
 
                 #expect(presenter.wallpaperURL == url)
                 #expect(presenter.startTime == 10.0)
@@ -252,7 +242,7 @@ struct WallpaperPresenterTests {
         }
     }
 
-    @Suite("onPlayerAvailable")
+    @Suite("onPlayerAvailable", .timeLimit(.minutes(1)))
     struct OnPlayerAvailable {
         @MainActor
         @Test("fires once when player becomes available")
@@ -267,7 +257,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
 
                 final class Counter: @unchecked Sendable {
-                    var count = 0
+                    @Published var count = 0
                     var player: AVPlayer?
                 }
                 let counter = Counter()
@@ -278,7 +268,7 @@ struct WallpaperPresenterTests {
                 }
 
                 presenter.start()
-                await waitUntil { counter.count >= 1 }
+                await settle(counter.$count) { $0 >= 1 }
 
                 #expect(counter.count == 1)
                 #expect(counter.player === presenter.player)
@@ -298,7 +288,7 @@ struct WallpaperPresenterTests {
 
                 presenter.onPlayerAvailable { _ in counter.count += 1 }
                 presenter.start()
-                await waitUntil { !presenter.isLoading }
+                await settle(presenter.$isLoading) { !$0 }
 
                 #expect(counter.count == 0)
                 #expect(presenter.player == nil)
@@ -318,7 +308,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
 
                 final class Recorder: @unchecked Sendable {
-                    var players: [AVPlayer] = []
+                    @Published var players: [AVPlayer] = []
                 }
                 let recorder = Recorder()
 
@@ -327,14 +317,14 @@ struct WallpaperPresenterTests {
                 }
 
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 2)
+                await settle(presenter.$items) { $0.count == 2 }
 
-                await waitUntil { recorder.players.count >= 1 }
+                await settle(recorder.$players) { $0.count >= 1 }
                 #expect(recorder.players.count == 1)
                 let firstPlayer = recorder.players.first
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
 
                 #expect(recorder.players.count == 1)
                 #expect(presenter.player === firstPlayer)
@@ -354,14 +344,14 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 presenter.onPlayerAvailable { _ in }
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == url }
+                await settle(presenter.$wallpaperURL) { $0 == url }
                 presenter.stop()
                 // Exercises cancellables.removeAll() branch — no crash expected.
             }
         }
     }
 
-    @Suite("onWallpaperScaleChange")
+    @Suite("onWallpaperScaleChange", .timeLimit(.minutes(1)))
     struct OnWallpaperScaleChange {
         @MainActor
         @Test("fires current and subsequent item scales")
@@ -376,7 +366,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
 
                 final class Recorder: @unchecked Sendable {
-                    var scales: [Double] = []
+                    @Published var scales: [Double] = []
                 }
                 let recorder = Recorder()
 
@@ -385,17 +375,17 @@ struct WallpaperPresenterTests {
                 }
                 presenter.start()
 
-                await waitUntil { recorder.scales.contains(1.2) }
+                await settle(recorder.$scales) { $0.contains(1.2) }
                 #expect(presenter.wallpaperScale == 1.2)
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { recorder.scales.contains(1.6) }
+                await settle(recorder.$scales) { $0.contains(1.6) }
                 #expect(presenter.wallpaperScale == 1.6)
             }
         }
     }
 
-    @Suite("multi-item advancement")
+    @Suite("multi-item advancement", .timeLimit(.minutes(1)))
     struct MultiItem {
         @MainActor
         @Test("cycle mode advances items in configured order on item completion")
@@ -410,20 +400,20 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 3)
+                await settle(presenter.$items) { $0.count == 3 }
                 #expect(presenter.wallpaperURL == a.url)
                 #expect(presenter.wallpaperScale == 1.0)
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperScale == 1.3)
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == c.url }
+                await settle(presenter.$wallpaperURL) { $0 == c.url }
                 #expect(presenter.wallpaperScale == 1.6)
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(presenter.wallpaperURL == a.url)  // wraps around
                 #expect(presenter.wallpaperScale == 1.0)
             }
@@ -447,14 +437,14 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 3)
+                await settle(presenter.$items) { $0.count == 3 }
                 #expect(presenter.wallpaperURL == a.url)
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == c.url }
+                await settle(presenter.$wallpaperURL) { $0 == c.url }
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(presenter.wallpaperURL == a.url)
             }
         }
@@ -474,7 +464,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == item.url }
+                await settle(presenter.$wallpaperURL) { $0 == item.url }
                 let urlBefore = presenter.wallpaperURL
 
                 presenter.controller.handleItemEnd()
@@ -500,12 +490,12 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 2)
+                await settle(presenter.$items) { $0.count == 2 }
                 #expect(presenter.wallpaperURL == a.url)
 
                 presenter.controller.handleItemEnd()
 
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
@@ -524,12 +514,12 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 2)
+                await settle(presenter.$items) { $0.count == 2 }
                 #expect(presenter.wallpaperURL == a.url)
 
                 presenter.controller.handleBoundary(at: seekEnd)
 
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
@@ -549,7 +539,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 3)
+                await settle(presenter.$items) { $0.count == 3 }
                 #expect(presenter.wallpaperURL == a.url)
 
                 // Simulate periodic time observer firing several times before the
@@ -558,14 +548,14 @@ struct WallpaperPresenterTests {
                 presenter.controller.handleBoundary(at: seekEnd)
                 presenter.controller.handleBoundary(at: seekEnd)
 
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 // Should land on b (one advance from a), not skip to c.
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
     }
 
-    @Suite("late-arriving items")
+    @Suite("late-arriving items", .timeLimit(.minutes(1)))
     struct LateArrival {
         @MainActor
         @Test("items emitted after playback starts are picked up on next advance")
@@ -582,16 +572,16 @@ struct WallpaperPresenterTests {
                 presenter.start()
 
                 interactor.emit(a)
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(presenter.wallpaperURL == a.url)
 
                 // Late arrival — second item shows up after playback has begun.
                 interactor.emit(b)
                 interactor.finish()
-                await waitForItemsLoaded(presenter, count: 2)
+                await settle(presenter.$items) { $0.count == 2 }
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
@@ -612,7 +602,7 @@ struct WallpaperPresenterTests {
                 presenter.start()
 
                 interactor.emit(a)
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
 
                 // Boundary fires while only one item is loaded — should loop, not advance.
                 presenter.controller.handleBoundary(
@@ -624,18 +614,18 @@ struct WallpaperPresenterTests {
 
                 interactor.emit(b)
                 interactor.finish()
-                await waitForItemsLoaded(presenter, count: 2)
+                await settle(presenter.$items) { $0.count == 2 }
 
                 // Now that two items exist, boundary should advance.
                 presenter.controller.handleBoundary(
                     at: CMTime(seconds: 5, preferredTimescale: 600))
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
     }
 
-    @Suite("shuffle determinism")
+    @Suite("shuffle determinism", .timeLimit(.minutes(1)))
     struct ShuffleDeterminism {
         @MainActor
         @Test("shuffle visits every item over many advances given a covering sequence")
@@ -653,13 +643,13 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: items.count)
+                await settle(presenter.$items) { $0.count == items.count }
 
                 var visited = Set<URL>([presenter.wallpaperURL].compactMap { $0 })
                 for _ in 0..<20 {
                     let prev = presenter.wallpaperURL
                     presenter.controller.handleItemEnd()
-                    await waitUntil { presenter.wallpaperURL != prev }
+                    await settle(presenter.$wallpaperURL) { $0 != prev }
                     if let url = presenter.wallpaperURL { visited.insert(url) }
                 }
 
@@ -668,7 +658,7 @@ struct WallpaperPresenterTests {
         }
     }
 
-    @Suite("double-fire guard")
+    @Suite("double-fire guard", .timeLimit(.minutes(1)))
     struct DoubleFireGuard {
         @MainActor
         @Test("handleBoundary then handleItemEnd advances only once")
@@ -685,20 +675,20 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 3)
+                await settle(presenter.$items) { $0.count == 3 }
                 #expect(presenter.wallpaperURL == a.url)
 
                 presenter.controller.handleBoundary(
                     at: CMTime(seconds: 5, preferredTimescale: 600))
                 presenter.controller.handleItemEnd()
 
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
     }
 
-    @Suite("loading indicator debounce")
+    @Suite("loading indicator debounce", .timeLimit(.minutes(1)))
     struct LoadingIndicatorDebounce {
         @MainActor
         @Test("indicator stays hidden when load resolves before the debounce threshold")
@@ -720,7 +710,7 @@ struct WallpaperPresenterTests {
                 // Resolve before the 300ms threshold elapses.
                 interactor.emit(item)
                 interactor.finish()
-                await waitUntil { !presenter.isLoading }
+                await settle(presenter.$isLoading) { !$0 }
                 #expect(!presenter.showLoadingIndicator)
 
                 // Advancing past the threshold must not now flip the indicator —
@@ -752,14 +742,14 @@ struct WallpaperPresenterTests {
                 // and the sleep becomes a no-op resume the moment it starts.
                 await Task.yield()
                 await testClock.advance(by: WallpaperPresenter.loadingIndicatorDelay)
-                await waitUntil { presenter.showLoadingIndicator }
+                await settle(presenter.$showLoadingIndicator) { $0 }
                 #expect(presenter.showLoadingIndicator)
                 #expect(presenter.isLoading)
 
                 // When the load finally resolves, the indicator should hide again.
                 interactor.emit(ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/slow.mp4")))
                 interactor.finish()
-                await waitUntil { !presenter.showLoadingIndicator }
+                await settle(presenter.$showLoadingIndicator) { !$0 }
                 #expect(!presenter.showLoadingIndicator)
                 #expect(!presenter.isLoading)
             }
@@ -802,7 +792,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 defer { presenter.stop() }
                 presenter.start()
-                await waitUntil { !presenter.isLoading }
+                await settle(presenter.$isLoading) { !$0 }
                 #expect(!presenter.showLoadingIndicator)
 
                 await testClock.advance(by: WallpaperPresenter.loadingIndicatorDelay + .milliseconds(100))
@@ -812,7 +802,7 @@ struct WallpaperPresenterTests {
         }
     }
 
-    @Suite("sleep / wake observation")
+    @Suite("sleep / wake observation", .timeLimit(.minutes(1)))
     struct SleepWake {
         @MainActor
         @Test(".willSleep pauses the player")
@@ -828,7 +818,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.player != nil }
+                await settle(presenter.$player) { $0 != nil }
 
                 subject.send(.willSleep)
 
@@ -854,7 +844,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.player != nil }
+                await settle(presenter.$player) { $0 != nil }
 
                 subject.send(.willSleep)
                 subject.send(.didWake)
@@ -863,7 +853,7 @@ struct WallpaperPresenterTests {
         }
     }
 
-    @Suite("hot reload")
+    @Suite("hot reload", .timeLimit(.minutes(1)))
     struct HotReload {
         @MainActor
         @Test("config ping with a new source swaps the item, keeping the same player (no blackout)")
@@ -881,14 +871,14 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 let player = presenter.player
                 #expect(player != nil)
 
                 interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
 
                 #expect(presenter.wallpaperURL == b.url)
                 // Same AVPlayer instance across the swap — the attached layer stays valid.
@@ -911,7 +901,7 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(interactor.resolveCount == 1)
 
                 config.fire()
@@ -937,18 +927,18 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(presenter.player != nil)
 
                 interactor.set(source: nil, items: [])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.wallpaperURL == nil }
+                await settle(presenter.$wallpaperURL) { $0 == nil }
 
                 #expect(presenter.wallpaperURL == nil)
                 // The player is torn down so the wireframe can detach the layer and
                 // restore the transparent no-wallpaper backing (#41 PR4 review, F7).
-                await waitUntil { presenter.player == nil }
+                await settle(presenter.$player) { $0 == nil }
                 #expect(presenter.player == nil)
             }
         }
@@ -961,7 +951,7 @@ struct WallpaperPresenterTests {
                 source: WallpaperStyle(location: "a.mp4"), items: [a])
             let config = FakeConfigInteractor()
 
-            final class Counter: @unchecked Sendable { var count = 0 }
+            final class Counter: @unchecked Sendable { @Published var count = 0 }
             let counter = Counter()
 
             await withDependencies {
@@ -972,13 +962,13 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 presenter.onPlayerCleared { counter.count += 1 }
                 presenter.start()
-                await waitUntil { presenter.player != nil }
+                await settle(presenter.$player) { $0 != nil }
                 #expect(counter.count == 0)
 
                 interactor.set(source: nil, items: [])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { counter.count == 1 }
+                await settle(counter.$count) { $0 == 1 }
 
                 #expect(counter.count == 1)
             }
@@ -993,7 +983,7 @@ struct WallpaperPresenterTests {
                 source: WallpaperStyle(location: "a.mp4"), items: [a])
             let config = FakeConfigInteractor()
 
-            final class Counter: @unchecked Sendable { var count = 0 }
+            final class Counter: @unchecked Sendable { @Published var count = 0 }
             let attachCount = Counter()
 
             await withDependencies {
@@ -1004,20 +994,20 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 presenter.onPlayerAvailable { _ in attachCount.count += 1 }
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
-                await waitUntil { attachCount.count == 1 }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
+                await settle(attachCount.$count) { $0 == 1 }
 
                 // Remove all wallpaper: player torn down.
                 interactor.set(source: nil, items: [])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.player == nil }
+                await settle(presenter.$player) { $0 == nil }
 
                 // Re-add a source: a fresh player is built and re-attaches.
                 interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
 
                 #expect(presenter.player != nil)
                 #expect(attachCount.count == 2)
@@ -1040,7 +1030,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 defer { presenter.stop() }
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(interactor.resolveCount == 1)
 
                 // Switch to a slow source whose resolution stays in flight.
@@ -1078,7 +1068,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 defer { presenter.stop() }
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 2)
+                await settle(presenter.$items) { $0.count == 2 }
                 #expect(presenter.wallpaperScale == 1.25)
 
                 interactor.set(
@@ -1094,7 +1084,7 @@ struct WallpaperPresenterTests {
 
                 // ...and can still advance through its own playlist.
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == a2.url }
+                await settle(presenter.$wallpaperURL) { $0 == a2.url }
                 #expect(presenter.wallpaperScale == 1.5)
             }
         }
@@ -1116,28 +1106,28 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 defer { presenter.stop() }
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
 
                 // B's first item becomes visible while its stream is still in flight.
                 interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b], completes: false)
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
 
                 // C cancels B's in-flight load and resolves empty. The rollback must
                 // target the VISIBLE wallpaper (B) — the applied source committed at
                 // B's first-item activation — not the stale pre-swap A.
                 interactor.set(source: WallpaperStyle(location: "c.mp4"), items: [])
                 config.fire()
-                await waitUntil { interactor.resolveCount == 3 }
-                await waitUntil { !presenter.isLoading }
+                await settle(interactor.$resolveCount) { $0 == 3 }
+                await settle(presenter.$isLoading) { !$0 }
 
                 // Re-saving A — genuinely different from the visible B — must reload
                 // instead of being swallowed by the diff guard against a stale target.
                 interactor.set(source: WallpaperStyle(location: "a.mp4"), items: [a])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
                 #expect(presenter.wallpaperURL == a.url)
             }
         }
@@ -1166,18 +1156,18 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 defer { presenter.stop() }
                 presenter.start()
-                await waitForItemsLoaded(presenter, count: 3)
+                await settle(presenter.$items) { $0.count == 3 }
                 #expect(presenter.wallpaperURL == a.url)
 
                 // A shuffle-mode source that resolves empty: the mode must NOT be
                 // committed eagerly — the old playlist keeps advancing in cycle order.
                 interactor.set(source: WallpaperStyle(location: "x.mp4"), items: [], mode: .shuffle)
                 config.fire()
-                await waitUntil { interactor.resolveCount == 2 }
-                await waitUntil { !presenter.isLoading }
+                await settle(interactor.$resolveCount) { $0 == 2 }
+                await settle(presenter.$isLoading) { !$0 }
 
                 presenter.controller.handleItemEnd()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
@@ -1198,13 +1188,13 @@ struct WallpaperPresenterTests {
             } operation: {
                 let presenter = WallpaperPresenter()
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
 
                 // The new source resolves to zero items (transient failure).
                 interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { !presenter.isLoading }
+                await settle(presenter.$isLoading) { !$0 }
 
                 // The old wallpaper stays fully intact — playlist and scale included.
                 #expect(presenter.wallpaperURL == a.url)
@@ -1216,7 +1206,7 @@ struct WallpaperPresenterTests {
                 interactor.set(source: WallpaperStyle(location: "b.mp4"), items: [b])
                 config.fire()
                 await flushMainQueue()
-                await waitUntil { presenter.wallpaperURL == b.url }
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
                 #expect(presenter.wallpaperURL == b.url)
             }
         }
@@ -1237,7 +1227,7 @@ struct WallpaperPresenterTests {
                 let presenter = WallpaperPresenter()
                 defer { presenter.stop() }
                 presenter.start()
-                await waitUntil { presenter.wallpaperURL == a.url }
+                await settle(presenter.$wallpaperURL) { $0 == a.url }
 
                 interactor.set(
                     source: WallpaperStyle(location: "slow.mp4"), items: [], completes: false)
@@ -1252,7 +1242,7 @@ struct WallpaperPresenterTests {
                 config.fire()
                 await flushMainQueue()
                 #expect(interactor.resolveCount == 3)
-                await waitUntil { !presenter.isLoading }
+                await settle(presenter.$isLoading) { !$0 }
                 #expect(presenter.wallpaperURL == a.url)
             }
         }

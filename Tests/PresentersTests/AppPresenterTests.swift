@@ -3,6 +3,7 @@ import ConcurrencyExtras
 import CoreGraphics
 import Dependencies
 import Domain
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -36,7 +37,7 @@ private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
 
 // MARK: - Tests
 
-@Suite("AppPresenter")
+@Suite("AppPresenter", .timeLimit(.minutes(1)))
 struct AppPresenterTests {
 
     @MainActor
@@ -55,10 +56,7 @@ struct AppPresenterTests {
         }
         presenter.start()
 
-        let deadline = ContinuousClock.now + .seconds(1)
-        while presenter.layout.windowFrame != expected.windowFrame, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(presenter.$layout) { $0.windowFrame == expected.windowFrame }
 
         #expect(presenter.layout.windowFrame == expected.windowFrame)
         #expect(presenter.layout.hostingFrame == expected.hostingFrame)
@@ -89,19 +87,13 @@ struct AppPresenterTests {
         presenter.start()
 
         // Wait for initial Just(()) to flush
-        let deadline1 = ContinuousClock.now + .seconds(1)
-        while presenter.layout.windowFrame != initial.windowFrame, ContinuousClock.now < deadline1 {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(presenter.$layout) { $0.windowFrame == initial.windowFrame }
         #expect(presenter.layout.windowFrame == initial.windowFrame)
 
         interactor.layoutToReturn = updated
         interactor.changes.send(())
 
-        let deadline2 = ContinuousClock.now + .seconds(1)
-        while presenter.layout.windowFrame != updated.windowFrame, ContinuousClock.now < deadline2 {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(presenter.$layout) { $0.windowFrame == updated.windowFrame }
 
         #expect(presenter.layout.windowFrame == updated.windowFrame)
         #expect(presenter.layout.hostingFrame == updated.hostingFrame)
@@ -150,10 +142,7 @@ struct AppPresenterTests {
         await Task.yield()
         await testClock.advance(by: .seconds(1))
 
-        let deadline = ContinuousClock.now + .seconds(2)
-        while presenter.layout.windowFrame != updated.windowFrame, ContinuousClock.now < deadline {
-            await Task.yield()
-        }
+        await settle(presenter.$layout) { $0.windowFrame == updated.windowFrame }
 
         #expect(presenter.layout.windowFrame == updated.windowFrame)
         presenter.stop()
@@ -197,10 +186,9 @@ struct AppPresenterTests {
         presenter.bind(ripplePresenter: ripple)
         presenter.start()
 
-        let deadline = ContinuousClock.now + .seconds(1)
-        while ripple.screenOrigin != CGPoint(x: 100, y: 40), ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        // ripple.screenOrigin isn't @Published; bind() subscribes to $layout
+        // synchronously, so settling on it also proves the ripple was updated.
+        await settle(presenter.$layout) { $0.screenOrigin == CGPoint(x: 100, y: 40) }
         #expect(ripple.screenOrigin == CGPoint(x: 100, y: 40))
     }
 
@@ -227,19 +215,14 @@ struct AppPresenterTests {
 
         presenter.bind(ripplePresenter: ripple)
         presenter.start()
-        let deadline1 = ContinuousClock.now + .seconds(1)
-        while ripple.screenOrigin != CGPoint(x: 0, y: 40), ContinuousClock.now < deadline1 {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        // ripple.screenOrigin isn't @Published; settle on the $layout it derives from.
+        await settle(presenter.$layout) { $0.screenOrigin == CGPoint(x: 0, y: 40) }
         #expect(ripple.screenOrigin == CGPoint(x: 0, y: 40))
 
         interactor.layoutToReturn = updated
         interactor.changes.send(())
 
-        let deadline2 = ContinuousClock.now + .seconds(1)
-        while ripple.screenOrigin != CGPoint(x: 1920, y: 40), ContinuousClock.now < deadline2 {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(presenter.$layout) { $0.screenOrigin == CGPoint(x: 1920, y: 40) }
         #expect(ripple.screenOrigin == CGPoint(x: 1920, y: 40))
     }
 
@@ -261,16 +244,13 @@ struct AppPresenterTests {
         }
 
         final class Counter: @unchecked Sendable {
-            var count = 0
+            @Published var count = 0
         }
         let counter = Counter()
 
         presenter.start()
         // Wait for initial layout to flush
-        let warm = ContinuousClock.now + .seconds(1)
-        while presenter.layout.windowFrame != first.windowFrame, ContinuousClock.now < warm {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(presenter.$layout) { $0.windowFrame == first.windowFrame }
         // Subscribe after start so the current layout is dropped.
         presenter.onWindowFrameChange { _ in counter.count += 1 }
 
@@ -286,11 +266,7 @@ struct AppPresenterTests {
         interactor.layoutToReturn = different
         interactor.changes.send(())
 
-        // Give the DispatchQueue.main scheduling time to flush (CI load varies).
-        let deadline = ContinuousClock.now + .seconds(3)
-        while counter.count < 3, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(counter.$count) { $0 >= 3 }
         #expect(counter.count == 3)
     }
 
@@ -308,10 +284,7 @@ struct AppPresenterTests {
         }
 
         presenter.start()
-        let warm = ContinuousClock.now + .seconds(1)
-        while presenter.layout.windowFrame != initial.windowFrame, ContinuousClock.now < warm {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await settle(presenter.$layout) { $0.windowFrame == initial.windowFrame }
         presenter.stop()
 
         interactor.layoutToReturn = updated
@@ -355,14 +328,14 @@ struct AppPresenterTests {
         }
 
         presenter.start()
-        await waitUntil { presenter.layout.windowFrame == initial.windowFrame }
+        await settle(presenter.$layout) { $0.windowFrame == initial.windowFrame }
 
         // A config reload changed the screen selector — the interactor now resolves
         // a different display. The ping must re-resolve without a restart.
         screen.layoutToReturn = updated
         config.fire()
         await flushMainQueue()
-        await waitUntil { presenter.layout.windowFrame == updated.windowFrame }
+        await settle(presenter.$layout) { $0.windowFrame == updated.windowFrame }
 
         #expect(presenter.layout.windowFrame == updated.windowFrame)
         presenter.stop()
@@ -388,7 +361,7 @@ struct AppPresenterTests {
         }
 
         presenter.start()
-        await waitUntil { presenter.layout.windowFrame == initial.windowFrame }
+        await settle(presenter.$layout) { $0.windowFrame == initial.windowFrame }
 
         // Switch to vacant via reload. layoutToReturn is still `initial`, so the
         // immediate re-resolve does not change the layout — only polling can.
@@ -402,7 +375,7 @@ struct AppPresenterTests {
         await Task.yield()
         await Task.yield()
         await testClock.advance(by: .seconds(1))
-        await waitUntil { presenter.layout.windowFrame == polled.windowFrame }
+        await settle(presenter.$layout) { $0.windowFrame == polled.windowFrame }
 
         #expect(presenter.layout.windowFrame == polled.windowFrame)
         presenter.stop()

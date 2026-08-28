@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -22,14 +23,6 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
 
 // MARK: - Helpers
 
-@MainActor
-private func waitForLyricsSuccess(_ presenter: LyricsPresenter, timeout: Duration = .seconds(3)) async {
-    let deadline = ContinuousClock.now + timeout
-    while !presenter.lyricsState.isSuccess, ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
 extension FetchState {
     fileprivate var isSuccess: Bool {
         switch self {
@@ -41,10 +34,10 @@ extension FetchState {
 
 // MARK: - Tests
 
-@Suite("LyricsPresenter duplicate / playback interactions")
+@Suite("LyricsPresenter duplicate / playback interactions", .timeLimit(.minutes(1)))
 struct LyricsPresenterDuplicateTests {
 
-    @Suite("duplicate lyrics suppression")
+    @Suite("duplicate lyrics suppression", .timeLimit(.minutes(1)))
     struct DuplicateLyrics {
         @MainActor
         @Test("sending same lyrics content twice does not re-trigger reveal")
@@ -63,7 +56,7 @@ struct LyricsPresenterDuplicateTests {
 
                 // First send
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
                 #expect(presenter.lyricsState == .success(content))
 
                 // Second send with identical content
@@ -77,7 +70,7 @@ struct LyricsPresenterDuplicateTests {
         }
     }
 
-    @Suite("playback position")
+    @Suite("playback position", .timeLimit(.minutes(1)))
     struct PlaybackPositionUpdates {
         @MainActor
         @Test("playbackPosition updates activeLineIndex via updateActiveLineTick without changing lyricsState")
@@ -103,7 +96,7 @@ struct LyricsPresenterDuplicateTests {
 
                 // First, resolve lyrics
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
                 #expect(presenter.lyricsState == .success(content))
 
                 // Send playback position at 6 seconds (should highlight "Second")
@@ -154,7 +147,7 @@ struct LyricsPresenterDuplicateTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // Set position while playing
                 positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 1.0))

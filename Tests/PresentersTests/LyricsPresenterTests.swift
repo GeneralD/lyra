@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -77,21 +78,6 @@ private final class StubConfigInteractor: ConfigInteractor, @unchecked Sendable 
     func stop() {}
 }
 
-// MARK: - Helpers
-
-@MainActor
-private func waitForLyricsSuccess(_ presenter: LyricsPresenter, timeout: Duration = .seconds(3)) async {
-    let deadline = ContinuousClock.now + timeout
-    while ContinuousClock.now < deadline {
-        switch presenter.lyricsState {
-        case .success: return
-        default: try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
-// Uses shared `waitUntil(timeout:condition:)` helper from Tests/PresentersTests/TestSupport/WaitUntil.swift.
-
 // MARK: - Tests
 
 @Suite("LyricsPresenter")
@@ -119,7 +105,7 @@ struct LyricsPresenterTests {
         }
     }
 
-    @Suite("config hot reload")
+    @Suite("config hot reload", .timeLimit(.minutes(1)))
     struct HotReload {
         @MainActor
         @Test("appStyleChanges 発火で lyricStyle/highlightStyle が新値に更新される")
@@ -151,7 +137,7 @@ struct LyricsPresenterTests {
                 trackStub.updateStyle(textLayout: updatedLayout)
                 appStyleChanges.send(())
 
-                await waitUntil { presenter.lyricStyle.fontSize == 20 }
+                await settle(presenter.$lyricStyle) { $0.fontSize == 20 }
 
                 #expect(presenter.lyricStyle.fontSize == 20)
                 #expect(presenter.lyricStyle.fontWeight == "bold")
@@ -160,7 +146,7 @@ struct LyricsPresenterTests {
         }
     }
 
-    @Suite("receive TrackUpdate")
+    @Suite("receive TrackUpdate", .timeLimit(.minutes(1)))
     struct Receive {
         @MainActor
         @Test("loading state sets lyricsState to .loading")
@@ -176,10 +162,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(lyricsState: .loading))
-                let deadline = ContinuousClock.now + .seconds(3)
-                while !presenter.lyricsState.isLoading, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$lyricsState) { $0.isLoading }
 
                 #expect(presenter.lyricsState.isLoading)
             }
@@ -199,10 +182,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(lyricsState: .notFound))
-                let deadline = ContinuousClock.now + .seconds(3)
-                while presenter.lyricsState != .failure, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$lyricsState) { $0 == .failure }
 
                 #expect(presenter.lyricsState == .failure)
                 #expect(presenter.displayLyricLines.isEmpty)
@@ -224,17 +204,11 @@ struct LyricsPresenterTests {
 
                 // First set to loading
                 subject.send(TrackUpdate(lyricsState: .loading))
-                var deadline = ContinuousClock.now + .seconds(3)
-                while !presenter.lyricsState.isLoading, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$lyricsState) { $0.isLoading }
 
                 // Then idle
                 subject.send(TrackUpdate(lyricsState: .idle))
-                deadline = ContinuousClock.now + .seconds(3)
-                while !presenter.lyricsState.isIdle, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await settle(presenter.$lyricsState) { $0.isIdle }
 
                 #expect(presenter.lyricsState.isIdle)
                 #expect(presenter.displayLyricLines.isEmpty)
@@ -258,7 +232,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 #expect(presenter.lyricsState == .success(content))
                 #expect(presenter.displayLyricLines.count == 2)
@@ -266,7 +240,7 @@ struct LyricsPresenterTests {
         }
     }
 
-    @Suite("updateActiveLineTick")
+    @Suite("updateActiveLineTick", .timeLimit(.minutes(1)))
     struct UpdateActiveLineTick {
         @MainActor
         @Test("skips update when playback rate is 0 (paused)")
@@ -290,7 +264,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // Send a paused playback position (rate = 0).
                 positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 0))
@@ -333,7 +307,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // Send position at 6s — should highlight Line B (time=5)
                 positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 1.0))
@@ -373,7 +347,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // Snapshot from 7s ago: rawElapsed=0, rate=1.0
                 // Interpolated at fixedNow: 0 + 1.0 * 7.0 = 7.0 → Line B (time=5)
@@ -425,7 +399,7 @@ struct LyricsPresenterTests {
             presenter.start()
 
             trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-            await waitForLyricsSuccess(presenter)
+            await settle(presenter.$lyricsState) { $0.isSuccess }
 
             // Snapshot from 7s ago at the captured fixedNow → 7.0 → Line B.
             positionSubject.send(
@@ -466,7 +440,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // Advance to Line C (index 2)
                 positionSubject.send(PlaybackPosition(rawElapsed: 12, timestamp: nil, playbackRate: 1.0))
@@ -514,7 +488,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // Jump directly to elapsed=7 — should land on Line D (index 3)
                 positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
@@ -551,7 +525,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 trackSubject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
 
                 // timestamp nil → rawElapsed used verbatim (no interpolation)
                 positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
@@ -567,7 +541,7 @@ struct LyricsPresenterTests {
         }
     }
 
-    @Suite("receive edge cases")
+    @Suite("receive edge cases", .timeLimit(.minutes(1)))
     struct ReceiveEdgeCases {
         @MainActor
         @Test("resolved with nil lyrics is ignored")
@@ -609,7 +583,7 @@ struct LyricsPresenterTests {
 
                 // First reveal
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
                 #expect(presenter.lyricsState == .success(content))
 
                 // Track state transitions after duplicate send
@@ -628,7 +602,7 @@ struct LyricsPresenterTests {
         }
     }
 
-    @Suite("stop")
+    @Suite("stop", .timeLimit(.minutes(1)))
     struct Stop {
         @MainActor
         @Test("stop cancels subscriptions and effects")
@@ -646,7 +620,7 @@ struct LyricsPresenterTests {
                 presenter.start()
 
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                await waitForLyricsSuccess(presenter)
+                await settle(presenter.$lyricsState) { $0.isSuccess }
                 #expect(presenter.lyricsState == .success(content))
 
                 presenter.stop()

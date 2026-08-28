@@ -4,6 +4,7 @@ import Dependencies
 import Domain
 import Presenters
 import SwiftUI
+import TestSupport
 import Testing
 
 @testable import Views
@@ -21,20 +22,6 @@ private func render<Content: View>(_ view: Content, size: CGSize) {
     // Canvas/TimelineView closures to run synchronously even outside a window.
     let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
     _ = renderer.cgImage
-}
-
-@MainActor
-private func waitUntil(
-    // 5s default (not 3s): the wallpaper loading-indicator test polls
-    // `showLoadingIndicator`, which flips inside a detached `Task { @MainActor }`
-    // whose scheduling can slip past 3s under CI parallel + coverage load.
-    timeout: Duration = .seconds(5),
-    condition: @escaping @MainActor () -> Bool
-) async {
-    let deadline = ContinuousClock.now + timeout
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
 }
 
 // MARK: - Stubs
@@ -101,7 +88,7 @@ private struct FixtureTrackInteractor: TrackInteractor, @unchecked Sendable {
 // MARK: - HeaderView
 
 @MainActor
-@Suite("HeaderView rendering")
+@Suite("HeaderView rendering", .timeLimit(.minutes(1)))
 struct HeaderViewRenderingTests {
     @Test("idle state renders empty body")
     func idleState() {
@@ -124,7 +111,7 @@ struct HeaderViewRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.displayTitle == "Song" }
+        await settle(presenter.$displayTitle) { $0 == "Song" }
 
         #expect(presenter.artworkOpacity == 0)
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
@@ -139,7 +126,7 @@ struct HeaderViewRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.displayTitle == "Song" }
+        await settle(presenter.$displayTitle) { $0 == "Song" }
 
         #expect(presenter.artworkOpacity > 0)
         #expect(presenter.artworkImage == nil)
@@ -163,7 +150,10 @@ struct HeaderViewRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.artworkImage != nil && presenter.displayTitle == "Song" }
+        // trackChange is subscribed before artwork in HeaderPresenter.start(), so
+        // displayTitle lands before artworkImage on the main queue.
+        await settle(presenter.$displayTitle) { $0 == "Song" }
+        await settle(presenter.$artworkImage) { $0 != nil }
 
         #expect(presenter.artworkImage != nil)
         render(HeaderView(presenter: presenter), size: CGSize(width: 600, height: 120))
@@ -349,7 +339,7 @@ struct RipplePathGeometryTests {
 // MARK: - LyricsColumnView
 
 @MainActor
-@Suite("LyricsColumnView rendering")
+@Suite("LyricsColumnView rendering", .timeLimit(.minutes(1)))
 struct LyricsColumnViewRenderingTests {
     @Test("empty lyrics renders without crash")
     func emptyLyrics() {
@@ -370,7 +360,7 @@ struct LyricsColumnViewRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.displayLyricLines == ["Line 1", "Line 2", "Line 3"] }
+        await settle(presenter.$displayLyricLines) { $0 == ["Line 1", "Line 2", "Line 3"] }
 
         render(LyricsColumnView(presenter: presenter), size: CGSize(width: 600, height: 300))
         #expect(presenter.displayLyricLines == ["Line 1", "Line 2", "Line 3"])
@@ -391,7 +381,7 @@ private struct PendingWallpaperInteractor: WallpaperInteractor, @unchecked Senda
 }
 
 @MainActor
-@Suite("OverlayContentView wallpaper loading indicator")
+@Suite("OverlayContentView wallpaper loading indicator", .timeLimit(.minutes(1)))
 struct OverlayContentViewLoadingTests {
     @Test("renders with idle wallpaper presenter (no loading state)")
     func rendersWithIdlePresenter() async {
@@ -463,7 +453,7 @@ struct OverlayContentViewLoadingTests {
         // Wait for the debounced indicator to flip so the rendered branch
         // exercises the `ProgressView()` builder chain, not just the empty
         // `if presenter.showLoadingIndicator` no-op path.
-        await waitUntil { wallpaperPresenter.showLoadingIndicator }
+        await settle(wallpaperPresenter.$showLoadingIndicator) { $0 }
         #expect(wallpaperPresenter.showLoadingIndicator)
         render(
             OverlayContentView(
@@ -509,7 +499,7 @@ struct OverlayContentViewLoadingTests {
 
         configStatusPresenter.start()
         defer { configStatusPresenter.stop() }
-        await waitUntil { configStatusPresenter.invalidConfig != nil }
+        await settle(configStatusPresenter.$invalidConfig) { $0 != nil }
 
         render(
             OverlayContentView(
@@ -570,7 +560,7 @@ private func maxAlpha(in image: CGImage, rect: CGRect, sampleStride: Int = 3) ->
 }
 
 @MainActor
-@Suite("ConfigStatusOverlay rendering")
+@Suite("ConfigStatusOverlay rendering", .timeLimit(.minutes(1)))
 struct ConfigStatusOverlayRenderingTests {
     @Test("invalid 状態で球体が描画される")
     func rendersWhenInvalid() async {
@@ -583,7 +573,7 @@ struct ConfigStatusOverlayRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.invalidConfig != nil }
+        await settle(presenter.$invalidConfig) { $0 != nil }
 
         render(ConfigStatusOverlay(presenter: presenter), size: CGSize(width: 800, height: 500))
         #expect(presenter.invalidConfig != nil)
@@ -610,7 +600,7 @@ struct ConfigStatusOverlayRenderingTests {
         }
         presenter.start()
         defer { presenter.stop() }
-        await waitUntil { presenter.invalidConfig != nil }
+        await settle(presenter.$invalidConfig) { $0 != nil }
 
         let size = CGSize(width: 800, height: 500)
         guard let image = renderedImage(ConfigStatusOverlay(presenter: presenter), size: size) else {
