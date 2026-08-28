@@ -21,7 +21,7 @@ public final class WallpaperPresenter: ObservableObject {
     @Published public private(set) var showLoadingIndicator: Bool = false
     @Published public private(set) var player: AVPlayer?
 
-    private(set) var items: [ResolvedWallpaperItem] = []
+    @Published private(set) var items: [ResolvedWallpaperItem] = []
     private var mode: WallpaperPlaybackMode = .cycle
     private var currentIndex: Int = 0
     /// The wallpaper source last *successfully* applied — committed only when a
