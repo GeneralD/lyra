@@ -195,7 +195,7 @@ Shared conventions:
 - Do not wait on async state with fixed `Task.sleep` delays. When the subject
   publishes the state (a presenter's `@Published` property, a spy that
   publishes what it recorded), await the publisher with `settle(_:until:)`
-  (AppRouterTests TestSupport, #347) and give the suite `.timeLimit` — a
+  (`TestSupport` target, #347 / #349) and give the suite `.timeLimit` — a
   deadline poll can expire *before* the `receive(on: .main)` block queued
   behind it and assert too early. Poll to a deadline only for state with no
   signal to await (thread-pool or out-of-process work: nonisolated `Task`,

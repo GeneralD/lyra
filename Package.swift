@@ -527,6 +527,15 @@ let package = Package(
 
         // ══ Tests ══
 
+        // Shared, test-only support code (#349). A regular target so several test targets
+        // can import it — SwiftPM test targets are independent modules and cannot see each
+        // other's sources. Keep it framework-light (Combine only); no Testing import.
+        .target(
+            name: "TestSupport",
+            dependencies: [],
+            path: "Tests/TestSupport"
+        ),
+
         .testTarget(
             name: "ScopedAPISessionTests",
             dependencies: [
@@ -718,7 +727,7 @@ let package = Package(
                 "Domain",
             ]
         ),
-        .testTarget(name: "ViewsTests", dependencies: ["Views", "Domain", "Presenters"]),
+        .testTarget(name: "ViewsTests", dependencies: ["Views", "Domain", "Presenters", "TestSupport"]),
         .testTarget(
             name: "AppRouterTests",
             dependencies: [
@@ -726,6 +735,7 @@ let package = Package(
                 "Presenters",
                 "Views",
                 "Domain",
+                "TestSupport",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
@@ -734,6 +744,7 @@ let package = Package(
             dependencies: [
                 "Presenters",
                 "Domain",
+                "TestSupport",
                 .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
