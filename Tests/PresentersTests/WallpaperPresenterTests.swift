@@ -1008,9 +1008,9 @@ struct WallpaperPresenterTests {
                 config.fire()
                 await flushMainQueue()
                 await settle(presenter.$wallpaperURL) { $0 == b.url }
+                await settle(attachCount.$count) { $0 == 2 }
 
                 #expect(presenter.player != nil)
-                #expect(attachCount.count == 2)
             }
         }
 
