@@ -15,6 +15,6 @@ import Combine
 /// A value that never arrives is a hang, not a flake — every suite that waits
 /// this way carries `.timeLimit` so a regression is reported, not waited on.
 @MainActor
-func settle<Value>(_ publisher: Published<Value>.Publisher, until condition: (Value) -> Bool) async {
+public func settle<Value>(_ publisher: Published<Value>.Publisher, until condition: (Value) -> Bool) async {
     for await value in publisher.values where condition(value) { return }
 }

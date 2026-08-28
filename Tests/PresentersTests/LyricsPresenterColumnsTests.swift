@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -17,20 +18,7 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
     var playbackPosition: AnyPublisher<PlaybackPosition, Never> { Empty().eraseToAnyPublisher() }
 }
 
-@MainActor
-private func waitForLyricsSuccess(
-    _ presenter: LyricsPresenter, timeout: Duration = .seconds(3)
-) async {
-    let deadline = ContinuousClock.now + timeout
-    while ContinuousClock.now < deadline {
-        switch presenter.lyricsState {
-        case .success: return
-        default: try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
-@Suite("LyricsPresenter columns")
+@Suite("LyricsPresenter columns", .timeLimit(.minutes(1)))
 struct LyricsPresenterColumnsTests {
 
     @MainActor
@@ -62,7 +50,7 @@ struct LyricsPresenterColumnsTests {
             presenter.start()
 
             subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-            await waitForLyricsSuccess(presenter)
+            await settle(presenter.$lyricsState) { if case .success = $0 { true } else { false } }
 
             let cols = presenter.columns(in: CGSize(width: 600, height: 300), lineHeight: 30).columns
             #expect(cols.count == 3, "25 lines / 10 per column = 3 columns")
@@ -89,7 +77,7 @@ struct LyricsPresenterColumnsTests {
             presenter.start()
 
             subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-            await waitForLyricsSuccess(presenter)
+            await settle(presenter.$lyricsState) { if case .success = $0 { true } else { false } }
 
             let cols = presenter.columns(in: CGSize(width: 600, height: 300), lineHeight: 30).columns
             #expect(cols.count == 3, "Should cap at maxColumns")
@@ -116,7 +104,7 @@ struct LyricsPresenterColumnsTests {
             presenter.start()
 
             subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-            await waitForLyricsSuccess(presenter)
+            await settle(presenter.$lyricsState) { if case .success = $0 { true } else { false } }
 
             let cols = presenter.columns(in: CGSize(width: 600, height: 300), lineHeight: 30).columns
             // activeLineIndex is nil initially for timed lyrics
@@ -140,7 +128,7 @@ struct LyricsPresenterColumnsTests {
             presenter.start()
 
             subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-            await waitForLyricsSuccess(presenter)
+            await settle(presenter.$lyricsState) { if case .success = $0 { true } else { false } }
 
             let cols = presenter.columns(in: CGSize(width: 600, height: 300), lineHeight: 30).columns
             #expect(cols.first?.highlightIndex == nil)

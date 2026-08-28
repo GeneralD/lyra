@@ -2,6 +2,7 @@ import Combine
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -14,8 +15,8 @@ private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Senda
     var spectrumStyle: SpectrumStyle
     let capturingSubject = CurrentValueSubject<Bool, Never>(false)
     var magnitudesValue: [Float] = []
-    private(set) var startCount = 0
-    private(set) var stopCount = 0
+    @Published private(set) var startCount = 0
+    @Published private(set) var stopCount = 0
 
     init(style: SpectrumStyle) { self.spectrumStyle = style }
 
@@ -27,7 +28,7 @@ private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Senda
 
 // MARK: - Tests
 
-@Suite("SpectrumPresenter")
+@Suite("SpectrumPresenter", .timeLimit(.minutes(1)))
 struct SpectrumPresenterTests {
     /// noiseReduction 0 is cava's passthrough: no integral accumulation and
     /// the gravity release is disabled (`> 0.1` guard), so the first captured
@@ -145,13 +146,13 @@ struct SpectrumPresenterTests {
         // Enable via config: the ping starts the capture without a restart.
         interactor.spectrumStyle = Self.enabledStyle
         config.fire()
-        await flushMainQueue()
+        await settle(interactor.$startCount) { $0 == 1 }
         #expect(interactor.startCount == 1)
 
         // Disable via config: the ping stops it.
         interactor.spectrumStyle = SpectrumStyle(enabled: false)
         config.fire()
-        await flushMainQueue()
+        await settle(interactor.$stopCount) { $0 == 1 }
         #expect(interactor.stopCount == 1)
     }
 
@@ -168,7 +169,7 @@ struct SpectrumPresenterTests {
         }
         presenter.start()
 
-        final class Counter: @unchecked Sendable { var count = 0 }
+        final class Counter: @unchecked Sendable { @Published var count = 0 }
         let counter = Counter()
         let cancellable = presenter.objectWillChange.sink { counter.count += 1 }
         defer { cancellable.cancel() }
@@ -181,7 +182,7 @@ struct SpectrumPresenterTests {
             enabled: true, stereo: false, barColor: .solid("#abcdef"),
             barWidth: 1, barSpacing: 0, noiseReduction: 0)
         config.fire()
-        await flushMainQueue()
+        await settle(counter.$count) { $0 == 1 }
         #expect(counter.count == 1)
         #expect(interactor.startCount == 1)  // a styling edit does not restart capture
 
