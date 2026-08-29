@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import TrackInteractor
@@ -48,24 +49,6 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
 
 // MARK: - Helpers
 
-private final class ArtworkCollector: @unchecked Sendable {
-    private let lock = NSLock()
-    private var emissions: [Data?] = []
-
-    var snapshot: [Data?] { lock.withLock { emissions } }
-
-    func append(_ data: Data?) {
-        lock.withLock { emissions.append(data) }
-    }
-
-    func waitForCount(_ target: Int, timeout: Duration = .seconds(2)) async {
-        let deadline = ContinuousClock.now + timeout
-        while snapshot.count < target, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
 private func makeInteractor(playback: StubPlaybackUseCase) -> TrackInteractorImpl {
     withDependencies {
         $0.continuousClock = ImmediateClock()
@@ -87,14 +70,14 @@ private func nowPlaying(title: String?, artist: String?, artwork: Data?) -> NowP
 
 // MARK: - Tests
 
-@Suite("TrackInteractor artwork stream", .serialized)
+@Suite("TrackInteractor artwork stream", .serialized, .timeLimit(.minutes(1)))
 struct TrackInteractorArtworkTests {
 
     @Test("artwork emits when artworkData changes within the same track (regression: #249)")
     func artworkEmitsOnDelayedArtwork() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = ArtworkCollector()
+        let collector = Collector<Data?>()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -102,18 +85,18 @@ struct TrackInteractorArtworkTests {
 
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: nil))
         await collector.waitForCount(1)
-        #expect(collector.snapshot == [nil])
+        #expect(collector.values == [nil])
 
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: realArt))
         await collector.waitForCount(2)
-        #expect(collector.snapshot == [nil, realArt])
+        #expect(collector.values == [nil, realArt])
     }
 
     @Test("artwork emits anew when title changes")
     func artworkEmitsOnTitleChange() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = ArtworkCollector()
+        let collector = Collector<Data?>()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -126,14 +109,14 @@ struct TrackInteractorArtworkTests {
         playback.subject.send(nowPlaying(title: "Song B", artist: "Artist", artwork: artB))
         await collector.waitForCount(2)
 
-        #expect(collector.snapshot == [artA, artB])
+        #expect(collector.values == [artA, artB])
     }
 
     @Test("artwork emits anew when artist changes")
     func artworkEmitsOnArtistChange() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = ArtworkCollector()
+        let collector = Collector<Data?>()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -146,14 +129,14 @@ struct TrackInteractorArtworkTests {
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist B", artwork: artB))
         await collector.waitForCount(2)
 
-        #expect(collector.snapshot == [artA, artB])
+        #expect(collector.values == [artA, artB])
     }
 
     @Test("artwork keeps the last known artwork when a same-track event carries none (regression: #265)")
     func artworkSticksThroughSameTrackNilEvent() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = ArtworkCollector()
+        let collector = Collector<Data?>()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -162,7 +145,7 @@ struct TrackInteractorArtworkTests {
 
         playback.subject.send(nowPlaying(title: "Song", artist: "Artist", artwork: realArt))
         await collector.waitForCount(1)
-        #expect(collector.snapshot == [realArt])
+        #expect(collector.values == [realArt])
 
         // System re-broadcasts (e.g. during display reconfiguration) often omit
         // the artwork bytes — the shown artwork must not be cleared.
@@ -172,14 +155,14 @@ struct TrackInteractorArtworkTests {
         // track's artwork arrives, the nil event has provably emitted nothing.
         playback.subject.send(nowPlaying(title: "Next Song", artist: "Artist", artwork: nextArt))
         await collector.waitForCount(2)
-        #expect(collector.snapshot == [realArt, nextArt])
+        #expect(collector.values == [realArt, nextArt])
     }
 
     @Test("artwork does not stick across unknown (nil-title) tracks")
     func artworkDoesNotStickAcrossNilTitleTracks() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = ArtworkCollector()
+        let collector = Collector<Data?>()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -187,20 +170,20 @@ struct TrackInteractorArtworkTests {
 
         playback.subject.send(nowPlaying(title: nil, artist: nil, artwork: realArt))
         await collector.waitForCount(1)
-        #expect(collector.snapshot == [realArt])
+        #expect(collector.values == [realArt])
 
         // Unknown tracks cannot be proven identical — a nil-title event without
         // artwork must clear instead of inheriting the previous artwork.
         playback.subject.send(nowPlaying(title: nil, artist: nil, artwork: nil))
         await collector.waitForCount(2)
-        #expect(collector.snapshot == [realArt, nil])
+        #expect(collector.values == [realArt, nil])
     }
 
     @Test("artwork clears when the track changes and the new track has none")
     func artworkClearsOnTrackChangeWithoutArtwork() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = ArtworkCollector()
+        let collector = Collector<Data?>()
         let cancellable = interactor.artwork.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -212,7 +195,7 @@ struct TrackInteractorArtworkTests {
         playback.subject.send(nowPlaying(title: "Song B", artist: "Artist", artwork: nil))
         await collector.waitForCount(2)
 
-        #expect(collector.snapshot == [realArt, nil])
+        #expect(collector.values == [realArt, nil])
     }
 
     @Test("sameTrack treats nil and empty-string artist as the same value")

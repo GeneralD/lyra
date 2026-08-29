@@ -3,6 +3,7 @@ import Combine
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import WallpaperInteractor
@@ -56,7 +57,7 @@ private func collect(_ stream: AsyncStream<ResolvedWallpaperItem>) async -> [Res
     await stream.reduce(into: [ResolvedWallpaperItem]()) { $0.append($1) }
 }
 
-@Suite("WallpaperInteractor")
+@Suite("WallpaperInteractor", .timeLimit(.minutes(1)))
 struct WallpaperInteractorImplTests {
 
     @Test("resolvedWallpapers emits empty stream when no wallpaper configured")
@@ -220,19 +221,15 @@ struct WallpaperInteractorImplTests {
             WallpaperInteractorImpl()
         }
 
-        final class Collector: @unchecked Sendable { var events: [SleepWakeEvent] = [] }
-        let collector = Collector()
-        let cancellable = interactor.systemSleepChanges.sink { collector.events.append($0) }
+        let collector = Collector<SleepWakeEvent>()
+        let cancellable = interactor.systemSleepChanges.sink { collector.append($0) }
 
         NSWorkspace.shared.notificationCenter.post(
             name: NSWorkspace.screensDidSleepNotification, object: nil)
 
-        let deadline = ContinuousClock.now + .seconds(1)
-        while collector.events.isEmpty, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await collector.waitForCount(1)
 
-        #expect(collector.events.contains(.willSleep))
+        #expect(collector.values.contains(.willSleep))
         cancellable.cancel()
     }
 
@@ -245,19 +242,15 @@ struct WallpaperInteractorImplTests {
             WallpaperInteractorImpl()
         }
 
-        final class Collector: @unchecked Sendable { var events: [SleepWakeEvent] = [] }
-        let collector = Collector()
-        let cancellable = interactor.systemSleepChanges.sink { collector.events.append($0) }
+        let collector = Collector<SleepWakeEvent>()
+        let cancellable = interactor.systemSleepChanges.sink { collector.append($0) }
 
         NSWorkspace.shared.notificationCenter.post(
             name: NSWorkspace.screensDidWakeNotification, object: nil)
 
-        let deadline = ContinuousClock.now + .seconds(1)
-        while collector.events.isEmpty, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await collector.waitForCount(1)
 
-        #expect(collector.events.contains(.didWake))
+        #expect(collector.values.contains(.didWake))
         cancellable.cancel()
     }
 }

@@ -2,11 +2,12 @@ import Combine
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import ConfigInteractor
 
-@Suite("ConfigInteractorImpl")
+@Suite("ConfigInteractorImpl", .timeLimit(.minutes(1)))
 struct ConfigInteractorImplTests {
     @Test(".updated で appStyleChanges が発火し invalidConfig が nil になる")
     func firesPingOnUpdate() async {
@@ -18,33 +19,18 @@ struct ConfigInteractorImplTests {
             ConfigInteractorImpl()
         }
 
-        // Written from Combine sink callbacks and read from the polling loop —
-        // lock every access so the cross-thread reads are well-defined.
-        final class Observed: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _pinged = false
-            private var _lastInvalid: ConfigReloadFailure?
-            var pinged: Bool {
-                get { lock.withLock { _pinged } }
-                set { lock.withLock { _pinged = newValue } }
-            }
-            var lastInvalid: ConfigReloadFailure? {
-                get { lock.withLock { _lastInvalid } }
-                set { lock.withLock { _lastInvalid = newValue } }
-            }
-        }
-        let observed = Observed()
-        let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
-        let invalidCancellable = interactor.invalidConfig.sink { observed.lastInvalid = $0 }
+        // Recorded from Combine sink callbacks running on the interactor's worker
+        // context (a nonisolated debounce `Task`, not MainActor) — Collector, not
+        // settle(_:until:), is the spy for state written off the main actor (#349).
+        let pings = Collector<Void>()
+        let invalids = Collector<ConfigReloadFailure?>()
+        let pingCancellable = interactor.appStyleChanges.sink { pings.append(()) }
+        let invalidCancellable = interactor.invalidConfig.sink { invalids.append($0) }
         interactor.start()
         useCase.fire()  // Emit a watch event.
 
-        let deadline = ContinuousClock.now + .seconds(2)
-        while !observed.pinged, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(observed.pinged)
-        #expect(observed.lastInvalid == nil)
+        await pings.waitForCount(1)
+        await invalids.settle { $0.last == .some(nil) }
         pingCancellable.cancel()
         invalidCancellable.cancel()
         interactor.stop()
@@ -60,33 +46,22 @@ struct ConfigInteractorImplTests {
             ConfigInteractorImpl()
         }
 
-        // Written from Combine sink callbacks and read from the polling loop —
-        // lock every access so the cross-thread reads are well-defined.
-        final class Observed: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _invalid: ConfigReloadFailure?
-            private var _pinged = false
-            var invalid: ConfigReloadFailure? {
-                get { lock.withLock { _invalid } }
-                set { lock.withLock { _invalid = newValue } }
-            }
-            var pinged: Bool {
-                get { lock.withLock { _pinged } }
-                set { lock.withLock { _pinged = newValue } }
-            }
-        }
-        let observed = Observed()
-        let invalidCancellable = interactor.invalidConfig.sink { observed.invalid = $0 }
-        let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
+        // Recorded from Combine sink callbacks running on the interactor's worker
+        // context (a nonisolated debounce `Task`, not MainActor) — Collector, not
+        // settle(_:until:), is the spy for state written off the main actor (#349).
+        let invalids = Collector<ConfigReloadFailure?>()
+        let pings = Collector<Void>()
+        let invalidCancellable = interactor.invalidConfig.sink { invalids.append($0) }
+        let pingCancellable = interactor.appStyleChanges.sink { pings.append(()) }
         interactor.start()
         useCase.fire()
 
-        let deadline = ContinuousClock.now + .seconds(2)
-        while observed.invalid == nil, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(observed.invalid?.reason == .decode("bad"))
-        #expect(!observed.pinged)
+        await invalids.settle { $0.last.map { $0 != nil } ?? false }
+        let latestInvalid = invalids.last.flatMap { $0 }
+        #expect(latestInvalid?.reason == .decode("bad"))
+        // .invalid never sends appStyleChanges (see ConfigInteractorImpl.applyReload), so
+        // once the failure above is observed, no ping from this reload can still be pending.
+        #expect(pings.count == 0)
         invalidCancellable.cancel()
         pingCancellable.cancel()
         interactor.stop()
@@ -159,27 +134,22 @@ struct ConfigInteractorImplTests {
             ConfigInteractorImpl()
         }
 
-        // Written from a Combine sink callback and read after yields — lock
-        // every access so the cross-thread reads are well-defined.
-        final class Observed: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _pinged = false
-            var pinged: Bool {
-                get { lock.withLock { _pinged } }
-                set { lock.withLock { _pinged = newValue } }
-            }
-        }
-        let observed = Observed()
-        let cancellable = interactor.appStyleChanges.sink { observed.pinged = true }
+        // Recorded from a Combine sink callback running on the interactor's worker
+        // context (a nonisolated debounce `Task`, not MainActor) — Collector is the
+        // spy for state written off the main actor (#349).
+        let pings = Collector<Void>()
+        let cancellable = interactor.appStyleChanges.sink { pings.append(()) }
 
         interactor.start()
         useCase.fire()  // The debounce task is now pending on clock.sleep.
         interactor.stop()  // Cancels: the sleep throws and the task still reaches applyReload.
 
-        // The woken task must bail on the armed/cancelled guard instead of
-        // publishing a spurious update after teardown.
+        // Negative check (proving absence, not presence): there is no publish event
+        // to await here, so this stays a fixed-iteration poll instead of a Collector
+        // wait — settle(until:) can only observe a condition becoming true, never
+        // confirm one stays false forever.
         for _ in 0..<20 { await Task.yield() }
-        #expect(!observed.pinged)
+        #expect(pings.count == 0)
         cancellable.cancel()
     }
 }

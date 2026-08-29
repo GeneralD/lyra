@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import TrackInteractor
@@ -58,65 +59,6 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
 
 // MARK: - Helpers
 
-private final class UpdateCollector: @unchecked Sendable {
-    private struct Waiter {
-        let id: UUID
-        let predicate: @Sendable (TrackUpdate) -> Bool
-        let continuation: CheckedContinuation<TrackUpdate, Never>
-    }
-
-    private let lock = NSLock()
-    private var _updates: [TrackUpdate] = []
-    private var waiters: [Waiter] = []
-
-    var updates: [TrackUpdate] {
-        lock.withLock { _updates }
-    }
-
-    var count: Int {
-        lock.withLock { _updates.count }
-    }
-
-    func append(_ update: TrackUpdate) {
-        let matchedContinuations = lock.withLock { () -> [CheckedContinuation<TrackUpdate, Never>] in
-            _updates.append(update)
-            let matched = waiters.filter { $0.predicate(update) }
-            waiters.removeAll { waiter in
-                matched.contains { $0.id == waiter.id }
-            }
-            return matched.map(\.continuation)
-        }
-
-        for continuation in matchedContinuations {
-            continuation.resume(returning: update)
-        }
-    }
-
-    func contains(where predicate: (TrackUpdate) -> Bool) -> Bool {
-        lock.withLock { _updates.contains(where: predicate) }
-    }
-
-    func waitFor(predicate: @escaping @Sendable (TrackUpdate) -> Bool) async -> TrackUpdate {
-        if let existing = lock.withLock({ _updates.first(where: predicate) }) {
-            return existing
-        }
-        let waiterID = UUID()
-        return await withCheckedContinuation { continuation in
-            let existing = lock.withLock { () -> TrackUpdate? in
-                if let existing = _updates.first(where: predicate) {
-                    return existing
-                }
-                waiters.append(Waiter(id: waiterID, predicate: predicate, continuation: continuation))
-                return nil
-            }
-
-            if let existing {
-                continuation.resume(returning: existing)
-            }
-        }
-    }
-}
-
 private func makeInteractor(
     playback: StubPlaybackUseCase,
     metadata: any MetadataUseCase = InstantMetadataUseCase(),
@@ -137,7 +79,7 @@ private func makeInteractor(
 
 // MARK: - Tests
 
-@Suite("TrackInteractor race condition", .serialized)
+@Suite("TrackInteractor race condition", .serialized, .timeLimit(.minutes(1)))
 struct TrackInteractorRaceTests {
 
     @Test("rapid track change cancels stale resolution — only latest track emits resolved")
@@ -146,7 +88,7 @@ struct TrackInteractorRaceTests {
         let clock = TestClock<Duration>()
         let interactor = makeInteractor(playback: playback, clock: clock)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
         defer { cancellable.cancel() }
@@ -166,7 +108,7 @@ struct TrackInteractorRaceTests {
             update.title == "Track B" && (update.lyricsState == .resolved || update.lyricsState == .notFound)
         }
 
-        let resolved = collector.updates.filter { $0.lyricsState == .resolved || $0.lyricsState == .notFound }
+        let resolved = collector.values.filter { $0.lyricsState == .resolved || $0.lyricsState == .notFound }
         #expect(!resolved.contains { $0.title == "Track A" }, "Track A resolution should be cancelled")
         #expect(resolved.contains { $0.title == "Track B" }, "Track B resolution should complete")
     }
@@ -177,7 +119,7 @@ struct TrackInteractorRaceTests {
         let clock = TestClock<Duration>()
         let interactor = makeInteractor(playback: playback, clock: clock)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
         defer { cancellable.cancel() }
@@ -192,7 +134,7 @@ struct TrackInteractorRaceTests {
             update.title == "Track A" && (update.lyricsState == .resolved || update.lyricsState == .notFound)
         }
 
-        #expect(!collector.updates.isEmpty, "Track A should have emitted before nil")
+        #expect(!collector.values.isEmpty, "Track A should have emitted before nil")
 
         let countBeforeNil = collector.count
 
@@ -201,7 +143,7 @@ struct TrackInteractorRaceTests {
         await Task.yield()
         await MainActor.run {}
 
-        let afterNil = collector.updates.dropFirst(countBeforeNil)
+        let afterNil = collector.values.dropFirst(countBeforeNil)
         #expect(afterNil.isEmpty, "nil NowPlaying should not emit any TrackUpdate — last track stays visible")
     }
 
@@ -211,7 +153,7 @@ struct TrackInteractorRaceTests {
         let clock = TestClock<Duration>()
         let interactor = makeInteractor(playback: playback, clock: clock)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange
             .sink { collector.append($0) }
         defer { cancellable.cancel() }
@@ -231,7 +173,7 @@ struct TrackInteractorRaceTests {
             update.title == "Track B" && (update.lyricsState == .resolved || update.lyricsState == .notFound)
         }
 
-        let resolvedA = collector.updates.filter { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
+        let resolvedA = collector.values.filter { $0.title == "Track A" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) }
         #expect(resolvedA.isEmpty, "Track A resolution must be cancelled by switchToLatest")
         #expect(
             collector.contains { $0.title == "Track B" && ($0.lyricsState == .resolved || $0.lyricsState == .notFound) },
@@ -284,7 +226,7 @@ struct TrackInteractorRaceTests {
         let clock = TestClock<Duration>()
         let interactor = makeInteractor(playback: playback, clock: clock)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -306,7 +248,7 @@ struct TrackInteractorRaceTests {
         // No resolved/notFound should ever follow — the guard returns Just(loading)
         // without scheduling any async work.
         await clock.advance(by: .milliseconds(500))
-        let resolved = collector.updates.filter {
+        let resolved = collector.values.filter {
             $0.lyricsState == .resolved || $0.lyricsState == .notFound
         }
         #expect(resolved.isEmpty, "no resolution should be attempted for nil title/artist")

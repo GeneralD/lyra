@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import TrackInteractor
@@ -51,25 +52,6 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
     var existingConfigPath: String? { nil }
 }
 
-// MARK: - Collector
-
-private final class UpdateCollector: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [TrackUpdate] = []
-
-    func append(_ update: TrackUpdate) {
-        lock.withLock { storage.append(update) }
-    }
-
-    var updates: [TrackUpdate] {
-        lock.withLock { storage }
-    }
-
-    func contains(where predicate: (TrackUpdate) -> Bool) -> Bool {
-        lock.withLock { storage.contains(where: predicate) }
-    }
-}
-
 // MARK: - Helpers
 
 private let aiEndpoint = AIEndpoint(endpoint: "https://api.example.com", model: "gpt-4", apiKey: "sk-test")
@@ -100,16 +82,9 @@ private func sendTrack(_ playback: StubPlaybackUseCase) {
             duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 }
 
-private func waitUntil(timeout: Duration = .seconds(3), _ condition: @Sendable () -> Bool) async {
-    let deadline = ContinuousClock.now + timeout
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-}
-
 // MARK: - Tests
 
-@Suite("TrackInteractor AI processing indicator", .serialized)
+@Suite("TrackInteractor AI processing indicator", .serialized, .timeLimit(.minutes(1)))
 struct TrackInteractorAIProcessingTests {
 
     @Test("emits aiResolving update when AI is configured and the LLM cache misses")
@@ -117,12 +92,12 @@ struct TrackInteractorAIProcessingTests {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback, aiConfigured: true, aiCached: false)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
         sendTrack(playback)
-        await waitUntil { collector.contains(where: \.aiResolving) }
+        await collector.waitFor { $0.aiResolving }
 
         #expect(
             collector.contains { $0.aiResolving && $0.title == "Song" && $0.artist == "Artist" },
@@ -134,12 +109,12 @@ struct TrackInteractorAIProcessingTests {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback, aiConfigured: true, aiCached: true)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
         sendTrack(playback)
-        await waitUntil { collector.contains { $0.lyricsState == .notFound || $0.lyricsState == .resolved } }
+        await collector.waitFor { $0.lyricsState == .notFound || $0.lyricsState == .resolved }
 
         #expect(!collector.contains(where: \.aiResolving), "cache hit must not show the processing indicator")
     }
@@ -149,12 +124,12 @@ struct TrackInteractorAIProcessingTests {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback, aiConfigured: false, aiCached: false)
 
-        let collector = UpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
         sendTrack(playback)
-        await waitUntil { collector.contains { $0.lyricsState == .notFound || $0.lyricsState == .resolved } }
+        await collector.waitFor { $0.lyricsState == .notFound || $0.lyricsState == .resolved }
 
         #expect(!collector.contains(where: \.aiResolving), "no AI endpoint means no processing indicator")
     }
