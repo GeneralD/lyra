@@ -70,10 +70,10 @@ struct AsyncRunnableCommandTests {
 
     @Suite("supports async operations", .serialized)
     struct AsyncFeatures {
-        @Test("awaits Task.sleep without blocking cooperative thread pool")
-        func taskSleep() async throws {
+        @Test("awaits a suspension resumed from outside the pool without blocking it")
+        func foreignThreadResume() async throws {
             Witnesses.current = Witness()
-            var command = SleepingCommand()
+            var command = SuspendingCommand()
             try runSync(&command)
             #expect(await Witnesses.current.called)
         }
@@ -144,11 +144,17 @@ private struct CustomErrorCommand: AsyncRunnableCommand {
     }
 }
 
-private struct SleepingCommand: AsyncRunnableCommand {
-    static let configuration = CommandConfiguration(commandName: "sleep")
+/// Suspends for real — the continuation is resumed from a GCD thread, not from the
+/// cooperative pool — so the bridge's `semaphore.wait()` has to let that resumption
+/// through. A `Task.sleep` proved the same thing with a timer whose length was no part
+/// of the test's meaning (#353).
+private struct SuspendingCommand: AsyncRunnableCommand {
+    static let configuration = CommandConfiguration(commandName: "suspend")
 
     mutating func run() async throws {
-        try await Task.sleep(for: .milliseconds(10))
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume() }
+        }
         await Witnesses.current.markCalled()
     }
 }

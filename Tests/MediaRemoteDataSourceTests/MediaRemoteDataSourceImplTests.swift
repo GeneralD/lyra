@@ -1,6 +1,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import MediaRemoteDataSource
@@ -115,6 +116,7 @@ struct MediaRemoteDataSourceImplTests {
 
     @Test("concurrent polls serialize iterator access")
     func concurrentPollsSerializeIteratorAccess() async throws {
+        let firstLineGate = Collector<Void>()
         let gateway = StreamingGateway(
             streamPlans: [
                 [
@@ -122,7 +124,7 @@ struct MediaRemoteDataSourceImplTests {
                     Self.jsonLine(title: "Second", artist: "Artist", hasInfo: true),
                 ]
             ],
-            firstYieldDelayNanoseconds: 50_000_000
+            firstLineGate: firstLineGate
         )
 
         await withDependencies {
@@ -131,7 +133,13 @@ struct MediaRemoteDataSourceImplTests {
             let dataSource = MediaRemoteDataSourceImpl()
             let results = await withTaskGroup(of: MediaRemotePollResult.self) { group in
                 group.addTask { await dataSource.poll() }
+                // The first poll is now inside `next()` on the shared iterator and stays
+                // there until the gate opens, so the second poll is issued while the
+                // first provably holds the iterator — the overlap is observed, not
+                // assumed from a delay (#353).
+                await gateway.nextRequests.waitForCount(1)
                 group.addTask { await dataSource.poll() }
+                firstLineGate.append(())
 
                 var results: [MediaRemotePollResult] = []
                 for await result in group {
@@ -146,6 +154,9 @@ struct MediaRemoteDataSourceImplTests {
             }
             #expect(Set(titles) == ["First", "Second"])
             #expect(gateway.runStreamingCallCount == 1)
+            // One request per line, in order: the second poll consumed the same stream
+            // after the first, never alongside it.
+            #expect(gateway.nextRequests.values == [0, 1])
         }
     }
 
@@ -421,17 +432,20 @@ private struct CapturedCommand: Sendable {
 private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     private let lock = NSLock()
     private var streamPlans: [[String]]
-    private let firstYieldDelayNanoseconds: UInt64
+    /// Opened by the test to let line 0 of each stream through; `nil` streams freely.
+    private let firstLineGate: Collector<Void>?
+    /// The index of every line a consumer asked for, recorded as its `next()` is entered.
+    let nextRequests = Collector<Int>()
     private(set) var runStreamingCallCount = 0
     private var capturedRunCommands: [CapturedCommand] = []
     private var capturedStreamingCommands: [CapturedCommand] = []
 
     init(
         streamPlans: [[String]],
-        firstYieldDelayNanoseconds: UInt64 = 0
+        firstLineGate: Collector<Void>? = nil
     ) {
         self.streamPlans = streamPlans
-        self.firstYieldDelayNanoseconds = firstYieldDelayNanoseconds
+        self.firstLineGate = firstLineGate
     }
 
     var runCommands: [CapturedCommand] {
@@ -473,17 +487,30 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
             return streamPlans.removeFirst()
         }
 
-        return AsyncStream { continuation in
-            let task = Task {
-                for (index, line) in lines.enumerated() {
-                    if index == 0, firstYieldDelayNanoseconds > 0 {
-                        try? await Task.sleep(nanoseconds: firstYieldDelayNanoseconds)
-                    }
-                    continuation.yield(line)
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in task.cancel() }
+        // `unfolding` runs the closure inside the consumer's `next()`, so the recording
+        // and the gate sit exactly where the subject suspends: a test can observe that a
+        // poll is *inside* `next()` instead of guessing it from a delay (#353).
+        let cursor = LineCursor()
+        return AsyncStream(unfolding: { [nextRequests, firstLineGate] in
+            let index = cursor.advance()
+            guard index < lines.count else { return nil }
+            nextRequests.append(index)
+            if index == 0, let firstLineGate { await firstLineGate.waitForCount(1) }
+            return lines[index]
+        })
+    }
+}
+
+/// The next line index a stream hands out; `next()` calls are serialised by the
+/// subject, the lock only keeps the counter honest if they are not.
+private final class LineCursor: @unchecked Sendable {
+    private let lock = NSLock()
+    private var index = 0
+
+    func advance() -> Int {
+        lock.withLock {
+            defer { index += 1 }
+            return index
         }
     }
 }
