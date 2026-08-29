@@ -8,13 +8,14 @@ import Domain
 import Entity
 import Files
 import Foundation
+import TestSupport
 import Testing
 
 /// Wires real `ConfigUseCaseImpl`, `ConfigInteractorImpl`, `ConfigRepositoryImpl`, and
 /// `ConfigDataSourceImpl(configHome:)` instances against a temporary config file, then
 /// manually fires a fake `ConfigWatchGateway` to verify the complete in-process
 /// hot-reload pipeline for issue #41.
-@Suite("Config Hot Reload — in-process pipeline E2E")
+@Suite("Config Hot Reload — in-process pipeline E2E", .timeLimit(.minutes(1)))
 struct ConfigHotReloadPipelineTests {
     @Test("初期状態は config A、B へ書換 + fire でホットリロード成立、不正 config は前回値保持")
     func hotReloadPipeline() async throws {
@@ -59,54 +60,39 @@ struct ConfigHotReloadPipelineTests {
         // 1. Verify that config A is initially reflected in configUseCase.appStyle.
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "a.mp4")
 
-        // Written from Combine sink callbacks (interactor worker context) and read
-        // from the test's polling loop — lock every access so the cross-thread
-        // reads are well-defined instead of racy plain vars.
-        final class Observed: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _pinged = false
-            private var _lastInvalid: ConfigReloadFailure?
-            var pinged: Bool {
-                get { lock.withLock { _pinged } }
-                set { lock.withLock { _pinged = newValue } }
-            }
-            var lastInvalid: ConfigReloadFailure? {
-                get { lock.withLock { _lastInvalid } }
-                set { lock.withLock { _lastInvalid = newValue } }
-            }
-        }
-        let observed = Observed()
-        let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
-        let invalidCancellable = interactor.invalidConfig.sink { observed.lastInvalid = $0 }
+        // Recorded from Combine sink callbacks running on the interactor's worker
+        // context (a nonisolated debounce `Task`, not MainActor) — Collector, not
+        // settle(_:until:), is the spy for state written off the main actor (#349).
+        let pings = Collector<Void>()
+        let invalids = Collector<ConfigReloadFailure?>()
+        let pingCancellable = interactor.appStyleChanges.sink { pings.append(()) }
+        let invalidCancellable = interactor.invalidConfig.sink { invalids.append($0) }
         interactor.start()
 
         // 2. Write config B, fire the gateway, and verify appStyleChanges emits and appStyle reflects B.
         try configFile.write(#"wallpaper = "b.mp4""#)
         gateway.fire()
 
-        let updateDeadline = ContinuousClock.now + .seconds(3)
-        while !observed.pinged, ContinuousClock.now < updateDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(observed.pinged)
-        #expect(observed.lastInvalid == nil)
+        await pings.waitForCount(1)
+        await invalids.settle { $0.last == .some(nil) }
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "b.mp4")
 
         // 3. Write invalid TOML, fire the gateway, and verify invalidConfig emits a failure
-        //    while appStyle retains config B.
-        observed.pinged = false
+        //    while appStyle retains config B. `pings` only ever grows, so "no further ping"
+        //    is checked as "count unchanged since before this write" rather than a reset flag.
+        let pingsBeforeInvalidWrite = pings.count
         try configFile.write("wallpaper = [")
         gateway.fire()
 
-        let invalidDeadline = ContinuousClock.now + .seconds(3)
-        while observed.lastInvalid == nil, ContinuousClock.now < invalidDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        guard case .decode = observed.lastInvalid?.reason else {
-            Issue.record("expected .decode failure, got \(String(describing: observed.lastInvalid))")
+        await invalids.settle { $0.last.map { $0 != nil } ?? false }
+        let latestInvalid = invalids.last.flatMap { $0 }
+        guard case .decode = latestInvalid?.reason else {
+            Issue.record("expected .decode failure, got \(String(describing: latestInvalid))")
             return
         }
-        #expect(!observed.pinged)
+        // .invalid never sends appStyleChanges (see ConfigInteractorImpl.applyReload), so
+        // once the failure above is observed, no ping from this reload can still be pending.
+        #expect(pings.count == pingsBeforeInvalidWrite)
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "b.mp4")
 
         pingCancellable.cancel()
@@ -147,25 +133,13 @@ struct ConfigHotReloadPipelineTests {
 
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "a.mp4")
 
-        // Written from Combine sink callbacks (interactor worker context) and read
-        // from the test's polling loop — lock every access so the cross-thread
-        // reads are well-defined instead of racy plain vars.
-        final class Observed: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _pinged = false
-            private var _lastInvalid: ConfigReloadFailure?
-            var pinged: Bool {
-                get { lock.withLock { _pinged } }
-                set { lock.withLock { _pinged = newValue } }
-            }
-            var lastInvalid: ConfigReloadFailure? {
-                get { lock.withLock { _lastInvalid } }
-                set { lock.withLock { _lastInvalid = newValue } }
-            }
-        }
-        let observed = Observed()
-        let pingCancellable = interactor.appStyleChanges.sink { observed.pinged = true }
-        let invalidCancellable = interactor.invalidConfig.sink { observed.lastInvalid = $0 }
+        // Recorded from Combine sink callbacks running on the interactor's worker
+        // context (a nonisolated debounce `Task`, not MainActor) — Collector, not
+        // settle(_:until:), is the spy for state written off the main actor (#349).
+        let pings = Collector<Void>()
+        let invalids = Collector<ConfigReloadFailure?>()
+        let pingCancellable = interactor.appStyleChanges.sink { pings.append(()) }
+        let invalidCancellable = interactor.invalidConfig.sink { invalids.append($0) }
         interactor.start()
 
         // Edit wallpaper to b.mp4 while introducing a structurally invalid [lyrics]
@@ -181,12 +155,8 @@ struct ConfigHotReloadPipelineTests {
             """)
         gateway.fire()
 
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !observed.pinged, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(observed.pinged)
-        #expect(observed.lastInvalid == nil)
+        await pings.waitForCount(1)
+        await invalids.settle { $0.last == .some(nil) }
         #expect(sharedUseCase.appStyle.wallpaper?.items.first?.location == "b.mp4")
 
         pingCancellable.cancel()

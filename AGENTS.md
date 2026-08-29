@@ -197,9 +197,13 @@ Shared conventions:
   publishes what it recorded), await the publisher with `settle(_:until:)`
   (`TestSupport` target, #347 / #349) and give the suite `.timeLimit` — a
   deadline poll can expire *before* the `receive(on: .main)` block queued
-  behind it and assert too early. Poll to a deadline only for state with no
-  signal to await (thread-pool or out-of-process work: nonisolated `Task`,
-  subprocess, `DispatchSource`, framework callbacks). Never redirect the
+  behind it and assert too early. When the subject reports to a spy you own
+  off the main actor (a Combine sink on the worker, a nonisolated `Task`),
+  record into `Collector<Element>` (`TestSupport`, #349) and await
+  `waitForCount` / `waitFor` / `settle(until:)` — the write resumes the
+  waiter, no deadline. Poll to a deadline only for state with no signal to
+  await (out-of-process work: subprocess, `DispatchSource`, framework
+  callbacks you cannot route through a spy). Never redirect the
   global executor onto the main actor (`uncheckedUseMainSerialExecutor`):
   the hook is process-wide and stalls unrelated targets in the parallel run.
 - Do not use `setenv` in tests. Inject config paths or environment-derived

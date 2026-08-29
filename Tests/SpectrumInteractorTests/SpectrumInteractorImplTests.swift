@@ -2,12 +2,13 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 import os
 
 @testable import SpectrumInteractor
 
-@Suite("SpectrumInteractorImpl")
+@Suite("SpectrumInteractorImpl", .timeLimit(.minutes(1)))
 struct SpectrumInteractorImplTests {
     @Test("playing source starts a capture for its pid and reports capturing")
     func playingStartsCapture() async {
@@ -15,10 +16,10 @@ struct SpectrumInteractorImplTests {
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
 
-        await harness.pollUntil { harness.spectrum.startedPids == [4242] }
+        await harness.spectrum.starts.settle { $0 == [4242] }
         #expect(harness.spectrum.startedPids == [4242])
-        await harness.pollUntil { harness.capturing.value == true }
-        #expect(harness.capturing.value == true)
+        await harness.capturing.settle { $0.last == true }
+        #expect(harness.capturing.last == true)
     }
 
     @Test("pausing stops the capture and reports not capturing")
@@ -26,13 +27,13 @@ struct SpectrumInteractorImplTests {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
-        await harness.pollUntil { harness.capturing.value == true }
+        await harness.capturing.settle { $0.last == true }
 
         harness.send(pid: 4242, playbackRate: 0)
-        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        await harness.spectrum.stops.waitForCount(1)
         #expect(harness.spectrum.stopCount > 0)
-        await harness.pollUntil { harness.capturing.value == false }
-        #expect(harness.capturing.value == false)
+        await harness.capturing.settle { $0.last == false }
+        #expect(harness.capturing.last == false)
     }
 
     @Test("app switch re-captures the new pid")
@@ -42,7 +43,7 @@ struct SpectrumInteractorImplTests {
         harness.send(pid: 1, playbackRate: 1)
         harness.send(pid: 2, playbackRate: 1)
 
-        await harness.pollUntil { harness.spectrum.startedPids == [1, 2] }
+        await harness.spectrum.starts.settle { $0 == [1, 2] }
         #expect(harness.spectrum.startedPids == [1, 2])
     }
 
@@ -58,7 +59,7 @@ struct SpectrumInteractorImplTests {
         // has been evaluated — no fixed sleep needed.
         harness.send(pid: 4242, playbackRate: 0)
 
-        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        await harness.spectrum.stops.waitForCount(1)
         #expect(harness.spectrum.startedPids == [4242])
     }
 
@@ -67,11 +68,11 @@ struct SpectrumInteractorImplTests {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
-        await harness.pollUntil { harness.capturing.value == true }
+        await harness.capturing.settle { $0.last == true }
 
         harness.sendSessionGone()
-        await harness.pollUntil { harness.capturing.value == false }
-        #expect(harness.capturing.value == false)
+        await harness.capturing.settle { $0.last == false }
+        #expect(harness.capturing.last == false)
         #expect(harness.spectrum.stopCount > 0)
     }
 
@@ -91,10 +92,10 @@ struct SpectrumInteractorImplTests {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
-        await harness.pollUntil { harness.capturing.value == true }
+        await harness.capturing.settle { $0.last == true }
 
         harness.interactor.stop()
-        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        await harness.spectrum.stops.waitForCount(1)
         #expect(harness.spectrum.stopCount > 0)
     }
 
@@ -103,7 +104,7 @@ struct SpectrumInteractorImplTests {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1, title: "Song A")
-        await harness.pollUntil { harness.capturing.value == true }
+        await harness.capturing.settle { $0.last == true }
 
         // The helper re-emits the same pid+playing state every few seconds
         // (and on track change, which the interactor no longer inspects):
@@ -113,7 +114,7 @@ struct SpectrumInteractorImplTests {
         harness.send(pid: 4242, playbackRate: 1, title: "Song B")
         // Land a pause so the play events above were fully evaluated.
         harness.send(pid: 4242, playbackRate: 0)
-        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        await harness.spectrum.stops.waitForCount(1)
         #expect(harness.spectrum.startedPids == [4242])
     }
 
@@ -132,10 +133,10 @@ struct SpectrumInteractorImplTests {
         // budget now lets this identical event back through to re-attempt.
         harness.send(pid: 4242, playbackRate: 1)
 
-        await harness.pollUntil { harness.spectrum.startedPids == [4242, 4242] }
+        await harness.spectrum.starts.settle { $0 == [4242, 4242] }
         #expect(harness.spectrum.startedPids == [4242, 4242])
-        await harness.pollUntil { harness.capturing.value == true }
-        #expect(harness.capturing.value == true)
+        await harness.capturing.settle { $0.last == true }
+        #expect(harness.capturing.last == true)
     }
 
     @Test("retries are bounded so a permanent failure does not spin forever (#312)")
@@ -152,9 +153,14 @@ struct SpectrumInteractorImplTests {
         // ticks were evaluated and marks the end of the retry window.
         harness.send(pid: 4242, playbackRate: 0)
 
-        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        await harness.spectrum.stops.waitForCount(1)
         #expect(harness.spectrum.startedPids == [4242, 4242, 4242])
-        #expect(harness.capturing.value == false)
+        // stopCapture() runs before subject.send(false) inside the same pause
+        // branch, but nothing guarantees the interactor's task resumes onto
+        // that next line before this task observes the stop — wait for
+        // capturing itself rather than trusting in-task ordering across tasks.
+        await harness.capturing.settle { $0.last == false }
+        #expect(harness.capturing.last == false)
     }
 
     @Test("second start() while running never spawns a competing processor")
@@ -168,7 +174,7 @@ struct SpectrumInteractorImplTests {
         // would have doubled the capture start.
         harness.send(pid: 4242, playbackRate: 0)
 
-        await harness.pollUntil { harness.spectrum.stopCount > 0 }
+        await harness.spectrum.stops.waitForCount(1)
         #expect(harness.spectrum.startedPids == [4242])
     }
 
@@ -177,16 +183,16 @@ struct SpectrumInteractorImplTests {
         let harness = Harness()
         harness.interactor.start()
         harness.send(pid: 4242, playbackRate: 1)
-        await harness.pollUntil { harness.capturing.value == true }
+        await harness.capturing.settle { $0.last == true }
 
         harness.interactor.stop()
         harness.interactor.start()
         // The new processor replays the history and re-captures; the stale
         // teardown from stop() must not destroy the new capture.
-        await harness.pollUntil { harness.spectrum.startedPids.count == 2 }
+        await harness.spectrum.starts.settle { $0.count == 2 }
         #expect(harness.spectrum.startedPids == [4242, 4242])
-        await harness.pollUntil { harness.capturing.value == true }
-        #expect(harness.capturing.value == true)
+        await harness.capturing.settle { $0.last == true }
+        #expect(harness.capturing.last == true)
     }
 
     @Test("magnitudes forwards the configured style and bar count to the use case")
@@ -216,7 +222,7 @@ private struct Harness {
     let style: SpectrumStyle
     let spectrum = FakeSpectrumUseCase()
     let playback = StubPlaybackUseCase()
-    let capturing = CurrentValueBox()
+    let capturing = Collector<Bool>()
     let interactor: SpectrumInteractorImpl
     private let cancellable: AnyCancellable
 
@@ -231,7 +237,7 @@ private struct Harness {
             SpectrumInteractorImpl()
         }
         self.interactor = interactor
-        self.cancellable = interactor.isCapturing.sink { [capturing] in capturing.value = $0 }
+        self.cancellable = interactor.isCapturing.sink { [capturing] in capturing.append($0) }
     }
 
     func send(pid: Int?, playbackRate: Double, title: String? = nil) {
@@ -244,33 +250,20 @@ private struct Harness {
     func sendSessionGone() {
         playback.send(nil)
     }
-
-    func pollUntil(_ condition: () -> Bool) async {
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !condition(), ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
-private final class CurrentValueBox: @unchecked Sendable {
-    private let state = OSAllocatedUnfairLock(initialState: false)
-    var value: Bool {
-        get { state.withLock { $0 } }
-        set { state.withLock { $0 = newValue } }
-    }
 }
 
 private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
+    /// pids passed to successive `startCapture` calls, in call order.
+    let starts = Collector<Int>()
+    /// One entry per `stopCapture` call.
+    let stops = Collector<Void>()
+
     private let state = OSAllocatedUnfairLock(
-        initialState: (
-            started: [Int](), stops: 0, style: SpectrumStyle?.none, bars: Int?.none,
-            results: [Bool]()
-        ))
+        initialState: (style: SpectrumStyle?.none, bars: Int?.none, results: [Bool]()))
     var magnitudesResult: [Float] = []
 
-    var startedPids: [Int] { state.withLock { $0.started } }
-    var stopCount: Int { state.withLock { $0.stops } }
+    var startedPids: [Int] { starts.values }
+    var stopCount: Int { stops.count }
     var lastStyle: SpectrumStyle? { state.withLock { $0.style } }
     var lastBarCount: Int? { state.withLock { $0.bars } }
 
@@ -283,15 +276,15 @@ private final class FakeSpectrumUseCase: SpectrumUseCase, @unchecked Sendable {
     }
 
     func startCapture(pid: Int) async -> Bool {
-        state.withLock {
-            $0.started.append(pid)
+        starts.append(pid)
+        return state.withLock {
             guard !$0.results.isEmpty else { return true }
             return $0.results.removeFirst()
         }
     }
 
     func stopCapture() async {
-        state.withLock { $0.stops += 1 }
+        stops.append(())
     }
 
     func magnitudes(style: SpectrumStyle, barCount: Int) -> [Float] {

@@ -529,11 +529,15 @@ let package = Package(
 
         // Shared, test-only support code (#349). A regular target so several test targets
         // can import it — SwiftPM test targets are independent modules and cannot see each
-        // other's sources. Keep it framework-light (Combine only); no Testing import.
+        // other's sources. Keep it framework-light (Foundation + Combine only); no Testing import.
         .target(
             name: "TestSupport",
             dependencies: [],
             path: "Tests/TestSupport"
+        ),
+        .testTarget(
+            name: "TestSupportTests",
+            dependencies: ["TestSupport"]
         ),
 
         .testTarget(
@@ -545,6 +549,7 @@ let package = Package(
         .testTarget(
             name: "TrackInteractorTests",
             dependencies: [
+                "TestSupport",
                 "TrackInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -553,6 +558,7 @@ let package = Package(
         .testTarget(
             name: "ScreenInteractorTests",
             dependencies: [
+                "TestSupport",
                 "ScreenInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -561,6 +567,7 @@ let package = Package(
         .testTarget(
             name: "ConfigInteractorTests",
             dependencies: [
+                "TestSupport",
                 "ConfigInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -569,6 +576,7 @@ let package = Package(
         .testTarget(
             name: "WallpaperInteractorTests",
             dependencies: [
+                "TestSupport",
                 "WallpaperInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -585,6 +593,7 @@ let package = Package(
         .testTarget(
             name: "SpectrumInteractorTests",
             dependencies: [
+                "TestSupport",
                 "SpectrumInteractor",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -792,6 +801,7 @@ let package = Package(
         .testTarget(
             name: "LyricsRepositoryTests",
             dependencies: [
+                "TestSupport",
                 "LyricsRepository",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -808,6 +818,7 @@ let package = Package(
         .testTarget(
             name: "NowPlayingRepositoryTests",
             dependencies: [
+                "TestSupport",
                 "NowPlayingRepository",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -834,6 +845,7 @@ let package = Package(
         .testTarget(
             name: "ConfigHotReloadTests",
             dependencies: [
+                "TestSupport",
                 "ConfigUseCase",
                 "ConfigInteractor",
                 "ConfigRepository",

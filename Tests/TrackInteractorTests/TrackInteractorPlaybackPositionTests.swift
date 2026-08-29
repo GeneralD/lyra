@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import TrackInteractor
@@ -48,24 +49,6 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
 
 // MARK: - Helpers
 
-private final class PositionCollector: @unchecked Sendable {
-    private let lock = NSLock()
-    private var emissions: [PlaybackPosition] = []
-
-    var snapshot: [PlaybackPosition] { lock.withLock { emissions } }
-
-    func append(_ pos: PlaybackPosition) {
-        lock.withLock { emissions.append(pos) }
-    }
-
-    func waitForCount(_ target: Int, timeout: Duration = .seconds(2)) async {
-        let deadline = ContinuousClock.now + timeout
-        while snapshot.count < target, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
 private func makeInteractor(playback: StubPlaybackUseCase) -> TrackInteractorImpl {
     withDependencies {
         $0.continuousClock = ImmediateClock()
@@ -80,14 +63,14 @@ private func makeInteractor(playback: StubPlaybackUseCase) -> TrackInteractorImp
 
 // MARK: - Tests
 
-@Suite("TrackInteractor playback position stream", .serialized)
+@Suite("TrackInteractor playback position stream", .serialized, .timeLimit(.minutes(1)))
 struct TrackInteractorPlaybackPositionTests {
 
     @Test("playbackPosition emits snapshot (rawElapsed / timestamp / playbackRate) verbatim from NowPlaying")
     func emitsSnapshotFields() async throws {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = PositionCollector()
+        let collector = Collector<PlaybackPosition>()
         let cancellable = interactor.playbackPosition.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -98,7 +81,7 @@ struct TrackInteractorPlaybackPositionTests {
                 duration: 200, rawElapsed: 42, playbackRate: 1.5, timestamp: ts))
 
         await collector.waitForCount(1)
-        let first = try #require(collector.snapshot.first)
+        let first = try #require(collector.values.first)
         #expect(first.rawElapsed == 42)
         #expect(first.timestamp == ts)
         #expect(first.playbackRate == 1.5)
@@ -108,7 +91,7 @@ struct TrackInteractorPlaybackPositionTests {
     func emitsNilSnapshotFields() async throws {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = PositionCollector()
+        let collector = Collector<PlaybackPosition>()
         let cancellable = interactor.playbackPosition.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -118,7 +101,7 @@ struct TrackInteractorPlaybackPositionTests {
                 duration: nil, rawElapsed: nil, playbackRate: 0, timestamp: nil))
 
         await collector.waitForCount(1)
-        let first = try #require(collector.snapshot.first)
+        let first = try #require(collector.values.first)
         #expect(first.rawElapsed == nil)
         #expect(first.timestamp == nil)
         #expect(first.playbackRate == 0)
@@ -128,7 +111,7 @@ struct TrackInteractorPlaybackPositionTests {
     func emitsMultipleSnapshots() async throws {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = PositionCollector()
+        let collector = Collector<PlaybackPosition>()
         let cancellable = interactor.playbackPosition.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -147,7 +130,7 @@ struct TrackInteractorPlaybackPositionTests {
                 duration: 200, rawElapsed: 0, playbackRate: 1.0, timestamp: t2))
         await collector.waitForCount(2)
 
-        let snapshots = collector.snapshot
+        let snapshots = collector.values
         try #require(snapshots.count == 2)
         #expect(snapshots[0].rawElapsed == 10)
         #expect(snapshots[0].timestamp == t1)
@@ -159,7 +142,7 @@ struct TrackInteractorPlaybackPositionTests {
     func volumeMutePatternSuppressed() async throws {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = PositionCollector()
+        let collector = Collector<PlaybackPosition>()
         let cancellable = interactor.playbackPosition.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
@@ -185,7 +168,7 @@ struct TrackInteractorPlaybackPositionTests {
                 duration: nil, rawElapsed: 3, playbackRate: 1, timestamp: nil))
         await collector.waitForCount(2)
 
-        let snapshots = collector.snapshot
+        let snapshots = collector.values
         try #require(snapshots.count == 2, "second (volume-mute) emission should be filtered out by activeNowPlaying")
         #expect(snapshots[0].rawElapsed == 1)
         #expect(snapshots[1].rawElapsed == 3)

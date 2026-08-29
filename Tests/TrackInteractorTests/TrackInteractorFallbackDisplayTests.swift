@@ -2,6 +2,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import TrackInteractor
@@ -48,22 +49,6 @@ private struct StubConfigUseCase: ConfigUseCase, Sendable {
 
 // MARK: - Helpers
 
-private final class TrackUpdateCollector: @unchecked Sendable {
-    private let lock = NSLock()
-    private var updates: [TrackUpdate] = []
-
-    var snapshot: [TrackUpdate] { lock.withLock { updates } }
-
-    func append(_ update: TrackUpdate) { lock.withLock { updates.append(update) } }
-
-    func waitForCount(_ target: Int, timeout: Duration = .seconds(2)) async {
-        let deadline = ContinuousClock.now + timeout
-        while snapshot.count < target, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
 private func makeInteractor(playback: StubPlaybackUseCase) -> TrackInteractorImpl {
     withDependencies {
         $0.continuousClock = ImmediateClock()
@@ -85,20 +70,20 @@ private func nowPlaying(title: String?, artist: String?) -> NowPlaying {
 
 // MARK: - Tests
 
-@Suite("TrackInteractor display fallback", .serialized)
+@Suite("TrackInteractor display fallback", .serialized, .timeLimit(.minutes(1)))
 struct TrackInteractorFallbackDisplayTests {
     @Test("falls back to raw title/artist, not the unvalidated candidate guess, when lyrics are not found")
     func fallsBackToRawWhenLyricsNotFound() async {
         let playback = StubPlaybackUseCase()
         let interactor = makeInteractor(playback: playback)
-        let collector = TrackUpdateCollector()
+        let collector = Collector<TrackUpdate>()
         let cancellable = interactor.trackChange.sink { collector.append($0) }
         defer { cancellable.cancel() }
 
         playback.subject.send(nowPlaying(title: "Raw Title", artist: "Raw Artist"))
         await collector.waitForCount(3)
 
-        let final = collector.snapshot.last
+        let final = collector.values.last
         #expect(final?.title == "Raw Title")
         #expect(final?.artist == "Raw Artist")
         #expect(final?.lyricsState == .notFound)

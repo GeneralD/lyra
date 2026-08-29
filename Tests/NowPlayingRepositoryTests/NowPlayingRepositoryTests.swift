@@ -1,12 +1,13 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 import os
 
 @testable import NowPlayingRepository
 
-@Suite("NowPlayingRepository")
+@Suite("NowPlayingRepository", .timeLimit(.minutes(1)))
 struct NowPlayingRepositoryTests {
 
     @Test("yields NowPlaying when dataSource returns .info")
@@ -271,20 +272,17 @@ struct NowPlayingRepositoryTests {
             // A dead pump left stored in the hub would block this second
             // round forever; the collector is cancellable so a regression
             // fails the test instead of hanging the suite.
-            let received = ReceivedBox()
+            let received = Collector<NowPlaying?>()
             let collector = Task {
                 for await value in repo.stream() {
-                    received.value = value
+                    received.append(value)
                     return
                 }
             }
             counting.send(.info(track))
-            let deadline = ContinuousClock.now + .seconds(3)
-            while received.value == nil, ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(10))
-            }
+            await received.waitForCount(1)
             collector.cancel()
-            #expect(received.value??.title == "Second Life")
+            #expect(received.last??.title == "Second Life")
             counting.send(.eof)
         }
     }
@@ -372,14 +370,5 @@ private final class CountingGatedMediaRemoteDataSource: MediaRemoteDataSource, @
             }
             if let buffered { continuation.resume(returning: buffered) }
         }
-    }
-}
-
-/// Thread-safe capture slot for the cancellable collector task.
-private final class ReceivedBox: @unchecked Sendable {
-    private let state = OSAllocatedUnfairLock(initialState: NowPlaying??.none)
-    var value: NowPlaying?? {
-        get { state.withLock { $0 } }
-        set { state.withLock { $0 = newValue } }
     }
 }

@@ -1,6 +1,7 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import LyricsRepository
@@ -9,7 +10,7 @@ import Testing
 // that to ceil(N / waveSize). These tests pin the two properties that make the trade
 // safe: a wave still yields the *highest-priority* hit, and a wave that hits never
 // reaches the next one (#326).
-@Suite("candidate wave probing (#326)")
+@Suite("candidate wave probing (#326)", .timeLimit(.minutes(1)))
 struct LyricsCandidateWaveTests {
 
     @Test("the highest-priority candidate wins even when a lower-priority one also matches")
@@ -142,15 +143,17 @@ private actor RecordingLyricsDataSource: LyricsDataSource {
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
-// Records the peak number of overlapping `get` calls. Each call parks until either the
-// whole wave has arrived or the deadline expires, so the peak reflects real overlap
-// without a fixed sleep that would be flaky under CI load.
+// Records the peak number of overlapping `get` calls. Each call parks until the whole
+// wave has arrived, so the peak reflects real overlap without a fixed sleep that would
+// be flaky under CI load. A wave that never arrives hangs rather than flaking — the
+// suite's `.timeLimit` reports that instead.
 private actor ConcurrencyProbingDataSource: LyricsDataSource {
     private let expected: Int
     private var inFlight = 0
-    // Latched once the whole wave has arrived, so callers that already saw it are not
-    // re-parked by their wave-mates draining away.
-    private var waveArrived = false
+    // Each call records its own arrival, then waits for the whole wave. `Collector`'s
+    // count only grows, so once `expected` arrivals are recorded every waiter — past,
+    // present, or already latched — proceeds without being re-parked.
+    private let arrivals = Collector<Void>()
     private(set) var maxConcurrent = 0
 
     init(expected: Int) { self.expected = expected }
@@ -158,11 +161,8 @@ private actor ConcurrencyProbingDataSource: LyricsDataSource {
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         inFlight += 1
         maxConcurrent = max(maxConcurrent, inFlight)
-        waveArrived = waveArrived || inFlight >= expected
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !waveArrived, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(5))
-        }
+        arrivals.append(())
+        await arrivals.waitForCount(expected)
         inFlight -= 1
         return nil
     }
@@ -202,7 +202,7 @@ private actor CancellationObservingDataSource: LyricsDataSource {
 private actor SlowHitDataSource: LyricsDataSource {
     private let fastHit: String
     private let slowHit: String
-    private var fastAnswered = false
+    private let fastAnswers = Collector<Void>()
 
     init(fastHit: String, slowHit: String) {
         self.fastHit = fastHit
@@ -211,22 +211,19 @@ private actor SlowHitDataSource: LyricsDataSource {
 
     func get(title: String, artist: String, duration: TimeInterval?) async -> LyricsResult? {
         guard title == fastHit || title == slowHit else { return nil }
-        await settle(title)
+        await resolveWave(title)
         return LyricsResult(trackName: title, artistName: artist, plainLyrics: "lyrics")
     }
 
     // The slow hit answers only once the fast one already has. Ordering the two by a
     // delay would make the premise a bet on the scheduler; gating it on the fast hit's
     // own arrival makes it a fact, and costs nothing when the machine is loaded.
-    private func settle(_ title: String) async {
+    private func resolveWave(_ title: String) async {
         guard title == slowHit else {
-            fastAnswered = true
+            fastAnswers.append(())
             return
         }
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !fastAnswered, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(5))
-        }
+        await fastAnswers.waitForCount(1)
     }
 
     func search(trackName: String) async -> [LyricsResult]? { nil }

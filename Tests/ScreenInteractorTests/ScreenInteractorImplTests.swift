@@ -3,6 +3,7 @@ import Combine
 import CoreGraphics
 import Dependencies
 import Domain
+import TestSupport
 import Testing
 
 @testable import ScreenInteractor
@@ -291,7 +292,7 @@ struct ScreenInteractorImplTests {
         }
     }
 
-    @Suite("screenChanges")
+    @Suite("screenChanges", .timeLimit(.minutes(1)))
     struct ScreenChangesTests {
         @Test("emits when screen parameters change notification fires")
         func emitsOnNotification() async {
@@ -302,17 +303,13 @@ struct ScreenInteractorImplTests {
                 ScreenInteractorImpl()
             }
 
-            final class Counter: @unchecked Sendable { var count = 0 }
-            let counter = Counter()
-            let cancellable = interactor.screenChanges.sink { counter.count += 1 }
+            let counter = Collector<Void>()
+            let cancellable = interactor.screenChanges.sink { counter.append(()) }
 
             NotificationCenter.default.post(
                 name: NSApplication.didChangeScreenParametersNotification, object: nil)
 
-            let deadline = ContinuousClock.now + .seconds(1)
-            while counter.count < 1, ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(10))
-            }
+            await counter.waitForCount(1)
 
             #expect(counter.count >= 1)
             cancellable.cancel()
@@ -330,16 +327,12 @@ struct ScreenInteractorImplTests {
                 ScreenInteractorImpl()
             }
 
-            final class Counter: @unchecked Sendable { var count = 0 }
-            let counter = Counter()
-            let cancellable = interactor.screenChanges.sink { counter.count += 1 }
+            let counter = Collector<Void>()
+            let cancellable = interactor.screenChanges.sink { counter.append(()) }
 
             NotificationCenter.default.post(name: name, object: nil)
 
-            let deadline = ContinuousClock.now + .seconds(1)
-            while counter.count < 1, ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(10))
-            }
+            await counter.waitForCount(1)
 
             #expect(counter.count >= 1)
             cancellable.cancel()
