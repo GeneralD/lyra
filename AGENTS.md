@@ -221,9 +221,17 @@ Shared conventions:
   `stop()`, or a sentinel event through the same pipeline, `settle`d on a
   value only the sentinel can produce (a distinct size, not an image's
   identity, which a duplicate re-decode changes too) before asserting no
-  intermediate transition was recorded — never with a fixed sleep. Never redirect the
-  global executor onto the main actor (`uncheckedUseMainSerialExecutor`):
-  the hook is process-wide and stalls unrelated targets in the parallel run.
+  intermediate transition was recorded — never with a fixed sleep. Never
+  redirect the global executor onto the main actor
+  (`uncheckedUseMainSerialExecutor`): the hook is process-wide and stalls
+  unrelated targets in the parallel run.
+- A test double that models time does not sleep either: a probe that never
+  answers parks on `suspendUntilCancelled()` (`Tests/TestSupport`, #353) so
+  only the subject's cancel resumes it; a stream that must hold a line back
+  gates it on a `Collector` the test appends to and records the consumer's
+  `next()` (`AsyncStream(unfolding:)`), so the test can observe the subject
+  inside the call before acting; work that must really suspend resumes a
+  continuation from a GCD queue.
 - Do not use `setenv` in tests. Inject config paths or environment-derived
   values through constructors or dependencies.
 - UI tests must select fixture graphs during app bootstrap in `AppDelegate`
