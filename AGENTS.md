@@ -218,9 +218,10 @@ Shared conventions:
   into a `Collector` instead (`DarwinGatewayTests/LaunchedProcess.swift`,
   #349). Prove "nothing happens" with the mechanism
   that guarantees it — a `handleEvents(receiveCancel:)` spy awaited after
-  `stop()`, or a sentinel event through the same pipeline whose effect is
-  `settle`d before asserting no intermediate transition was recorded — never
-  with a fixed sleep. Never redirect the
+  `stop()`, or a sentinel event through the same pipeline, `settle`d on a
+  value only the sentinel can produce (a distinct size, not an image's
+  identity, which a duplicate re-decode changes too) before asserting no
+  intermediate transition was recorded — never with a fixed sleep. Never redirect the
   global executor onto the main actor (`uncheckedUseMainSerialExecutor`):
   the hook is process-wide and stalls unrelated targets in the parallel run.
 - Do not use `setenv` in tests. Inject config paths or environment-derived
