@@ -535,6 +535,10 @@ let package = Package(
             dependencies: [],
             path: "Tests/TestSupport"
         ),
+        .testTarget(
+            name: "TestSupportTests",
+            dependencies: ["TestSupport"]
+        ),
 
         .testTarget(
             name: "ScopedAPISessionTests",

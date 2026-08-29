@@ -238,9 +238,10 @@ struct TrackInteractorRaceTests {
                 title: nil, artist: nil, artworkData: nil,
                 duration: nil, rawElapsed: nil, playbackRate: 1, timestamp: nil))
 
-        let loading = await collector.waitFor { update in
-            update.title == nil && update.lyricsState == .loading
-        }
+        let loading = try #require(
+            await collector.waitFor { update in
+                update.title == nil && update.lyricsState == .loading
+            })
         #expect(loading.lyricsState == .loading)
         #expect(loading.title == nil)
         #expect(loading.artist == nil)
