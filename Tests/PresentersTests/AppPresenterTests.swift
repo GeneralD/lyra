@@ -24,7 +24,17 @@ private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
     var screenDebounce: Double
     var layoutToReturn: ScreenLayout
     let changes = PassthroughSubject<Void, Never>()
-    var screenChanges: AnyPublisher<Void, Never> { changes.eraseToAnyPublisher() }
+    /// Records the upstream cancellation `AppPresenter.stop()` triggers via
+    /// `cancellables.removeAll()`, so tests can await the teardown itself
+    /// instead of guessing how long propagation takes.
+    let screenChangesCancellations = Collector<Void>()
+    var screenChanges: AnyPublisher<Void, Never> {
+        changes
+            .handleEvents(receiveCancel: { [screenChangesCancellations] in
+                screenChangesCancellations.append(())
+            })
+            .eraseToAnyPublisher()
+    }
 
     init(layout: ScreenLayout, selector: ScreenSelector = .main, debounce: Double = 5) {
         layoutToReturn = layout
@@ -287,11 +297,15 @@ struct AppPresenterTests {
         await settle(presenter.$layout) { $0.windowFrame == initial.windowFrame }
         presenter.stop()
 
+        // Wait for the actual unsubscription (cancellables.removeAll() cancelling
+        // the screenChanges pipeline), not a guessed propagation delay. Once the
+        // publisher has observed its subscriber cancel, a later send(_:) has no
+        // subscriber left and is a synchronous no-op.
+        await interactor.screenChangesCancellations.waitForCount(1)
+
         interactor.layoutToReturn = updated
         interactor.changes.send(())
 
-        // Give the publisher a chance to propagate; layout should stay at initial.
-        try? await Task.sleep(for: .milliseconds(100))
         #expect(presenter.layout.windowFrame == initial.windowFrame)
     }
 

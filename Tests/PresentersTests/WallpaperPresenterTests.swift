@@ -451,14 +451,14 @@ struct WallpaperPresenterTests {
 
         @MainActor
         @Test("controller.handleItemEnd on single item loops via controller, not advance")
-        func singleItemLoopsRatherThanAdvance() async {
+        func singleItemLoopsRatherThanAdvance() async throws {
             let item = ResolvedWallpaperItem(
                 url: URL(fileURLWithPath: "/tmp/solo.mp4"),
                 start: 1.0,
                 end: 3.0
             )
 
-            await withDependencies {
+            try await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
                 $0.continuousClock = ImmediateClock()
             } operation: {
@@ -467,12 +467,20 @@ struct WallpaperPresenterTests {
                 await settle(presenter.$wallpaperURL) { $0 == item.url }
                 let urlBefore = presenter.wallpaperURL
 
-                presenter.controller.handleItemEnd()
+                // On a single-item stream, `handleItemEnd()` takes the loop branch
+                // (`WallpaperPlaybackController.loopCurrent()`), which re-seeks and
+                // re-plays the SAME player instead of advancing — no
+                // presenter-level `@Published` state changes on that branch, so the
+                // player's `rate` KVO (re-fired by `loopCurrent()`'s `play()`) is
+                // the only observable proof the branch ran.
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+                let baseline = rates.count
 
-                // Give the advance Task a chance to run; verify URL did not change.
-                await waitUntil(timeout: .milliseconds(50)) {
-                    presenter.wallpaperURL != urlBefore
-                }
+                presenter.controller.handleItemEnd()
+                await rates.settle { $0.count > baseline }
+                withExtendedLifetime(cancellable) {}
 
                 #expect(presenter.wallpaperURL == urlBefore)
             }
@@ -588,13 +596,13 @@ struct WallpaperPresenterTests {
 
         @MainActor
         @Test("single-item stream remains in loop mode until a second item arrives")
-        func lateArrivalUnlocksAdvancement() async {
+        func lateArrivalUnlocksAdvancement() async throws {
             let a = ResolvedWallpaperItem(
                 url: URL(fileURLWithPath: "/tmp/a.mp4"), end: 5.0)
             let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
             let interactor = LiveStubWallpaperInteractor(mode: .cycle)
 
-            await withDependencies {
+            try await withDependencies {
                 $0.wallpaperInteractor = interactor
                 $0.continuousClock = ImmediateClock()
             } operation: {
@@ -604,12 +612,19 @@ struct WallpaperPresenterTests {
                 interactor.emit(a)
                 await settle(presenter.$wallpaperURL) { $0 == a.url }
 
-                // Boundary fires while only one item is loaded — should loop, not advance.
+                // Boundary fires while only one item is loaded — should loop, not
+                // advance. Same reasoning as `singleItemLoopsRatherThanAdvance`
+                // above: the loop branch only surfaces via the player's `rate`
+                // KVO firing again, so spy on that instead of guessing a delay.
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+                let baseline = rates.count
+
                 presenter.controller.handleBoundary(
                     at: CMTime(seconds: 5, preferredTimescale: 600))
-                await waitUntil(timeout: .milliseconds(50)) {
-                    presenter.wallpaperURL != a.url
-                }
+                await rates.settle { $0.count > baseline }
+                withExtendedLifetime(cancellable) {}
                 #expect(presenter.wallpaperURL == a.url)
 
                 interactor.emit(b)
@@ -806,12 +821,12 @@ struct WallpaperPresenterTests {
     struct SleepWake {
         @MainActor
         @Test(".willSleep pauses the player")
-        func willSleepPauses() async {
+        func willSleepPauses() async throws {
             let url = URL(fileURLWithPath: "/tmp/bg.mp4")
             let item = ResolvedWallpaperItem(url: url)
             let subject = PassthroughSubject<SleepWakeEvent, Never>()
 
-            await withDependencies {
+            try await withDependencies {
                 $0.wallpaperInteractor = StubWallpaperInteractor(
                     items: [item], sleepChangesSubject: subject)
                 $0.continuousClock = ImmediateClock()
@@ -820,12 +835,18 @@ struct WallpaperPresenterTests {
                 presenter.start()
                 await settle(presenter.$player) { $0 != nil }
 
+                // `.willSleep` pauses the player off the `@Published` chain
+                // (`observeSleepWake()`'s sink calls `player.pause()` directly), so
+                // there is no presenter state to `settle` on — record the KVO
+                // `rate` publishes instead and wait for it to reach 0.
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
                 subject.send(.willSleep)
 
-                let deadline = ContinuousClock.now + .seconds(1)
-                while presenter.player?.rate != 0, ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                await rates.settle { $0.last == 0 }
+                withExtendedLifetime(cancellable) {}
                 #expect(presenter.player?.rate == 0)
             }
         }

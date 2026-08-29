@@ -293,10 +293,19 @@ struct HeaderPresenterTests {
         @Test("stop cancels subscriptions and effects")
         func stopCancels() async throws {
             let subject = PassthroughSubject<TrackUpdate, Never>()
+            // Cancellation spy: `stop()` cancels the sink Combine wired onto
+            // `interactor.trackChange` via `.receive(on: DispatchQueue.main)`.
+            // Cancellation propagates synchronously upstream through that
+            // operator to this `handleEvents`, so awaiting it proves the
+            // subscription is actually gone rather than guessing a duration.
+            let cancelled = Collector<Void>()
 
             await withDependencies {
                 $0.trackInteractor = StubTrackInteractor(
-                    trackChangePublisher: subject.eraseToAnyPublisher(),
+                    trackChangePublisher:
+                        subject
+                        .handleEvents(receiveCancel: { cancelled.append(()) })
+                        .eraseToAnyPublisher(),
                     decodeEffectConfig: .init(duration: 0)
                 )
             } operation: {
@@ -309,10 +318,12 @@ struct HeaderPresenterTests {
                 #expect(presenter.displayTitle == "Song")
 
                 presenter.stop()
+                await cancelled.waitForCount(1)
 
-                // After stop, new emissions should not change state
+                // With the subscription confirmed gone, `send` reaches no
+                // subscriber and is a synchronous no-op — a plain #expect
+                // needs no further wait.
                 subject.send(TrackUpdate(title: "New Song", artist: "New Artist"))
-                try? await Task.sleep(for: .milliseconds(200))
                 #expect(presenter.displayTitle == "Song", "Display should not change after stop")
                 #expect(presenter.titlePhase == .revealed, "Phase should not change after stop")
             }

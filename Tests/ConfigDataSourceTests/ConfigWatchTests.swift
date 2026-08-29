@@ -2,11 +2,12 @@ import Dependencies
 import Domain
 import FileWatchGateway
 import Foundation
+import TestSupport
 import Testing
 
 @testable import ConfigDataSource
 
-@Suite("ConfigDataSourceImpl.watchChanges")
+@Suite("ConfigDataSourceImpl.watchChanges", .timeLimit(.minutes(1)))
 struct ConfigWatchTests {
     private let tempDir: String = NSTemporaryDirectory() + "lyra-watch-test-\(UUID().uuidString)"
 
@@ -125,11 +126,11 @@ struct ConfigWatchTests {
         let lyraDir = try setUpLyraDir(files: [:])
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
 
@@ -173,11 +174,11 @@ struct ConfigWatchTests {
         let lyraDir = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
 
@@ -208,11 +209,11 @@ struct ConfigWatchTests {
         _ = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
 
         token?.stop()
@@ -249,11 +250,11 @@ struct ConfigWatchTests {
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
 
@@ -276,11 +277,11 @@ struct ConfigWatchTests {
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
 
@@ -303,11 +304,11 @@ struct ConfigWatchTests {
         let configRoot = tempDir + "/cfgroot"
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: configRoot).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: configRoot).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
 
@@ -335,11 +336,11 @@ struct ConfigWatchTests {
         let lyraDir = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
 
@@ -364,11 +365,11 @@ struct ConfigWatchTests {
         _ = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
 
         let gateway = FakeWatchGateway()
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = gateway
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
         #expect(token != nil)
@@ -401,11 +402,11 @@ struct ConfigWatchTests {
 
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = FileWatchGateway()
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
         #expect(token != nil)
@@ -413,10 +414,7 @@ struct ConfigWatchTests {
         // First run of `lyra config init`: directory and file appear together.
         let lyraDir = try setUpLyraDir(files: ["config.toml": "screen = \"main\""])
 
-        let promoteDeadline = ContinuousClock.now + .seconds(3)
-        while onChange.count < 1, ContinuousClock.now < promoteDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await onChange.waitForCount(1)
         #expect(onChange.count >= 1)
 
         // The promoted session must have armed the file tier: an in-place
@@ -427,10 +425,7 @@ struct ConfigWatchTests {
         try handle.write(contentsOf: Data("\n# edited\n".utf8))
         try handle.close()
 
-        let editDeadline = ContinuousClock.now + .seconds(3)
-        while onChange.count <= settled, ContinuousClock.now < editDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await onChange.settle { $0.count > settled }
         #expect(onChange.count > settled)
     }
 
@@ -443,11 +438,11 @@ struct ConfigWatchTests {
             "koko.toml": "screen = \"main\"",
         ])
 
-        let onChange = Counter()
+        let onChange = Collector<Void>()
         let token = withDependencies {
             $0.configWatchGateway = FileWatchGateway()
         } operation: {
-            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.increment() }
+            ConfigDataSourceImpl(configHome: tempDir).watchChanges { onChange.append(()) }
         }
         defer { token?.stop() }
         #expect(token != nil)
@@ -458,47 +453,39 @@ struct ConfigWatchTests {
         try includeHandle.write(contentsOf: Data("\n# edited\n".utf8))
         try includeHandle.close()
 
-        let firstDeadline = ContinuousClock.now + .seconds(3)
-        while onChange.count < 1, ContinuousClock.now < firstDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await onChange.waitForCount(1)
         #expect(onChange.count >= 1)
 
         // 2. Atomic save of the main config (fresh inode renamed into place),
         //    then an in-place append to the NEW inode: only a re-armed file
         //    watch can observe the second edit.
+        // The rename's own callbacks are the gateway's, so they are awaited, not
+        // polled: at least one arrives, since the directory watch sees the rename.
+        // The count is taken before the save so that a callback landing between
+        // the save and the capture cannot leave the wait with nothing to await.
+        let afterRename = onChange.count
         try "includes = [\"koko.toml\"]\nscreen = \"main\"".write(
             toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
-        let afterRename = onChange.count
-        let renameDeadline = ContinuousClock.now + .seconds(3)
-        while onChange.count == afterRename, ContinuousClock.now < renameDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await onChange.settle { $0.count > afterRename }
 
-        let settled = onChange.count
-        let configHandle = try #require(FileHandle(forWritingAtPath: lyraDir + "/config.toml"))
-        try configHandle.seekToEnd()
-        try configHandle.write(contentsOf: Data("\n# in-place after rename\n".utf8))
-        try configHandle.close()
-
-        let secondDeadline = ContinuousClock.now + .seconds(3)
-        while onChange.count <= settled, ContinuousClock.now < secondDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
+        // The atomic save can post up to three callbacks in all — the temp file's
+        // creation and the rename on the directory watch, the rename on the old
+        // inode's file watch — and they carry no label, so a late one could stand
+        // in for the edit's. Four awaited in-place appends cannot all be explained
+        // that way: at least one of those callbacks then came from a file watch
+        // re-armed on the new inode, which is what this test proves.
+        for _ in 0..<4 {
+            let settled = onChange.count
+            let configHandle = try #require(FileHandle(forWritingAtPath: lyraDir + "/config.toml"))
+            try configHandle.seekToEnd()
+            try configHandle.write(contentsOf: Data("\n# in-place after rename\n".utf8))
+            try configHandle.close()
+            await onChange.settle { $0.count > settled }
         }
-        #expect(onChange.count > settled)
     }
 }
 
 // MARK: - Fakes
-
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _count = 0
-    var count: Int { lock.withLock { _count } }
-    func increment() {
-        lock.withLock { _count += 1 }
-    }
-}
 
 private final class FakeWatchGateway: ConfigWatchGateway, @unchecked Sendable {
     /// One armed directory watch, pinned to the vnode identity it was armed

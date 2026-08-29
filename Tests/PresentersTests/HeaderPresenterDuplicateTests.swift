@@ -25,10 +25,10 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
 // MARK: - Helpers
 
 @MainActor
-private func fixtureArtworkData(color: NSColor = .red) throws -> Data {
-    let image = NSImage(size: NSSize(width: 1, height: 1))
+private func fixtureArtworkData(color: NSColor = .red, side: CGFloat = 1) throws -> Data {
+    let image = NSImage(size: NSSize(width: side, height: side))
     image.lockFocus()
-    color.drawSwatch(in: NSRect(x: 0, y: 0, width: 1, height: 1))
+    color.drawSwatch(in: NSRect(x: 0, y: 0, width: side, height: side))
     image.unlockFocus()
     return try #require(image.tiffRepresentation)
 }
@@ -45,6 +45,9 @@ struct HeaderPresenterDuplicateTests {
         func sameTitleTwiceStaysSuccess() async throws {
             let subject = PassthroughSubject<TrackUpdate, Never>()
             let update = TrackUpdate(title: "Same", artist: "Artist")
+            // A different update through the same trackChange → receive(_:) →
+            // revealTitle/revealArtist pipeline, sent right after the duplicate.
+            let sentinelUpdate = TrackUpdate(title: "Sentinel", artist: "SentinelArtist")
 
             await withDependencies {
                 $0.trackInteractor = StubTrackInteractor(
@@ -62,15 +65,38 @@ struct HeaderPresenterDuplicateTests {
                 #expect(presenter.displayTitle == "Same")
                 #expect(presenter.displayArtist == "Artist")
 
-                // Second send with identical title/artist
-                subject.send(update)
-                try? await Task.sleep(for: .milliseconds(200))
+                // Record every phase transition from here on, so a duplicate-send
+                // re-trigger (a spurious `.revealing`) is caught even though it
+                // would self-heal back to `.revealed` before any assertion runs.
+                let titlePhases = Collector<RevealPhase>()
+                let artistPhases = Collector<RevealPhase>()
+                let titleCancellable = presenter.$titlePhase.dropFirst().sink { titlePhases.append($0) }
+                let artistCancellable = presenter.$artistPhase.dropFirst().sink { artistPhases.append($0) }
 
-                // Should remain revealed, not reset to .revealing
-                #expect(presenter.titlePhase == .revealed)
-                #expect(presenter.artistPhase == .revealed)
-                #expect(presenter.displayTitle == "Same")
-                #expect(presenter.displayArtist == "Artist")
+                // Second send with identical title/artist — must be deduped (no-op).
+                subject.send(update)
+
+                // Sentinel: Combine delivers on one queue in send order, so its
+                // `.revealed` arriving proves the duplicate send above already
+                // finished being processed (a no-op, per the guard in revealTitle/
+                // revealArtist).
+                subject.send(sentinelUpdate)
+                // Both phases already read `.revealed` from the first send, so a
+                // wait on them would return before the sentinel is processed. The
+                // sentinel's text is set only after its phase went `.revealing`,
+                // so wait for the text first, then for the phase to come back.
+                await settle(presenter.$displayTitle) { $0 == "Sentinel" }
+                await settle(presenter.$displayArtist) { $0 == "SentinelArtist" }
+                await settle(presenter.$titlePhase) { $0 == .revealed }
+                await settle(presenter.$artistPhase) { $0 == .revealed }
+
+                // The only recorded transitions are the sentinel's own
+                // `.revealing` → `.revealed` — the duplicate produced none.
+                #expect(titlePhases.values == [.revealing, .revealed])
+                #expect(artistPhases.values == [.revealing, .revealed])
+
+                titleCancellable.cancel()
+                artistCancellable.cancel()
             }
         }
     }
@@ -111,10 +137,36 @@ struct HeaderPresenterDuplicateTests {
                 #expect(presenter.displayTitle == "Song")
                 #expect(presenter.displayArtist == "Band")
 
-                artworkSubject.send(imageData)
-                try? await Task.sleep(for: .milliseconds(200))
+                // Record every artworkImage publish from here, so a duplicate-send
+                // re-decode (a fresh `NSImage` built from identical bytes) is
+                // caught even though its identity alone can't distinguish "no
+                // publish happened" from "republished the same-looking image".
+                let artworkPublishes = Collector<Void>()
+                let cancellable = presenter.$artworkImage.dropFirst().sink { _ in artworkPublishes.append(()) }
 
-                #expect(presenter.artworkImage === cachedImage)
+                // Duplicate send with identical bytes — must be deduped (no
+                // re-decode), per the guard in receiveArtwork(_:).
+                artworkSubject.send(imageData)
+
+                // Sentinel: genuinely different artwork bytes, through the same
+                // artwork → receiveArtwork(_:) pipeline. Combine delivers on one
+                // queue in send order, so this publish proves the duplicate
+                // above already finished being processed. It is waited on by its
+                // own size: a duplicate re-decode also yields an image that is
+                // `!== cachedImage`, so identity alone could settle on the very
+                // publish this test must reject.
+                let sentinelData = try fixtureArtworkData(color: .blue, side: 2)
+                let sentinelSize = try #require(NSImage(data: sentinelData)).size
+                #expect(sentinelSize != cachedImage.size)
+                artworkSubject.send(sentinelData)
+                await settle(presenter.$artworkImage) { $0?.size == sentinelSize }
+
+                // Exactly one publish recorded — the sentinel's. A duplicate
+                // re-decode would have shown up as a second publish here.
+                #expect(artworkPublishes.count == 1)
+                #expect(presenter.displayTitle == "Song")
+
+                cancellable.cancel()
             }
         }
 

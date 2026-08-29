@@ -272,14 +272,12 @@ struct LyricsPresenterTests {
                 // activeLineIndex must remain nil — both before sink delivery
                 // (latestRawElapsed still nil → interpolatedElapsed nil → no index
                 // change) and after delivery (latestPlaybackRate == 0 → early
-                // return). Poll the tick to confirm it never flips during a
-                // short observation window.
-                let deadline = ContinuousClock.now + .seconds(1)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex != nil { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                // return). Tick a bounded number of times and assert the
+                // condition never held — a negative tick window (#349).
+                #expect(
+                    await tickUntil(100, tick: presenter.updateActiveLineTick) {
+                        presenter.activeLineIndex != nil
+                    } == false)
                 #expect(presenter.activeLineIndex == nil)
             }
         }
@@ -312,12 +310,7 @@ struct LyricsPresenterTests {
                 // Send position at 6s — should highlight Line B (time=5)
                 positionSubject.send(PlaybackPosition(rawElapsed: 6, playbackRate: 1.0))
 
-                let deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 1 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 1 })
                 #expect(presenter.activeLineIndex == 1)
             }
         }
@@ -357,12 +350,7 @@ struct LyricsPresenterTests {
                         timestamp: fixedNow.addingTimeInterval(-7),
                         playbackRate: 1.0))
 
-                let deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 1 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 1 })
                 #expect(presenter.activeLineIndex == 1)
             }
         }
@@ -408,12 +396,7 @@ struct LyricsPresenterTests {
                     timestamp: fixedNow.addingTimeInterval(-7),
                     playbackRate: 1.0))
 
-            let deadline = ContinuousClock.now + .seconds(3)
-            while ContinuousClock.now < deadline {
-                presenter.updateActiveLineTick()
-                if presenter.activeLineIndex == 1 { break }
-                try? await Task.sleep(for: .milliseconds(10))
-            }
+            #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 1 })
             #expect(presenter.activeLineIndex == 1)
         }
 
@@ -444,22 +427,12 @@ struct LyricsPresenterTests {
 
                 // Advance to Line C (index 2)
                 positionSubject.send(PlaybackPosition(rawElapsed: 12, timestamp: nil, playbackRate: 1.0))
-                let advanceDeadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < advanceDeadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 2 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 2 })
                 #expect(presenter.activeLineIndex == 2)
 
                 // Seek back to Line A (index 0)
                 positionSubject.send(PlaybackPosition(rawElapsed: 3, timestamp: nil, playbackRate: 1.0))
-                let seekDeadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < seekDeadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 0 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 0 })
                 #expect(presenter.activeLineIndex == 0)
             }
         }
@@ -492,12 +465,7 @@ struct LyricsPresenterTests {
 
                 // Jump directly to elapsed=7 — should land on Line D (index 3)
                 positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
-                let deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 3 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 3 })
                 #expect(presenter.activeLineIndex == 3)
             }
         }
@@ -530,12 +498,7 @@ struct LyricsPresenterTests {
                 // timestamp nil → rawElapsed used verbatim (no interpolation)
                 positionSubject.send(PlaybackPosition(rawElapsed: 7, timestamp: nil, playbackRate: 1.0))
 
-                let deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 1 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 1 })
                 #expect(presenter.activeLineIndex == 1)
             }
         }
@@ -557,12 +520,29 @@ struct LyricsPresenterTests {
                 let presenter = LyricsPresenter()
                 presenter.start()
 
-                // Send resolved with nil lyrics — should be guarded
-                subject.send(TrackUpdate(lyrics: nil, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
+                // Record every lyricsState transition from here on.
+                let transitions = Collector<FetchState<LyricsContent>>()
+                let cancellable = presenter.$lyricsState.dropFirst().sink { transitions.append($0) }
 
-                // State should not have changed from idle
-                #expect(presenter.lyricsState.isIdle)
+                // Send resolved with nil lyrics — guarded by `guard let content
+                // = update.lyrics else { return }`, so it must produce no
+                // transition at all.
+                subject.send(TrackUpdate(lyrics: nil, lyricsState: .resolved))
+
+                // Sentinel: a real resolved update through the same
+                // trackChange pipeline. Both updates are delivered by the same
+                // `.receive(on: .main)` sink in send order, so once the
+                // sentinel's own `.success` lands, the nil-lyrics update above
+                // has already been fully processed — anything it produced
+                // would already be in `transitions`.
+                let sentinelContent = LyricsContent.plain(["Sentinel"])
+                subject.send(TrackUpdate(lyrics: sentinelContent, lyricsState: .resolved))
+                await settle(presenter.$lyricsState) { $0 == .success(sentinelContent) }
+
+                // Only the sentinel's own transitions were recorded — the
+                // nil-lyrics guard produced none.
+                #expect(transitions.values == [.revealing(sentinelContent), .success(sentinelContent)])
+                _ = cancellable
             }
         }
 
@@ -586,17 +566,25 @@ struct LyricsPresenterTests {
                 await settle(presenter.$lyricsState) { $0.isSuccess }
                 #expect(presenter.lyricsState == .success(content))
 
-                // Track state transitions after duplicate send
-                var enteredRevealing = false
-                let cancellable = presenter.$lyricsState.dropFirst().sink { state in
-                    if state.isRevealing { enteredRevealing = true }
-                }
+                // Track state transitions after the duplicate send.
+                let transitions = Collector<FetchState<LyricsContent>>()
+                let cancellable = presenter.$lyricsState.dropFirst().sink { transitions.append($0) }
 
                 // Send same lyrics again — guard prevents re-reveal
                 subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(100))
-                #expect(presenter.lyricsState == .success(content))
-                #expect(!enteredRevealing, "should not re-enter .revealing for duplicate lyrics")
+
+                // Sentinel: a distinct lyrics update through the same
+                // trackChange pipeline. Because both sends are delivered by
+                // the same `.receive(on: .main)` sink in order, the duplicate
+                // above has already been fully (non-)processed by the time
+                // the sentinel's own `.success` lands.
+                let sentinelContent = LyricsContent.plain(["Sentinel line"])
+                subject.send(TrackUpdate(lyrics: sentinelContent, lyricsState: .resolved))
+                await settle(presenter.$lyricsState) { $0 == .success(sentinelContent) }
+
+                #expect(
+                    transitions.values == [.revealing(sentinelContent), .success(sentinelContent)],
+                    "should not re-enter .revealing for duplicate lyrics")
                 _ = cancellable
             }
         }
@@ -610,9 +598,19 @@ struct LyricsPresenterTests {
             let subject = PassthroughSubject<TrackUpdate, Never>()
             let content = LyricsContent.plain(["Line 1"])
 
+            // Cancellation spy: `receiveCancel` fires when `stop()`'s
+            // `cancellables.removeAll()` tears down the sink built on top of
+            // this publisher — Combine propagates `cancel()` synchronously up
+            // the operator chain, through `.receive(on: .main)`, to here.
+            let cancelled = Collector<Void>()
+            let trackChangePublisher =
+                subject
+                .handleEvents(receiveCancel: { cancelled.append(()) })
+                .eraseToAnyPublisher()
+
             await withDependencies {
                 $0.trackInteractor = StubTrackInteractor(
-                    trackChangePublisher: subject.eraseToAnyPublisher(),
+                    trackChangePublisher: trackChangePublisher,
                     textLayout: TextLayout(decodeEffect: .init(duration: 0))
                 )
             } operation: {
@@ -624,11 +622,13 @@ struct LyricsPresenterTests {
                 #expect(presenter.lyricsState == .success(content))
 
                 presenter.stop()
+                await cancelled.waitForCount(1)
 
-                // After stop, new emissions should not change state
+                // The subscription is gone, so this send reaches no
+                // subscriber and runs synchronously to nothing — no wait
+                // needed to observe that state did not change.
                 let newContent = LyricsContent.plain(["New Line"])
                 subject.send(TrackUpdate(lyrics: newContent, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
                 #expect(
                     presenter.lyricsState == .success(content),
                     "State should not change after stop")

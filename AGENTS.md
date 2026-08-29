@@ -201,9 +201,27 @@ Shared conventions:
   off the main actor (a Combine sink on the worker, a nonisolated `Task`),
   record into `Collector<Element>` (`TestSupport`, #349) and await
   `waitForCount` / `waitFor` / `settle(until:)` — the write resumes the
-  waiter, no deadline. Poll to a deadline only for state with no signal to
-  await (out-of-process work: subprocess, `DispatchSource`, framework
-  callbacks you cannot route through a spy). Never redirect the
+  waiter, no deadline. A `DispatchSource` / FSEvents callback is such a spy:
+  only the OS's cause is external, the signal is in-process. When the test
+  itself drives the subject (`tick()` / `updateActiveLineTick()`), advance it
+  with `tickUntil(_:tick:until:)` (`TestSupport`, #349) — bounded by a tick
+  budget, not a wall clock — and assert the returned `Bool`; `== false` after
+  n ticks is the negative form (cancellation yields `false` too, but only the
+  `.timeLimit` cancels a test task, and it has already failed the test). Poll
+  to a deadline only for state that is
+  merely readable (a file a subprocess writes, `kill(pid, 0)`, an unreaped
+  child): `pollUntil(timeout:interval:_:)` (`TestSupport`, #349), result
+  asserted with `try #require`. A child's exit is neither polled nor joined
+  after an `await` — `Process.waitUntilExit()` runs the calling thread's run
+  loop while Foundation delivers the exit to the launching thread, so a test
+  resumed on another cooperative thread hangs; record the termination handler
+  into a `Collector` instead (`DarwinGatewayTests/LaunchedProcess.swift`,
+  #349). Prove "nothing happens" with the mechanism
+  that guarantees it — a `handleEvents(receiveCancel:)` spy awaited after
+  `stop()`, or a sentinel event through the same pipeline, `settle`d on a
+  value only the sentinel can produce (a distinct size, not an image's
+  identity, which a duplicate re-decode changes too) before asserting no
+  intermediate transition was recorded — never with a fixed sleep. Never redirect the
   global executor onto the main actor (`uncheckedUseMainSerialExecutor`):
   the hook is process-wide and stalls unrelated targets in the parallel run.
 - Do not use `setenv` in tests. Inject config paths or environment-derived
