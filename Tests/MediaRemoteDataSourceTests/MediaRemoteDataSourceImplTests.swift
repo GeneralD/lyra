@@ -161,9 +161,10 @@ struct MediaRemoteDataSourceImplTests {
             }
             #expect(Set(titles) == ["First", "Second"])
             #expect(gateway.runStreamingCallCount == 1)
-            // One request per line, in order: the second poll consumed the same stream
-            // after the first, never alongside it.
+            // One request per line, in order — and never two in flight at once: the
+            // second poll's `next()` started only after the first's had returned.
             #expect(gateway.nextRequests.values == [0, 1])
+            #expect(gateway.peakConcurrentNextRequests == 1)
         }
     }
 
@@ -443,6 +444,10 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     private let firstLineGate: Collector<Void>?
     /// The index of every line a consumer asked for, recorded as its `next()` is entered.
     let nextRequests = Collector<Int>()
+    private let gauge = InFlightGauge()
+    /// The most `next()` calls that were ever in flight together, across every stream
+    /// this gateway handed out; 1 means the subject serialised them.
+    var peakConcurrentNextRequests: Int { gauge.peak }
     private(set) var runStreamingCallCount = 0
     private var capturedRunCommands: [CapturedCommand] = []
     private var capturedStreamingCommands: [CapturedCommand] = []
@@ -498,7 +503,9 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
         // and the gate sit exactly where the subject suspends: a test can observe that a
         // poll is *inside* `next()` instead of guessing it from a delay (#353).
         let cursor = LineCursor()
-        return AsyncStream(unfolding: { [nextRequests, firstLineGate] in
+        return AsyncStream(unfolding: { [nextRequests, firstLineGate, gauge] in
+            gauge.enter()
+            defer { gauge.exit() }
             let index = cursor.advance()
             guard index < lines.count else { return nil }
             nextRequests.append(index)
@@ -508,8 +515,7 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     }
 }
 
-/// The next line index a stream hands out; `next()` calls are serialised by the
-/// subject, the lock only keeps the counter honest if they are not.
+/// The next line index a stream hands out; a restarted stream begins at 0 again.
 private final class LineCursor: @unchecked Sendable {
     private let lock = NSLock()
     private var index = 0
@@ -519,6 +525,26 @@ private final class LineCursor: @unchecked Sendable {
             defer { index += 1 }
             return index
         }
+    }
+}
+
+/// How many `next()` calls are in flight at once, and the most there ever were: the
+/// subject is meant to serialise them, and the peak is what proves it did. The lock
+/// keeps the count honest precisely when the subject fails to.
+private final class InFlightGauge: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight = 0
+    private(set) var peak = 0
+
+    func enter() {
+        lock.withLock {
+            inFlight += 1
+            peak = max(peak, inFlight)
+        }
+    }
+
+    func exit() {
+        lock.withLock { inFlight -= 1 }
     }
 }
 

@@ -1,50 +1,25 @@
-import Foundation
-
 /// Suspends until the current task is cancelled — the stand-in for a request that
 /// never answers, in a test double whose only way out is the subject cancelling it.
+/// Returns `true` when the cancel arrived and `false` when the guardrail elapsed first.
 ///
-/// A `Task.sleep` of "long enough" models the same thing with a number that is not
-/// part of the test's meaning, and turns a subject that fails to cancel into a wait of
-/// that length before the assertion fails. Parking on cancellation says what the double
-/// means: nothing but the cancel resumes it. The guardrail for a subject that never
-/// cancels is the suite's `.timeLimit`, which cancels the test task and so releases
-/// every double parked under it — the regression is reported, not spun out (#353).
+/// The passing path never sees the guardrail: the subject cancels, the sleep throws, the
+/// double resumes at once. The guardrail exists for the *failing* path, and it is
+/// deliberately independent of task cancellation reaching this task. A suite's
+/// `.timeLimit` cancels the test task, and that cancel propagates only through
+/// structured children (`TaskGroup.addTask`, `async let`); a subject that regressed
+/// into parking its probes on unstructured `Task { }`s would leave a cancel-only park
+/// waiting forever, and a wait the run cannot end is a hang, not a failure (#349). With
+/// the guardrail every parked double returns on its own, the double records that the
+/// cancel never came, and the assertion fails where it should. The default matches the
+/// one-minute suite limits, so a stuck subject surfaces at the same time either way.
 ///
-/// Returns at once when the task is already cancelled.
-public func suspendUntilCancelled() async {
-    let latch = CancellationLatch()
-    await withTaskCancellationHandler {
-        await withCheckedContinuation { continuation in
-            latch.park(continuation)
-        }
-    } onCancel: {
-        latch.release()
-    }
-}
-
-/// Hands the parked continuation to whichever of `park` and `release` comes second,
-/// so a cancellation that lands before the continuation exists still resumes it.
-/// Internal so `TestSupportTests` can pin both orders directly.
-final class CancellationLatch: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var released = false
-
-    func park(_ parked: CheckedContinuation<Void, Never>) {
-        let resumeNow = lock.withLock {
-            guard !released else { return true }
-            continuation = parked
-            return false
-        }
-        if resumeNow { parked.resume() }
-    }
-
-    func release() {
-        let parked = lock.withLock {
-            released = true
-            defer { continuation = nil }
-            return continuation
-        }
-        parked?.resume()
+/// Returns at once, `true`, when the task is already cancelled (#353).
+@discardableResult
+public func suspendUntilCancelled(guardrail: Duration = .seconds(60)) async -> Bool {
+    do {
+        try await Task.sleep(for: guardrail)
+        return false
+    } catch {
+        return true
     }
 }
