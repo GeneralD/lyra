@@ -459,11 +459,13 @@ struct ConfigWatchTests {
         // 2. Atomic save of the main config (fresh inode renamed into place),
         //    then an in-place append to the NEW inode: only a re-armed file
         //    watch can observe the second edit.
-        try "includes = [\"koko.toml\"]\nscreen = \"main\"".write(
-            toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
         // The rename's own callbacks are the gateway's, so they are awaited, not
         // polled: at least one arrives, since the directory watch sees the rename.
+        // The count is taken before the save so that a callback landing between
+        // the save and the capture cannot leave the wait with nothing to await.
         let afterRename = onChange.count
+        try "includes = [\"koko.toml\"]\nscreen = \"main\"".write(
+            toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
         await onChange.settle { $0.count > afterRename }
 
         // The atomic save can post up to three callbacks in all — the temp file's

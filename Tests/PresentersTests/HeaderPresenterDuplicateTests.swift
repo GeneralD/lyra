@@ -25,10 +25,10 @@ private struct StubTrackInteractor: TrackInteractor, @unchecked Sendable {
 // MARK: - Helpers
 
 @MainActor
-private func fixtureArtworkData(color: NSColor = .red) throws -> Data {
-    let image = NSImage(size: NSSize(width: 1, height: 1))
+private func fixtureArtworkData(color: NSColor = .red, side: CGFloat = 1) throws -> Data {
+    let image = NSImage(size: NSSize(width: side, height: side))
     image.lockFocus()
-    color.drawSwatch(in: NSRect(x: 0, y: 0, width: 1, height: 1))
+    color.drawSwatch(in: NSRect(x: 0, y: 0, width: side, height: side))
     image.unlockFocus()
     return try #require(image.tiffRepresentation)
 }
@@ -151,10 +151,15 @@ struct HeaderPresenterDuplicateTests {
                 // Sentinel: genuinely different artwork bytes, through the same
                 // artwork → receiveArtwork(_:) pipeline. Combine delivers on one
                 // queue in send order, so this publish proves the duplicate
-                // above already finished being processed.
-                let sentinelData = try fixtureArtworkData(color: .blue)
+                // above already finished being processed. It is waited on by its
+                // own size: a duplicate re-decode also yields an image that is
+                // `!== cachedImage`, so identity alone could settle on the very
+                // publish this test must reject.
+                let sentinelData = try fixtureArtworkData(color: .blue, side: 2)
+                let sentinelSize = try #require(NSImage(data: sentinelData)).size
+                #expect(sentinelSize != cachedImage.size)
                 artworkSubject.send(sentinelData)
-                await settle(presenter.$artworkImage) { $0 !== cachedImage }
+                await settle(presenter.$artworkImage) { $0?.size == sentinelSize }
 
                 // Exactly one publish recorded — the sentinel's. A duplicate
                 // re-decode would have shown up as a second publish here.

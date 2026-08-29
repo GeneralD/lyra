@@ -102,6 +102,7 @@ struct DarwinGatewayLockTests {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            defer { holder.terminate() }
             try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
 
             kill(holder.processIdentifier, SIGKILL)
@@ -117,6 +118,7 @@ struct DarwinGatewayLockTests {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            defer { holder.terminate() }
             try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
 
             kill(holder.processIdentifier, SIGKILL)
@@ -204,6 +206,7 @@ struct DarwinGatewayLockTests {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
+            defer { holder.terminate() }
             try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
             holder.terminate()
             await holder.waitForExit()
