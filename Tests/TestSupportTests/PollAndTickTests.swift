@@ -9,9 +9,9 @@ import Testing
 @Suite(.timeLimit(.minutes(1)))
 struct PollUntilTests {
     @Test func conditionAlreadyTrueReturnsWithoutSleeping() async {
-        let start = ContinuousClock.now
-        #expect(await pollUntil { true })
-        #expect(ContinuousClock.now - start < .seconds(1))
+        // An interval longer than the suite's time limit: if the poll slept even
+        // once before checking, the limit would report it — no wall clock needed.
+        #expect(await pollUntil(interval: .seconds(120)) { true })
     }
 
     @Test func returnsOnceTheConditionHolds() async {
@@ -31,6 +31,12 @@ struct PollUntilTests {
         // Without the cancellation check the poll would spin to its own deadline —
         // longer than the suite's limit here — once `.timeLimit` cancels the test.
         let poll = Task { await pollUntil(timeout: .seconds(120)) { false } }
+        poll.cancel()
+        #expect(await poll.value == false)
+    }
+
+    @Test func cancellationWinsOverAConditionThatAlreadyHolds() async {
+        let poll = Task { await pollUntil { true } }
         poll.cancel()
         #expect(await poll.value == false)
     }
@@ -59,13 +65,14 @@ struct TickUntilTests {
     @Test @MainActor func cancellationReturnsWithoutSpendingTheBudget() async {
         let stepper = Stepper()
         // The task is cancelled before it runs — the test holds the main actor until
-        // it awaits — so the first tick sees the cancellation and returns; without
-        // the check, a cancelled sleep returns at once and the loop spins the budget.
+        // it awaits — so the loop sees the cancellation before its first tick and
+        // returns; without the check, a cancelled sleep returns at once and the loop
+        // spins the whole budget.
         let drive = Task { @MainActor in
             await tickUntil(100_000, tick: stepper.tick) { false }
         }
         drive.cancel()
         #expect(await drive.value == false)
-        #expect(stepper.ticks < 100_000)
+        #expect(stepper.ticks == 0)
     }
 }

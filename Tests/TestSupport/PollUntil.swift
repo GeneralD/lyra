@@ -11,8 +11,9 @@
 /// the poll returns on the first interval that sees the condition. Assert on the
 /// result (`try #require(await pollUntil { … })`) so an expiry is reported where it
 /// happened rather than as a downstream expectation. Cancellation ends the poll the
-/// same way — `false` at once — so a suite's `.timeLimit` cancelling the test task
-/// does not leave the poll spinning to its own deadline.
+/// same way — `false` at once, checked before the condition, so a task that is
+/// already cancelled never reports `true` — and a suite's `.timeLimit` cancelling
+/// the test task does not leave the poll spinning to its own deadline.
 @discardableResult
 public func pollUntil(
     timeout: Duration = .seconds(3),
@@ -20,9 +21,10 @@ public func pollUntil(
     _ condition: () -> Bool
 ) async -> Bool {
     let deadline = ContinuousClock.now + timeout
-    while !condition() {
-        guard ContinuousClock.now < deadline, !Task.isCancelled else { return false }
+    while true {
+        guard !Task.isCancelled else { return false }
+        if condition() { return true }
+        guard ContinuousClock.now < deadline else { return false }
         try? await Task.sleep(for: interval)
     }
-    return true
 }

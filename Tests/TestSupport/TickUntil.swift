@@ -13,7 +13,9 @@
 /// A `false` result is also the shape of a negative check: ticking a paused subject
 /// `n` times and asserting the condition never held proves "nothing happens" in tick
 /// count rather than in seconds. Cancellation — a suite's `.timeLimit` expiring —
-/// returns `false` at the next tick instead of spending the rest of the budget.
+/// also returns `false`, checked before each tick, instead of spending the rest of
+/// the budget; that `false` cannot turn a negative check into a pass, because the
+/// time limit that cancelled the task has already recorded the test as failed.
 @MainActor
 @discardableResult
 public func tickUntil(
@@ -22,9 +24,9 @@ public func tickUntil(
     until condition: () -> Bool
 ) async -> Bool {
     for _ in 0..<maxTicks {
+        guard !Task.isCancelled else { return false }
         tick()
         if condition() { return true }
-        guard !Task.isCancelled else { return false }
         try? await Task.sleep(for: .milliseconds(1))
     }
     return false

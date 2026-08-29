@@ -461,22 +461,25 @@ struct ConfigWatchTests {
         //    watch can observe the second edit.
         try "includes = [\"koko.toml\"]\nscreen = \"main\"".write(
             toFile: lyraDir + "/config.toml", atomically: true, encoding: .utf8)
+        // The rename's own callbacks are the gateway's, so they are awaited, not
+        // polled: at least one arrives, since the directory watch sees the rename.
         let afterRename = onChange.count
-        // The rename may itself post one or two directory/file events, and
-        // there is no fixed count to await — this is genuine external
-        // quiescence, not a value this test asserts on. Wait for the count to
-        // move at least once (or the deadline) so the snapshot taken below
-        // starts after the rename's own churn, not mid-churn.
-        await pollUntil { onChange.count != afterRename }
+        await onChange.settle { $0.count > afterRename }
 
-        let settled = onChange.count
-        let configHandle = try #require(FileHandle(forWritingAtPath: lyraDir + "/config.toml"))
-        try configHandle.seekToEnd()
-        try configHandle.write(contentsOf: Data("\n# in-place after rename\n".utf8))
-        try configHandle.close()
-
-        await onChange.settle { $0.count > settled }
-        #expect(onChange.count > settled)
+        // The atomic save can post up to three callbacks in all — the temp file's
+        // creation and the rename on the directory watch, the rename on the old
+        // inode's file watch — and they carry no label, so a late one could stand
+        // in for the edit's. Four awaited in-place appends cannot all be explained
+        // that way: at least one of those callbacks then came from a file watch
+        // re-armed on the new inode, which is what this test proves.
+        for _ in 0..<4 {
+            let settled = onChange.count
+            let configHandle = try #require(FileHandle(forWritingAtPath: lyraDir + "/config.toml"))
+            try configHandle.seekToEnd()
+            try configHandle.write(contentsOf: Data("\n# in-place after rename\n".utf8))
+            try configHandle.close()
+            await onChange.settle { $0.count > settled }
+        }
     }
 }
 

@@ -144,6 +144,10 @@ struct DarwinGatewayLockTests {
 
             let holder = try FlockHelper.launchHolderWithChild(lockPath: lockPath, childReadyPath: childReadyPath)
             let pid = holder.processIdentifier
+            // The holder put itself in its own process group, so this reaches the
+            // orphaned child too — on every exit path, including a `#require` that
+            // throws before the kill below.
+            defer { kill(-pid, SIGKILL) }
             try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
             try #require(await pollUntil(timeout: .seconds(30)) { FileManager.default.fileExists(atPath: childReadyPath) })
 
@@ -153,9 +157,6 @@ struct DarwinGatewayLockTests {
 
             let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(lock.acquireLock(), "child must not inherit flock fd")
-
-            // Clean up orphaned child process
-            kill(-pid, SIGKILL)
         }
     }
 

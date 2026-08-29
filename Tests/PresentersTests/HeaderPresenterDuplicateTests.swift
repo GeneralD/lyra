@@ -81,10 +81,14 @@ struct HeaderPresenterDuplicateTests {
                 // finished being processed (a no-op, per the guard in revealTitle/
                 // revealArtist).
                 subject.send(sentinelUpdate)
+                // Both phases already read `.revealed` from the first send, so a
+                // wait on them would return before the sentinel is processed. The
+                // sentinel's text is set only after its phase went `.revealing`,
+                // so wait for the text first, then for the phase to come back.
+                await settle(presenter.$displayTitle) { $0 == "Sentinel" }
+                await settle(presenter.$displayArtist) { $0 == "SentinelArtist" }
                 await settle(presenter.$titlePhase) { $0 == .revealed }
                 await settle(presenter.$artistPhase) { $0 == .revealed }
-                #expect(presenter.displayTitle == "Sentinel")
-                #expect(presenter.displayArtist == "SentinelArtist")
 
                 // The only recorded transitions are the sentinel's own
                 // `.revealing` → `.revealed` — the duplicate produced none.

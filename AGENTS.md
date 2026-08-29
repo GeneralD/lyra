@@ -206,7 +206,9 @@ Shared conventions:
   itself drives the subject (`tick()` / `updateActiveLineTick()`), advance it
   with `tickUntil(_:tick:until:)` (`TestSupport`, #349) — bounded by a tick
   budget, not a wall clock — and assert the returned `Bool`; `== false` after
-  n ticks is the negative form. Poll to a deadline only for state that is
+  n ticks is the negative form (cancellation yields `false` too, but only the
+  `.timeLimit` cancels a test task, and it has already failed the test). Poll
+  to a deadline only for state that is
   merely readable (a file a subprocess writes, `kill(pid, 0)`, an unreaped
   child): `pollUntil(timeout:interval:_:)` (`TestSupport`, #349), result
   asserted with `try #require`. A child's exit is neither polled nor joined
