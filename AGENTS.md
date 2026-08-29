@@ -230,8 +230,10 @@ Shared conventions:
   only the subject's cancel resumes it; a stream that must hold a line back
   gates it on a `Collector` the test appends to and records the consumer's
   `next()` (`AsyncStream(unfolding:)`), so the test can observe the subject
-  inside the call before acting; work that must really suspend resumes a
-  continuation from a GCD queue.
+  inside the call before acting; a private spin-wait (`Task.yield()`) is
+  observed by running that task on a test-owned `TaskExecutor` and waiting for
+  its second enqueue; work that must really suspend resumes a continuation
+  from a GCD queue.
 - Do not use `setenv` in tests. Inject config paths or environment-derived
   values through constructors or dependencies.
 - UI tests must select fixture graphs during app bootstrap in `AppDelegate`
