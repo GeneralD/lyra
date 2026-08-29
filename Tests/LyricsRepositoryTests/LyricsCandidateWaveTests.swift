@@ -171,8 +171,9 @@ private actor ConcurrencyProbingDataSource: LyricsDataSource {
     func search(query: String) async -> [LyricsResult]? { nil }
 }
 
-// Hits on one title; every other probe parks on a cancellable sleep standing in for a
-// request sitting on its timeout, and records that it was cancelled rather than waited out.
+// Hits on one title; every other probe parks until cancelled — standing in for a request
+// sitting on its timeout — and records the cancel. A probe the subject never cancels
+// returns on the helper's guardrail instead, records nothing, and fails the assertion.
 private actor CancellationObservingDataSource: LyricsDataSource {
     private let hitTitle: String
     private var cancelledTitles: Set<String> = []
@@ -185,11 +186,7 @@ private actor CancellationObservingDataSource: LyricsDataSource {
         guard title != hitTitle else {
             return LyricsResult(trackName: title, artistName: artist, plainLyrics: "lyrics")
         }
-        do {
-            try await Task.sleep(for: .seconds(30))
-        } catch {
-            cancelledTitles.insert(title)
-        }
+        if await suspendUntilCancelled() { cancelledTitles.insert(title) }
         return nil
     }
 

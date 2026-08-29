@@ -1,11 +1,12 @@
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import MediaRemoteDataSource
 
-@Suite("MediaRemoteDataSourceImpl")
+@Suite("MediaRemoteDataSourceImpl", .timeLimit(.minutes(1)))
 struct MediaRemoteDataSourceImplTests {
     @Test("poll returns info for valid JSON line")
     func pollReturnsInfo() async throws {
@@ -114,7 +115,10 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("concurrent polls serialize iterator access")
+    @available(macOS 15, *)
     func concurrentPollsSerializeIteratorAccess() async throws {
+        let firstLineGate = Collector<Void>()
+        let secondPollExecutor = ProbingExecutor()
         let gateway = StreamingGateway(
             streamPlans: [
                 [
@@ -122,7 +126,7 @@ struct MediaRemoteDataSourceImplTests {
                     Self.jsonLine(title: "Second", artist: "Artist", hasInfo: true),
                 ]
             ],
-            firstYieldDelayNanoseconds: 50_000_000
+            firstLineGate: firstLineGate
         )
 
         await withDependencies {
@@ -131,7 +135,18 @@ struct MediaRemoteDataSourceImplTests {
             let dataSource = MediaRemoteDataSourceImpl()
             let results = await withTaskGroup(of: MediaRemotePollResult.self) { group in
                 group.addTask { await dataSource.poll() }
-                group.addTask { await dataSource.poll() }
+                // The first poll is now inside `next()` on the shared iterator and stays
+                // there until the gate opens.
+                await gateway.nextRequests.waitForCount(1)
+                // The second poll runs on an executor that records every enqueue. Its
+                // first enqueue starts the task; a second one can only come from a
+                // suspension inside `poll()` — the `Task.yield()` it spins on because
+                // the first poll still holds the iterator. Waiting for it observes the
+                // overlap before the gate opens, instead of assuming it from a delay
+                // (#353).
+                group.addTask(executorPreference: secondPollExecutor) { await dataSource.poll() }
+                await secondPollExecutor.enqueues.waitForCount(2)
+                firstLineGate.append(())
 
                 var results: [MediaRemotePollResult] = []
                 for await result in group {
@@ -146,6 +161,10 @@ struct MediaRemoteDataSourceImplTests {
             }
             #expect(Set(titles) == ["First", "Second"])
             #expect(gateway.runStreamingCallCount == 1)
+            // One request per line, in order — and never two in flight at once: the
+            // second poll's `next()` started only after the first's had returned.
+            #expect(gateway.nextRequests.values == [0, 1])
+            #expect(gateway.peakConcurrentNextRequests == 1)
         }
     }
 
@@ -421,17 +440,24 @@ private struct CapturedCommand: Sendable {
 private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
     private let lock = NSLock()
     private var streamPlans: [[String]]
-    private let firstYieldDelayNanoseconds: UInt64
+    /// Opened by the test to let line 0 of each stream through; `nil` streams freely.
+    private let firstLineGate: Collector<Void>?
+    /// The index of every line a consumer asked for, recorded as its `next()` is entered.
+    let nextRequests = Collector<Int>()
+    private let gauge = InFlightGauge()
+    /// The most `next()` calls that were ever in flight together, across every stream
+    /// this gateway handed out; 1 means the subject serialised them.
+    var peakConcurrentNextRequests: Int { gauge.peak }
     private(set) var runStreamingCallCount = 0
     private var capturedRunCommands: [CapturedCommand] = []
     private var capturedStreamingCommands: [CapturedCommand] = []
 
     init(
         streamPlans: [[String]],
-        firstYieldDelayNanoseconds: UInt64 = 0
+        firstLineGate: Collector<Void>? = nil
     ) {
         self.streamPlans = streamPlans
-        self.firstYieldDelayNanoseconds = firstYieldDelayNanoseconds
+        self.firstLineGate = firstLineGate
     }
 
     var runCommands: [CapturedCommand] {
@@ -473,18 +499,68 @@ private final class StreamingGateway: ProcessGateway, @unchecked Sendable {
             return streamPlans.removeFirst()
         }
 
-        return AsyncStream { continuation in
-            let task = Task {
-                for (index, line) in lines.enumerated() {
-                    if index == 0, firstYieldDelayNanoseconds > 0 {
-                        try? await Task.sleep(nanoseconds: firstYieldDelayNanoseconds)
-                    }
-                    continuation.yield(line)
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in task.cancel() }
+        // `unfolding` runs the closure inside the consumer's `next()`, so the recording
+        // and the gate sit exactly where the subject suspends: a test can observe that a
+        // poll is *inside* `next()` instead of guessing it from a delay (#353).
+        let cursor = LineCursor()
+        return AsyncStream(unfolding: { [nextRequests, firstLineGate, gauge] in
+            gauge.enter()
+            defer { gauge.exit() }
+            let index = cursor.advance()
+            guard index < lines.count else { return nil }
+            nextRequests.append(index)
+            if index == 0, let firstLineGate { await firstLineGate.waitForCount(1) }
+            return lines[index]
+        })
+    }
+}
+
+/// The next line index a stream hands out; a restarted stream begins at 0 again.
+private final class LineCursor: @unchecked Sendable {
+    private let lock = NSLock()
+    private var index = 0
+
+    func advance() -> Int {
+        lock.withLock {
+            defer { index += 1 }
+            return index
         }
+    }
+}
+
+/// How many `next()` calls are in flight at once, and the most there ever were: the
+/// subject is meant to serialise them, and the peak is what proves it did. The lock
+/// keeps the count honest precisely when the subject fails to.
+private final class InFlightGauge: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight = 0
+    private(set) var peak = 0
+
+    func enter() {
+        lock.withLock {
+            inFlight += 1
+            peak = max(peak, inFlight)
+        }
+    }
+
+    func exit() {
+        lock.withLock { inFlight -= 1 }
+    }
+}
+
+/// Runs a task's jobs on its own queue and records each enqueue, so a test can observe
+/// the task *suspending*: a `Task.yield()` re-enqueues the job, which is the only
+/// externally visible trace of a spin-wait the subject keeps private.
+@available(macOS 15, *)
+private final class ProbingExecutor: TaskExecutor {
+    let enqueues = Collector<Void>()
+    private let queue = DispatchQueue(label: "MediaRemoteDataSourceImplTests.ProbingExecutor")
+
+    func enqueue(_ job: consuming ExecutorJob) {
+        enqueues.append(())
+        let unownedJob = UnownedJob(job)
+        let executor = asUnownedTaskExecutor()
+        queue.async { unownedJob.runSynchronously(on: executor) }
     }
 }
 

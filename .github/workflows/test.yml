@@ -20,6 +20,10 @@ jobs:
 
   test:
     runs-on: macos-latest
+    # A test blocked on a thread (the sync→async bridge's `semaphore.wait()`) is out of
+    # reach of Swift Testing's `.timeLimit`; this is the bound that turns such a hang
+    # into a failure instead of a six-hour default (#353).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

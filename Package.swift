@@ -878,6 +878,7 @@ let package = Package(
         .testTarget(
             name: "MediaRemoteDataSourceTests",
             dependencies: [
+                "TestSupport",
                 "MediaRemoteDataSource",
                 "Domain",
                 .product(name: "Dependencies", package: "swift-dependencies"),
