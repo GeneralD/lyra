@@ -6,7 +6,7 @@ import Testing
 
 @testable import MediaRemoteDataSource
 
-@Suite("MediaRemoteDataSourceImpl")
+@Suite("MediaRemoteDataSourceImpl", .timeLimit(.minutes(1)))
 struct MediaRemoteDataSourceImplTests {
     @Test("poll returns info for valid JSON line")
     func pollReturnsInfo() async throws {
@@ -115,8 +115,10 @@ struct MediaRemoteDataSourceImplTests {
     }
 
     @Test("concurrent polls serialize iterator access")
+    @available(macOS 15, *)
     func concurrentPollsSerializeIteratorAccess() async throws {
         let firstLineGate = Collector<Void>()
+        let secondPollExecutor = ProbingExecutor()
         let gateway = StreamingGateway(
             streamPlans: [
                 [
@@ -134,11 +136,16 @@ struct MediaRemoteDataSourceImplTests {
             let results = await withTaskGroup(of: MediaRemotePollResult.self) { group in
                 group.addTask { await dataSource.poll() }
                 // The first poll is now inside `next()` on the shared iterator and stays
-                // there until the gate opens, so the second poll is issued while the
-                // first provably holds the iterator — the overlap is observed, not
-                // assumed from a delay (#353).
+                // there until the gate opens.
                 await gateway.nextRequests.waitForCount(1)
-                group.addTask { await dataSource.poll() }
+                // The second poll runs on an executor that records every enqueue. Its
+                // first enqueue starts the task; a second one can only come from a
+                // suspension inside `poll()` — the `Task.yield()` it spins on because
+                // the first poll still holds the iterator. Waiting for it observes the
+                // overlap before the gate opens, instead of assuming it from a delay
+                // (#353).
+                group.addTask(executorPreference: secondPollExecutor) { await dataSource.poll() }
+                await secondPollExecutor.enqueues.waitForCount(2)
                 firstLineGate.append(())
 
                 var results: [MediaRemotePollResult] = []
@@ -512,6 +519,22 @@ private final class LineCursor: @unchecked Sendable {
             defer { index += 1 }
             return index
         }
+    }
+}
+
+/// Runs a task's jobs on its own queue and records each enqueue, so a test can observe
+/// the task *suspending*: a `Task.yield()` re-enqueues the job, which is the only
+/// externally visible trace of a spin-wait the subject keeps private.
+@available(macOS 15, *)
+private final class ProbingExecutor: TaskExecutor {
+    let enqueues = Collector<Void>()
+    private let queue = DispatchQueue(label: "MediaRemoteDataSourceImplTests.ProbingExecutor")
+
+    func enqueue(_ job: consuming ExecutorJob) {
+        enqueues.append(())
+        let unownedJob = UnownedJob(job)
+        let executor = asUnownedTaskExecutor()
+        queue.async { unownedJob.runSynchronously(on: executor) }
     }
 }
 

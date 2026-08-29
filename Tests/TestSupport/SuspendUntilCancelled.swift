@@ -24,7 +24,8 @@ public func suspendUntilCancelled() async {
 
 /// Hands the parked continuation to whichever of `park` and `release` comes second,
 /// so a cancellation that lands before the continuation exists still resumes it.
-private final class CancellationLatch: @unchecked Sendable {
+/// Internal so `TestSupportTests` can pin both orders directly.
+final class CancellationLatch: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Never>?
     private var released = false
