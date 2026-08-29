@@ -1,9 +1,10 @@
 import Foundation
+import TestSupport
 import Testing
 
 @testable import DarwinGateway
 
-@Suite("DarwinGateway lock", .serialized)
+@Suite("DarwinGateway lock", .serialized, .timeLimit(.minutes(1)))
 struct DarwinGatewayLockTests {
     // MARK: - Normal Behavior
 
@@ -37,7 +38,7 @@ struct DarwinGatewayLockTests {
 
     // MARK: - Cross-Process Mutual Exclusion
 
-    @Suite("mutual exclusion", .serialized)
+    @Suite("mutual exclusion", .serialized, .timeLimit(.minutes(1)))
     struct MutualExclusion {
         private let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/mutex")
@@ -45,26 +46,26 @@ struct DarwinGatewayLockTests {
         private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
 
         @Test("acquire fails when another process holds the lock")
-        func acquireBlocked() throws {
+        func acquireBlocked() async throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
-            defer { FlockHelper.terminate(holder) }
-            try FlockHelper.waitForLockFile(atPath: lockPath)
+            defer { holder.terminate() }
+            try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
 
             let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(!lock.acquireLock())
         }
 
         @Test("isLocked returns true when another process holds the lock")
-        func isLockedTrue() throws {
+        func isLockedTrue() async throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
-            defer { FlockHelper.terminate(holder) }
-            try FlockHelper.waitForLockFile(atPath: lockPath)
+            defer { holder.terminate() }
+            try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
 
             let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(lock.isLocked)
@@ -88,7 +89,7 @@ struct DarwinGatewayLockTests {
 
     // MARK: - Lock Release on Process Death
 
-    @Suite("process death releases lock", .serialized)
+    @Suite("process death releases lock", .serialized, .timeLimit(.minutes(1)))
     struct ProcessDeath {
         private let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/death")
@@ -96,30 +97,30 @@ struct DarwinGatewayLockTests {
         private var lockPath: String { tempDir.appendingPathComponent("lyra.pid").path }
 
         @Test("isLocked returns false immediately after holder is SIGKILL'd")
-        func isLockedAfterKill() throws {
+        func isLockedAfterKill() async throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
-            try FlockHelper.waitForLockFile(atPath: lockPath)
+            try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
 
             kill(holder.processIdentifier, SIGKILL)
-            holder.waitUntilExit()
+            await holder.waitForExit()
 
             let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(!lock.isLocked)
         }
 
         @Test("acquire succeeds immediately after holder is SIGKILL'd")
-        func acquireAfterKill() throws {
+        func acquireAfterKill() async throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
-            try FlockHelper.waitForLockFile(atPath: lockPath)
+            try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
 
             kill(holder.processIdentifier, SIGKILL)
-            holder.waitUntilExit()
+            await holder.waitForExit()
 
             let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(lock.acquireLock())
@@ -128,7 +129,7 @@ struct DarwinGatewayLockTests {
 
     // MARK: - Child Process Isolation (O_CLOEXEC)
 
-    @Suite("child process isolation", .serialized)
+    @Suite("child process isolation", .serialized, .timeLimit(.minutes(1)))
     struct ChildProcessIsolation {
         private let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/child")
@@ -137,18 +138,18 @@ struct DarwinGatewayLockTests {
         private var childReadyPath: String { tempDir.appendingPathComponent("child-ready").path }
 
         @Test("killing holder releases lock even when its child process is still alive")
-        func childDoesNotInheritLock() throws {
+        func childDoesNotInheritLock() async throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolderWithChild(lockPath: lockPath, childReadyPath: childReadyPath)
             let pid = holder.processIdentifier
-            try FlockHelper.waitForLockFile(atPath: lockPath)
-            try FlockHelper.waitForFile(atPath: childReadyPath)
+            try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
+            try #require(await pollUntil(timeout: .seconds(30)) { FileManager.default.fileExists(atPath: childReadyPath) })
 
             // Kill only the parent after the child has crossed an exec boundary.
             kill(pid, SIGKILL)
-            holder.waitUntilExit()
+            await holder.waitForExit()
 
             let lock = DarwinGateway(lockDirectory: tempDir)
             #expect(lock.acquireLock(), "child must not inherit flock fd")
@@ -160,7 +161,7 @@ struct DarwinGatewayLockTests {
 
     // MARK: - Cleanup
 
-    @Suite("cleanup", .serialized)
+    @Suite("cleanup", .serialized, .timeLimit(.minutes(1)))
     struct Cleanup {
         private let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("lyra-lock-test-\(ProcessInfo.processInfo.processIdentifier)/cleanup")
@@ -197,13 +198,14 @@ struct DarwinGatewayLockTests {
         }
 
         @Test("another process can acquire on same inode after holder exits and cleanup")
-        func reacquireAfterCleanup() throws {
+        func reacquireAfterCleanup() async throws {
             defer { try? FileManager.default.removeItem(at: tempDir) }
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             let holder = try FlockHelper.launchHolder(lockPath: lockPath)
-            try FlockHelper.waitForLockFile(atPath: lockPath)
-            FlockHelper.terminate(holder)
+            try #require(await pollUntil(timeout: .seconds(30)) { lockFileHasContent(at: lockPath) })
+            holder.terminate()
+            await holder.waitForExit()
 
             let cleaner = DarwinGateway(lockDirectory: tempDir)
             cleaner.releaseLock()
@@ -216,8 +218,15 @@ struct DarwinGatewayLockTests {
 
 // MARK: - Test Helpers
 
+/// Whether the lock file at `path` has been written with non-blank content —
+/// the predicate `pollUntil` polls for readiness of a holder process's flock write.
+private func lockFileHasContent(at path: String) -> Bool {
+    guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+    return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+}
+
 enum FlockHelper {
-    static func launchHolder(lockPath: String) throws -> Process {
+    static func launchHolder(lockPath: String) throws -> LaunchedProcess {
         let script = """
             use Fcntl qw(:flock);
             open(my $fh, ">", $ARGV[0]) or die;
@@ -225,16 +234,11 @@ enum FlockHelper {
             syswrite($fh, "$$\\n");
             sleep(600);
             """
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = ["-e", script, lockPath]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        return process
+        return try LaunchedProcess(
+            executableURL: URL(fileURLWithPath: "/usr/bin/perl"), arguments: ["-e", script, lockPath])
     }
 
-    static func launchHolderWithChild(lockPath: String, childReadyPath: String) throws -> Process {
+    static func launchHolderWithChild(lockPath: String, childReadyPath: String) throws -> LaunchedProcess {
         let script = """
             use Fcntl qw(:flock);
             use POSIX qw(setpgid);
@@ -248,48 +252,7 @@ enum FlockHelper {
             }
             sleep(600);
             """
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = ["-e", script, lockPath, childReadyPath]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        return process
-    }
-
-    static func terminate(_ process: Process) {
-        guard process.isRunning else { return }
-        process.terminate()
-        process.waitUntilExit()
-    }
-
-    static func waitForLockFile(atPath path: String, timeout: Double = 30) throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while true {
-            if let content = try? String(contentsOfFile: path, encoding: .utf8),
-                !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                return
-            }
-            guard Date() < deadline else {
-                struct Timeout: Error {}
-                throw Timeout()
-            }
-            usleep(50_000)
-        }
-    }
-
-    static func waitForFile(atPath path: String, timeout: Double = 30) throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while true {
-            if FileManager.default.fileExists(atPath: path) {
-                return
-            }
-            guard Date() < deadline else {
-                struct Timeout: Error {}
-                throw Timeout()
-            }
-            usleep(50_000)
-        }
+        return try LaunchedProcess(
+            executableURL: URL(fileURLWithPath: "/usr/bin/perl"), arguments: ["-e", script, lockPath, childReadyPath])
     }
 }

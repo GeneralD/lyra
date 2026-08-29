@@ -47,25 +47,6 @@ struct SpectrumPresenterTests {
         }
     }
 
-    /// Ticks the presenter until `condition` holds, bounded by a generous
-    /// tick *budget* rather than a wall clock. The capturing flag arrives
-    /// async on the main queue, so a 1 ms sleep between ticks drains it — but
-    /// termination counts ticks, not seconds, so a loaded CI running the
-    /// physics slower simply takes longer instead of tripping a deadline and
-    /// flaking. The fall from cava's ~4× integrator overshoot down past full
-    /// height needs many frames, and that descent is exactly the case a
-    /// wall-clock deadline used to lose under load.
-    @MainActor
-    private static func tickUntil(
-        _ presenter: SpectrumPresenter, within maxTicks: Int = 4000, _ condition: () -> Bool
-    ) async {
-        for _ in 0..<maxTicks {
-            presenter.tick()
-            if condition() { return }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-    }
-
     @MainActor
     @Test("isEnabled reflects the interactor style")
     func isEnabledReflectsStyle() {
@@ -202,7 +183,7 @@ struct SpectrumPresenterTests {
         presenter.updateBarTrackLength(4)
         interactor.capturingSubject.send(true)
 
-        await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
         #expect(presenter.binHeights() == [1, 0.5, 0.25, 0.125])
         #expect(presenter.isAnimating)
     }
@@ -220,7 +201,7 @@ struct SpectrumPresenterTests {
         presenter.updateBarTrackLength(21)  // (21 + 1) / 2 = 11 bars
         interactor.capturingSubject.send(true)
 
-        await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
         #expect(presenter.binHeights().count == 11)
     }
 
@@ -236,7 +217,7 @@ struct SpectrumPresenterTests {
         presenter.updateBarTrackLength(15)  // slot 1 → 15 → even → 14
         interactor.capturingSubject.send(true)
 
-        await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
         #expect(presenter.binHeights().count == 14)
     }
 
@@ -251,7 +232,7 @@ struct SpectrumPresenterTests {
 
         // Capturing flips isAnimating on, but with width 0 the derived count
         // is 0, so there is nothing to draw until the View reports a width.
-        await Self.tickUntil(presenter) { presenter.isAnimating }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { presenter.isAnimating }))
         #expect(presenter.binHeights().isEmpty)
     }
 
@@ -268,17 +249,17 @@ struct SpectrumPresenterTests {
         presenter.start()
         presenter.updateBarTrackLength(1)
         interactor.capturingSubject.send(true)
-        await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
 
         // The bar eases down over frames rather than snapping to zero…
         interactor.capturingSubject.send(false)
-        await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 1 }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { (presenter.binHeights().first ?? 1) < 1 }))
         let falling = presenter.binHeights().first ?? -1
         #expect(falling > 0 && falling < 1)
         #expect(presenter.isAnimating)
 
         // …then it reaches zero, the state clears, and the animation gate shuts.
-        await Self.tickUntil(presenter) { presenter.binHeights().isEmpty }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { presenter.binHeights().isEmpty }))
         #expect(presenter.binHeights().isEmpty)
         #expect(!presenter.isAnimating)
     }
@@ -296,7 +277,7 @@ struct SpectrumPresenterTests {
         presenter.updateBarTrackLength(4)
         interactor.capturingSubject.send(true)
 
-        await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
         #expect(abs((presenter.binHeights().first ?? 0) - 0.4) < 0.001)
     }
 
@@ -368,19 +349,26 @@ struct SpectrumPresenterTests {
             presenter.start()
             presenter.updateBarTrackLength(1)
             interactor.capturingSubject.send(true)
-            await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
             // Let the capturing flag settle (async via the main queue) and the
             // bar start falling at the default 60 fps, so both runs begin the
             // counted portion from the same sub-0.5 state.
             interactor.capturingSubject.send(false)
-            await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 0.5 }
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { (presenter.binHeights().first ?? 1) < 0.5 }))
 
+            // Counts ticks to convergence via the shared tick-budget helper
+            // instead of a wall-clock deadline (#349): the loop already stops
+            // the instant `binHeights()` clears, so the returned count is the
+            // real frames-to-clear, and `tickUntil`'s bounded budget is only a
+            // safety net against a regression that never converges.
             var frames = 0
-            let deadline = ContinuousClock.now + .seconds(3)
-            while !presenter.binHeights().isEmpty, ContinuousClock.now < deadline {
-                presenter.tick(frameInterval: frameInterval)
-                frames += 1
-            }
+            let cleared = await tickUntil(
+                tick: {
+                    presenter.tick(frameInterval: frameInterval)
+                    frames += 1
+                },
+                until: { presenter.binHeights().isEmpty })
+            #expect(cleared)
             return frames
         }
         let at120 = await framesToClear(frameInterval: 1.0 / 120)
@@ -406,9 +394,9 @@ struct SpectrumPresenterTests {
             presenter.start()
             presenter.updateBarTrackLength(1)
             interactor.capturingSubject.send(true)
-            await Self.tickUntil(presenter) { !presenter.binHeights().isEmpty }
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
             interactor.capturingSubject.send(false)
-            await Self.tickUntil(presenter) { (presenter.binHeights().first ?? 1) < 1 }
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { (presenter.binHeights().first ?? 1) < 1 }))
 
             for _ in 0..<frameCount {
                 presenter.tick(frameInterval: frameInterval)

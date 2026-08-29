@@ -1,9 +1,10 @@
 import Foundation
+import TestSupport
 import Testing
 
 @testable import DarwinGateway
 
-@Suite("DarwinGateway process operations", .serialized)
+@Suite("DarwinGateway process operations", .serialized, .timeLimit(.minutes(1)))
 struct DarwinGatewayProcessTests {
     private let gateway = DarwinGateway()
 
@@ -18,11 +19,11 @@ struct DarwinGatewayProcessTests {
     }
 
     @Test("overlayPIDs includes lyra-named helper process")
-    func overlayPIDsIncludesMatchingProcess() throws {
+    func overlayPIDsIncludesMatchingProcess() async throws {
         let helper = try ProcessHelper.launchLyraNamedSleepProcess()
         defer { ProcessHelper.terminate(helper) }
 
-        try ProcessHelper.waitUntilRunning(helper.processIdentifier)
+        try #require(await pollUntil { gateway.isRunning(helper.processIdentifier) })
 
         let pids = gateway.overlayPIDs
         #expect(pids.contains(helper.processIdentifier))
@@ -43,15 +44,15 @@ struct DarwinGatewayProcessTests {
     }
 
     @Test("sendSignal terminates running process")
-    func sendSignalTerminatesProcess() throws {
+    func sendSignalTerminatesProcess() async throws {
         let process = try ProcessHelper.launchSleepProcess()
         defer { ProcessHelper.terminate(process) }
 
-        try ProcessHelper.waitUntilRunning(process.processIdentifier)
+        try #require(await pollUntil { gateway.isRunning(process.processIdentifier) })
 
         #expect(gateway.isRunning(process.processIdentifier))
         #expect(gateway.sendSignal(process.processIdentifier, signal: SIGTERM))
-        process.waitUntilExit()
+        await process.waitForExit()
         #expect(!gateway.isRunning(process.processIdentifier))
     }
 
@@ -141,55 +142,26 @@ private enum ProcessHelper {
         return script
     }
 
-    static func launchSleepProcess() throws -> Process {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "sleep 600"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        return process
+    static func launchSleepProcess() throws -> LaunchedProcess {
+        try LaunchedProcess(executableURL: URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", "sleep 600"])
     }
 
-    static func launchLyraNamedSleepProcess() throws -> Process {
+    static func launchLyraNamedSleepProcess() throws -> LaunchedProcess {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("lyra-overlay-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let symlink = dir.appendingPathComponent("lyra-helper")
         try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: URL(fileURLWithPath: "/bin/sleep"))
-
-        let process = Process()
-        process.executableURL = symlink
-        process.arguments = ["600"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        return process
+        return try LaunchedProcess(executableURL: symlink, arguments: ["600"])
     }
 
-    static func waitUntilRunning(_ pid: Int32, timeout: TimeInterval = 5) throws {
-        let gateway = DarwinGateway()
-        let deadline = Date().addingTimeInterval(timeout)
+    /// Signals the child and removes the scratch directory its executable lived in; the
+    /// exit itself is not awaited here — a test that depends on it calls `waitForExit()`.
+    static func terminate(_ launched: LaunchedProcess) {
+        launched.terminate()
 
-        while Date() < deadline {
-            if gateway.isRunning(pid) {
-                return
-            }
-            usleep(50_000)
-        }
-
-        struct Timeout: Error {}
-        throw Timeout()
-    }
-
-    static func terminate(_ process: Process) {
-        if process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
-        }
-
-        if let url = process.executableURL?.deletingLastPathComponent(),
+        if let url = launched.process.executableURL?.deletingLastPathComponent(),
             url.path.contains("/var/") || url.path.contains("/tmp/") || url.path.contains("/private/tmp/")
         {
             try? FileManager.default.removeItem(at: url)

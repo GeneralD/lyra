@@ -59,13 +59,26 @@ struct LyricsPresenterDuplicateTests {
                 await settle(presenter.$lyricsState) { $0.isSuccess }
                 #expect(presenter.lyricsState == .success(content))
 
-                // Second send with identical content
-                subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
-                try? await Task.sleep(for: .milliseconds(200))
+                // Track state transitions after the duplicate send.
+                let transitions = Collector<FetchState<LyricsContent>>()
+                let cancellable = presenter.$lyricsState.dropFirst().sink { transitions.append($0) }
 
-                // Should remain .success, not reset to .revealing
-                #expect(presenter.lyricsState == .success(content))
-                #expect(presenter.displayLyricLines.count == 2)
+                // Second send with identical content — guarded, must not
+                // reset to .revealing.
+                subject.send(TrackUpdate(lyrics: content, lyricsState: .resolved))
+
+                // Sentinel: a distinct lyrics update through the same
+                // trackChange pipeline. Both sends are delivered by the same
+                // `.receive(on: .main)` sink in order, so once the sentinel's
+                // own `.success` lands, the duplicate above has already been
+                // fully (non-)processed.
+                let sentinelContent = LyricsContent.plain(["Sentinel"])
+                subject.send(TrackUpdate(lyrics: sentinelContent, lyricsState: .resolved))
+                await settle(presenter.$lyricsState) { $0 == .success(sentinelContent) }
+
+                #expect(transitions.values == [.revealing(sentinelContent), .success(sentinelContent)])
+                #expect(presenter.displayLyricLines.count == 1)
+                _ = cancellable
             }
         }
     }
@@ -101,12 +114,7 @@ struct LyricsPresenterDuplicateTests {
 
                 // Send playback position at 6 seconds (should highlight "Second")
                 positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 1.0))
-                var deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 1 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 1 })
                 #expect(presenter.activeLineIndex == 1)
 
                 // lyricsState must remain .success
@@ -114,12 +122,7 @@ struct LyricsPresenterDuplicateTests {
 
                 // Advance to 11 seconds (should highlight "Third")
                 positionSubject.send(PlaybackPosition(rawElapsed: 11.0, playbackRate: 1.0))
-                deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 2 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 2 })
                 #expect(presenter.activeLineIndex == 2)
                 #expect(presenter.lyricsState == .success(content))
             }
@@ -151,22 +154,17 @@ struct LyricsPresenterDuplicateTests {
 
                 // Set position while playing
                 positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 1.0))
-                var deadline = ContinuousClock.now + .seconds(3)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex == 1 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(await tickUntil(tick: presenter.updateActiveLineTick) { presenter.activeLineIndex == 1 })
                 #expect(presenter.activeLineIndex == 1)
 
-                // Pause (rate = 0), send new position — paused guard should keep index at 1
+                // Pause (rate = 0), send new position — paused guard should keep index at 1.
+                // Negative tick window: tick a bounded number of times and assert the
+                // index never changes away from 1 (#349).
                 positionSubject.send(PlaybackPosition(rawElapsed: 6.0, playbackRate: 0))
-                deadline = ContinuousClock.now + .seconds(1)
-                while ContinuousClock.now < deadline {
-                    presenter.updateActiveLineTick()
-                    if presenter.activeLineIndex != 1 { break }
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
+                #expect(
+                    await tickUntil(100, tick: presenter.updateActiveLineTick) {
+                        presenter.activeLineIndex != 1
+                    } == false)
                 #expect(presenter.activeLineIndex == 1)
             }
         }

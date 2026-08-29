@@ -34,10 +34,10 @@ struct ConfigStatusPresenterTests {
     @Test("stop() でストリーム購読が解除される")
     func stopUnsubscribes() async {
         let subject = CurrentValueSubject<ConfigReloadFailure?, Never>(nil)
-        let cancelBox = CancelBox()
+        let cancelled = Collector<Void>()
         let publisher =
             subject
-            .handleEvents(receiveCancel: { cancelBox.markCancelled() })
+            .handleEvents(receiveCancel: { cancelled.append(()) })
             .eraseToAnyPublisher()
         let presenter = withDependencies {
             $0.configInteractor = StubConfigInteractor(invalid: publisher)
@@ -47,13 +47,13 @@ struct ConfigStatusPresenterTests {
         presenter.start()
         presenter.stop()
 
-        // Deterministically wait for the subscription to actually be torn
-        // down (poll-until-deadline) instead of a fixed sleep.
-        await waitUntil { cancelBox.cancelled }
-        #expect(cancelBox.cancelled)
+        // Wait for the subscription itself to be torn down, not a guessed
+        // propagation delay.
+        await cancelled.waitForCount(1)
 
+        // The subscriber is gone, so this send has no observer left — a
+        // synchronous no-op, no extra yield needed.
         subject.send(.init(path: "/c.toml", reason: .unreadable))
-        await Task.yield()
         #expect(presenter.invalidConfig == nil)
     }
 
@@ -97,13 +97,6 @@ struct ConfigStatusPresenterTests {
         #expect(interactor.startCount == 2)
         presenter.stop()
     }
-}
-
-private final class CancelBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _cancelled = false
-    var cancelled: Bool { lock.withLock { _cancelled } }
-    func markCancelled() { lock.withLock { _cancelled = true } }
 }
 
 private final class StubConfigInteractor: ConfigInteractor, @unchecked Sendable {

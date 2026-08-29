@@ -633,7 +633,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FileWatchGatewayTests",
-            dependencies: ["FileWatchGateway", "Domain"]
+            dependencies: ["FileWatchGateway", "Domain", "TestSupport"]
         ),
         .testTarget(name: "EntityTests", dependencies: ["Entity"]),
         .testTarget(
@@ -653,7 +653,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "AppTests", dependencies: ["App"]),
-        .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway"]),
+        .testTarget(name: "DarwinGatewayTests", dependencies: ["DarwinGateway", "TestSupport"]),
         .testTarget(
             name: "ProcessExecutorTests",
             dependencies: [
@@ -835,6 +835,7 @@ let package = Package(
         .testTarget(
             name: "ConfigDataSourceTests",
             dependencies: [
+                "TestSupport",
                 "ConfigDataSource",
                 "Domain",
                 "FileWatchGateway",

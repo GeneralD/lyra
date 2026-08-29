@@ -4,6 +4,7 @@ import Dependencies
 import Domain
 import Presenters
 import SwiftUI
+import TestSupport
 import Testing
 
 @testable import Views
@@ -25,18 +26,6 @@ private func renderHosting<Content: View>(_ view: Content, size: CGSize) {
     _ = renderer.cgImage
 }
 
-/// Ticks the presenter until it surfaces bars, bounded by a tick *budget* (not
-/// a wall clock) — the capturing flag hops through the main queue, so a 1 ms
-/// sleep between ticks drains it while a slow CI just takes more ticks.
-@MainActor
-private func tickUntilBars(_ presenter: SpectrumPresenter, within maxTicks: Int = 4000) async {
-    for _ in 0..<maxTicks {
-        presenter.tick()
-        if !presenter.binHeights().isEmpty { return }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-}
-
 private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Sendable {
     let spectrumStyle: SpectrumStyle
     let capturingSubject = CurrentValueSubject<Bool, Never>(false)
@@ -54,7 +43,7 @@ private final class FakeSpectrumInteractor: SpectrumInteractor, @unchecked Senda
 }
 
 @MainActor
-@Suite("SpectrumView rendering")
+@Suite("SpectrumView rendering", .timeLimit(.minutes(1)))
 struct SpectrumViewRenderingTests {
     /// mono + 1 pt bar + no gap + noise_reduction 0 (passthrough) → the bar
     /// count equals the reported track length and the first captured frame
@@ -84,7 +73,7 @@ struct SpectrumViewRenderingTests {
         presenter.start()
         presenter.updateBarTrackLength(4)
         interactor.capturingSubject.send(true)
-        await tickUntilBars(presenter)
+        #expect(await tickUntil(tick: { presenter.tick() }, until: { !presenter.binHeights().isEmpty }))
         return presenter
     }
 

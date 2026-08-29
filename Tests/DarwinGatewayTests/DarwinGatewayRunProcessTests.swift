@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import TestSupport
 import Testing
 
 @testable import DarwinGateway
@@ -10,7 +11,7 @@ import Testing
 /// status, captured stdout/stderr, environment pass-through, launch failure, and
 /// that repeated short-lived spawns don't hang (the #308 regression class).
 /// `.serialized` because real processes are global OS state (cf. #315).
-@Suite("DarwinGateway.runProcess", .serialized)
+@Suite("DarwinGateway.runProcess", .serialized, .timeLimit(.minutes(1)))
 struct DarwinGatewayRunProcessTests {
     private let gateway = DarwinGateway()
 
@@ -68,10 +69,7 @@ struct DarwinGatewayRunProcessTests {
                 environment: [:])
         }
 
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !FileManager.default.fileExists(atPath: pidFile), ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        try #require(await pollUntil { FileManager.default.fileExists(atPath: pidFile) })
 
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
@@ -85,7 +83,9 @@ struct DarwinGatewayRunProcessTests {
         let task = Task { [gateway] in
             // Hold until cancellation is definitely observed, so runProcess enters with the
             // flag already set and takes the register-guard bail-out — no child is spawned.
-            while !Task.isCancelled { await Task.yield() }
+            // `Task.sleep` throws `CancellationError` the instant `cancel()` lands, so this
+            // never waits the full 30s on the passing path; it is a bound, not a delay.
+            _ = try? await Task.sleep(for: .seconds(30))
             return try await gateway.runProcess(
                 executable: "/bin/sh", arguments: ["-c", "echo x > '\(marker)'"], environment: [:])
         }
@@ -111,10 +111,7 @@ struct DarwinGatewayRunProcessTests {
                 environment: [:])
         }
 
-        let readyDeadline = ContinuousClock.now + .seconds(3)
-        while !FileManager.default.fileExists(atPath: readyFile), ContinuousClock.now < readyDeadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        try #require(await pollUntil { FileManager.default.fileExists(atPath: readyFile) })
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
 
@@ -125,10 +122,7 @@ struct DarwinGatewayRunProcessTests {
         #expect(pid > 0, "the child should have recorded its pid before ignoring SIGTERM")
 
         // The reap is asynchronous — poll rather than sleep a fixed interval.
-        let deadline = ContinuousClock.now + .seconds(3)
-        while kill(pid, 0) == 0, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(kill(pid, 0) != 0, "a SIGTERM-ignoring child must be SIGKILLed, not left running")
+        let reaped = await pollUntil { kill(pid, 0) != 0 }
+        #expect(reaped, "a SIGTERM-ignoring child must be SIGKILLed, not left running")
     }
 }
