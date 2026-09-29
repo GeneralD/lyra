@@ -23,11 +23,18 @@ private final class CountingScreenProvider: ScreenProvider, @unchecked Sendable 
     var screens: [ScreenInfo] = []
     var mainScreen: ScreenInfo? = nil
     var occupancyHandler: @Sendable (ScreenInfo) -> Double = { _ in 0 }
+    var coverageHandler: @Sendable (ScreenInfo) -> Double = { _ in 0 }
     private(set) var occupancyCallCount = 0
+    private(set) var coverageCallCount = 0
 
     func windowOccupancy(for screen: ScreenInfo) -> Double {
         occupancyCallCount += 1
         return occupancyHandler(screen)
+    }
+
+    func windowCoverage(for screen: ScreenInfo) -> Double {
+        coverageCallCount += 1
+        return coverageHandler(screen)
     }
 }
 
@@ -35,9 +42,14 @@ private struct StubScreenProvider: ScreenProvider {
     var screens: [ScreenInfo] = []
     var mainScreen: ScreenInfo? = nil
     var occupancyHandler: @Sendable (ScreenInfo) -> Double = { _ in 0 }
+    var coverageHandler: @Sendable (ScreenInfo) -> Double = { _ in 0 }
 
     func windowOccupancy(for screen: ScreenInfo) -> Double {
         occupancyHandler(screen)
+    }
+
+    func windowCoverage(for screen: ScreenInfo) -> Double {
+        coverageHandler(screen)
     }
 }
 

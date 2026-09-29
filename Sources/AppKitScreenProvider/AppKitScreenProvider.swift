@@ -19,6 +19,10 @@ extension AppKitScreenProvider: ScreenProvider {
         screen.occupancy(windows: visibleWindowBounds())
     }
 
+    public func windowCoverage(for screen: ScreenInfo) -> Double {
+        screen.coverage(windows: visibleWindowBounds())
+    }
+
     private func visibleWindowBounds() -> [CGRect] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let infoList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
