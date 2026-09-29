@@ -111,7 +111,7 @@ Alternative paths: `~/.lyra/config.toml`, `$XDG_CONFIG_HOME/lyra/config.toml`
 
 The daemon watches the config directory for edits and re-validates on every save — no `lyra restart` needed to pick up a config file change. Saves are debounced briefly to coalesce rapid writes, then applied automatically. The watch arms even when no config file exists yet, so a config created after the daemon starts (via `lyra config init` or a manual save) is picked up without a restart, as long as its directory (`~/.config/lyra`) already exists.
 
-This now covers every visual element: config validation, the header and lyrics styling (fonts, colors, sizes, decode effect, and artwork all re-render live), the lyrics `[lyrics] fallback_command`/`timeout_ms` settings (re-read on every fallback invocation), the ripple and spectrum overlays (their styling and their `enabled` toggle both take effect live), the wallpaper source (swapping the video, changing playback mode, or removing it entirely all apply live without blacking out the overlay), and the screen selection (`[screen]` selector and debounce). No `lyra restart` is required for any config edit.
+This now covers every visual element: config validation, the header and lyrics styling (fonts, colors, sizes, decode effect, and artwork all re-render live), the lyrics `[lyrics] fallback_command`/`timeout_ms` settings (re-read on every fallback invocation), the ripple and spectrum overlays (their styling and their `enabled` toggle both take effect live), the wallpaper source (swapping the video, changing playback mode, or removing it entirely all apply live without blacking out the overlay), the screen selection (`[screen]` selector and debounce), and `[occlusion_pause]` (toggling `enabled` or changing `threshold` takes effect on the next re-evaluation, and disabling it resumes rendering immediately). No `lyra restart` is required for any config edit.
 
 If an edit breaks the config's required structure (invalid TOML/JSON, or bad values in the core text/wallpaper/spectrum sections), lyra keeps the last valid style in effect rather than falling back to defaults or crashing. Since a background daemon has no visible terminal to log an error to, a small amber "shattered" sphere appears in the corner of the overlay to flag that the last edit wasn't applied — fix the file and save again to clear it.
 
@@ -122,7 +122,7 @@ A malformed optional `[ai]` or `[lyrics]` section is tolerated instead of blocki
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `screen` | string / int | `"main"` | Which display to use (see [Screen selection](#screen-selection)) |
-| `screen_debounce` | number | `5` | Seconds between re-evaluations in `"vacant"` mode |
+| `screen_debounce` | number | `5` | Seconds between re-evaluations for `"vacant"` mode and for `[occlusion_pause]` coverage checks |
 | `wallpaper` | string | — | Video wallpaper. Local path, HTTP(S) URL, or YouTube URL (see [Wallpaper](#wallpaper)) |
 | `includes` | array | — | TOML-only: list of additional TOML files to merge (ignored for `config.json`; paths relative to config dir or absolute) |
 
@@ -166,6 +166,15 @@ Controls the matrix-style text reveal animation.
 |---|---|---|---|
 | `size` | number | `96` | Album artwork size in points |
 | `opacity` | number | `1.0` | `0` hides artwork (text aligns left), `1` fully visible |
+
+### `[occlusion_pause]`
+
+Opt-in. Pauses rendering (the display link, wallpaper playback, and the ripple/spectrum overlays) while the selected screen is mostly hidden behind other windows — re-evaluated every `screen_debounce` seconds, and immediately on a screen/window-layout change.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Set to `true` to pause rendering once window coverage reaches `threshold` |
+| `threshold` | number | `0.9` | Fraction (0–1) of the selected screen's visible area that must be covered by other windows to trigger pause. Resumes once coverage drops to `threshold - 0.05` (hysteresis, avoids flicker at the boundary). Clamped to `0.1`–`1.0` |
 
 ### `[ripple]`
 
@@ -626,6 +635,10 @@ includes = ["ai.toml"]
 
 screen = "vacant"
 screen_debounce = 5
+
+[occlusion_pause]
+enabled = true
+threshold = 0.85
 
 [wallpaper]
 mode = "cycle"
