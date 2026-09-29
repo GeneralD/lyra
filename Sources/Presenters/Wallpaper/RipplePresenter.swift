@@ -19,6 +19,10 @@ public final class RipplePresenter: ObservableObject {
     /// hot-reload ping so the monitor and `RippleState` are only reworked on a
     /// meaningful change (#41 PR3).
     private var appliedRipple: RippleStyle?
+    /// Set by `AppRouter` while the overlay screen is (near-)fully occluded
+    /// (#355). While `true`, `idle()` bails before touching `rippleState`, so
+    /// no idle ripple spawns and no per-frame work runs during the pause.
+    private var isOcclusionPaused = false
     private var cancellables: Set<AnyCancellable> = []
 
     @Dependency(\.wallpaperInteractor) private var interactor
@@ -187,12 +191,23 @@ public final class RipplePresenter: ObservableObject {
         // scratch: retained, an unchanged enabled config would diff as "no
         // change" and never re-attach the monitor this stop() just detached.
         appliedRipple = nil
+        isOcclusionPaused = false
+    }
+
+    /// Toggles the occlusion-pause hold (#355). While paused, `isAnimating` is
+    /// forced to `false` so `RippleView`'s `TimelineView` stops redrawing, and
+    /// every later `idle()` bails before it can flip it back on.
+    public func setOcclusionPaused(_ paused: Bool) {
+        isOcclusionPaused = paused
+        guard paused else { return }
+        setAnimating(false)
     }
 
     /// Called from DisplayLink at frame rate. The handler is always installed now
     /// (#41 PR3), so a disabled ripple bails on the first guard and pays no
     /// per-frame cost — enabling it at runtime resumes idle spawning immediately.
     public func idle() {
+        guard !isOcclusionPaused else { return }
         guard isEnabled else { return }
         spawnIdleRippleWhileHovering()
         setAnimating(rippleState?.pruneAndCheckLiveness() ?? false)

@@ -291,6 +291,61 @@ struct SpectrumPresenterTests {
         #expect(!presenter.isAnimating)
     }
 
+    @Suite("setOcclusionPaused (#355)")
+    struct SetOcclusionPaused {
+        @MainActor
+        @Test("pausing stops the animation flag")
+        func pausingStopsAnimating() async {
+            let interactor = FakeSpectrumInteractor(style: SpectrumPresenterTests.enabledStyle)
+            interactor.magnitudesValue = [1, 0.5, 0.25, 0.125]
+            let presenter = SpectrumPresenterTests.presenter(with: interactor)
+            presenter.start()
+            presenter.updateBarTrackLength(4)
+            interactor.capturingSubject.send(true)
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { presenter.isAnimating }))
+
+            presenter.setOcclusionPaused(true)
+            #expect(!presenter.isAnimating)
+        }
+
+        @MainActor
+        @Test("tick() while paused does not resurrect the animation flag")
+        func tickWhilePausedStaysInert() async {
+            let interactor = FakeSpectrumInteractor(style: SpectrumPresenterTests.enabledStyle)
+            interactor.magnitudesValue = [1, 0.5, 0.25, 0.125]
+            let presenter = SpectrumPresenterTests.presenter(with: interactor)
+            presenter.start()
+            presenter.updateBarTrackLength(4)
+            interactor.capturingSubject.send(true)
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { presenter.isAnimating }))
+
+            presenter.setOcclusionPaused(true)
+            presenter.tick()
+            presenter.tick()
+            #expect(!presenter.isAnimating)
+        }
+
+        @MainActor
+        @Test("resuming lets tick() drive the animation flag again")
+        func resumingRestoresTicks() async {
+            let interactor = FakeSpectrumInteractor(style: SpectrumPresenterTests.enabledStyle)
+            interactor.magnitudesValue = [1, 0.5, 0.25, 0.125]
+            let presenter = SpectrumPresenterTests.presenter(with: interactor)
+            presenter.start()
+            presenter.updateBarTrackLength(4)
+            interactor.capturingSubject.send(true)
+            #expect(await tickUntil(tick: { presenter.tick() }, until: { presenter.isAnimating }))
+
+            presenter.setOcclusionPaused(true)
+            presenter.tick()
+            #expect(!presenter.isAnimating)
+
+            presenter.setOcclusionPaused(false)
+            presenter.tick()
+            #expect(presenter.isAnimating)
+        }
+    }
+
     // MARK: - framerate-independent smoothing (#299)
 
     @Test("framerate constants match the legacy 60 fps tuning at a 60 fps frame")

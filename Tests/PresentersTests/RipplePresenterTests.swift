@@ -523,6 +523,73 @@ struct RipplePresenterTests {
         }
     }
 
+    @Suite("setOcclusionPaused (#355)")
+    struct SetOcclusionPaused {
+        @MainActor
+        @Test("pausing stops the animation flag")
+        func pausingStopsAnimating() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                presenter.idle()
+                #expect(presenter.isAnimating)
+
+                presenter.setOcclusionPaused(true)
+                #expect(!presenter.isAnimating)
+            }
+        }
+
+        @MainActor
+        @Test("idle() while paused does not resurrect the animation flag")
+        func idleWhilePausedStaysInert() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                presenter.idle()
+                #expect(presenter.isAnimating)
+
+                presenter.setOcclusionPaused(true)
+                presenter.idle()
+                presenter.idle()
+                #expect(!presenter.isAnimating)
+            }
+        }
+
+        @MainActor
+        @Test("resuming lets idle() drive the animation flag again")
+        func resumingRestoresIdleTicks() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter()
+                presenter.start()
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 0, y: 0))
+                presenter.rippleState?.update(screenPoint: CGPoint(x: 100, y: 100))
+                presenter.idle()
+                #expect(presenter.isAnimating)
+
+                presenter.setOcclusionPaused(true)
+                presenter.idle()
+                #expect(!presenter.isAnimating)
+
+                presenter.setOcclusionPaused(false)
+                presenter.idle()
+                #expect(presenter.isAnimating)
+            }
+        }
+    }
+
     @Suite("isAnimating")
     struct IsAnimating {
         @MainActor
