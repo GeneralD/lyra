@@ -245,6 +245,74 @@ struct ConfigRepositoryTests {
                 #expect(style.ripple.shape == .polygon(sides: 6, angle: 15))
             }
         }
+
+        @Test("occlusion pause defaults to disabled with a 0.9 threshold when [occlusion_pause] is absent")
+        func occlusionPauseDefaults() {
+            let config = makeAppConfig()
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let repo = ConfigRepositoryImpl()
+                let style = repo.loadAppStyle()
+                #expect(style.occlusionPause.enabled == false)
+                #expect(style.occlusionPause.threshold == 0.9)
+            }
+        }
+
+        @Test("occlusion pause threshold above 1 clamps down to 1.0")
+        func occlusionPauseThresholdClampedAboveOne() {
+            let config = makeAppConfig(occlusionPause: ["enabled": true, "threshold": 1.5])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.occlusionPause.enabled == true)
+                #expect(style.occlusionPause.threshold == 1.0)
+            }
+        }
+
+        @Test("occlusion pause threshold of 0 floors to 0.1")
+        func occlusionPauseThresholdFlooredFromZero() {
+            let config = makeAppConfig(occlusionPause: ["threshold": 0])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.occlusionPause.threshold == 0.1)
+            }
+        }
+
+        @Test("occlusion pause threshold of 0.03 floors to 0.1")
+        func occlusionPauseThresholdFlooredFromNearZero() {
+            let config = makeAppConfig(occlusionPause: ["threshold": 0.03])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.occlusionPause.threshold == 0.1)
+            }
+        }
+
+        @Test("occlusion pause threshold of 0.9 passes through unclamped")
+        func occlusionPauseThresholdPassthrough() {
+            let config = makeAppConfig(occlusionPause: ["threshold": 0.9])
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.occlusionPause.threshold == 0.9)
+            }
+        }
     }
 
     @Suite("validate")
@@ -474,7 +542,8 @@ private func makeAppConfig(
     ai: AIConfig? = nil,
     ripple: [String: Any]? = nil,
     text: [String: Any]? = nil,
-    spectrum: [String: Any]? = nil
+    spectrum: [String: Any]? = nil,
+    occlusionPause: [String: Any]? = nil
 ) -> AppConfig {
     var fields = [String: Any]()
     wallpaper.map { fields["wallpaper"] = $0 }
@@ -482,6 +551,7 @@ private func makeAppConfig(
     ripple.map { fields["ripple"] = $0 }
     text.map { fields["text"] = $0 }
     spectrum.map { fields["spectrum"] = $0 }
+    occlusionPause.map { fields["occlusion_pause"] = $0 }
     let data = try! JSONSerialization.data(withJSONObject: fields)
     return try! JSONDecoder().decode(AppConfig.self, from: data)
 }

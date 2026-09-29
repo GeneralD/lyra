@@ -13,3 +13,4 @@ public struct ScreenLayout {
 }
 
 extension ScreenLayout: Sendable {}
+extension ScreenLayout: Equatable {}

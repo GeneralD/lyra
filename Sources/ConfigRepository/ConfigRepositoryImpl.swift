@@ -72,6 +72,12 @@ extension ConfigRepositoryImpl: ConfigRepository {
             ),
             screen: config.screen,
             screenDebounce: config.screenDebounce.value,
+            occlusionPause: OcclusionPauseStyle(
+                enabled: config.occlusionPause.enabled,
+                // Floored above the hysteresis (0.05, in ScreenInteractor) so the resume
+                // threshold stays positive; capped at 1 since coverage never exceeds it.
+                threshold: min(max(config.occlusionPause.threshold.value, 0.1), 1)
+            ),
             wallpaper: config.wallpaper.map { cfg in
                 WallpaperStyle(
                     items: cfg.items.map {

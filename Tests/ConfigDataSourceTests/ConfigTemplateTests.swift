@@ -59,6 +59,10 @@ screen_debounce = 5.0
 opacity = 1.0
 size = 96.0
 
+[occlusion_pause]
+enabled = false
+threshold = 0.9
+
 [ripple]
 color = '#AAAAFF'
 duration = 0.6
@@ -172,6 +176,10 @@ spacing = 6.0
     "opacity" : 1,
     "size" : 96
   },
+  "occlusion_pause" : {
+    "enabled" : false,
+    "threshold" : 0.9
+  },
   "ripple" : {
     "color" : "#AAAAFF",
     "duration" : 0.6,
@@ -276,6 +284,8 @@ spacing = 6.0
         #expect(decoded.screen == .main)
         #expect(decoded.artwork.size.value == 96)
         #expect(decoded.artwork.opacity.value == 1.0)
+        #expect(decoded.occlusionPause.enabled == false)
+        #expect(decoded.occlusionPause.threshold.value == 0.9)
         #expect(decoded.ripple.enabled == true)
         #expect(decoded.ripple.color == "#AAAAFFFF")
         #expect(decoded.ripple.shape == .circle)
