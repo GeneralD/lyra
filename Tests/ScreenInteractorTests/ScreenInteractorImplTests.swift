@@ -350,4 +350,155 @@ struct ScreenInteractorImplTests {
             cancellable.cancel()
         }
     }
+
+    @Suite("occlusionPauseEnabled")
+    struct OcclusionPauseEnabledTests {
+        @Test("reflects config value", arguments: [true, false])
+        func reflectsConfig(enabled: Bool) {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(occlusionPause: OcclusionPauseStyle(enabled: enabled))
+                )
+                $0.screenProvider = StubScreenProvider()
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            #expect(interactor.occlusionPauseEnabled == enabled)
+        }
+    }
+
+    @Suite("resolveState")
+    struct ResolveStateTests {
+        @Test("disabled occlusion pause never occludes, regardless of coverage")
+        func disabledNeverOccludes() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .primary, occlusionPause: OcclusionPauseStyle(enabled: false, threshold: 0.5))
+                )
+                $0.screenProvider = StubScreenProvider(screens: [largeScreen], coverageHandler: { _ in 1.0 })
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: false)
+            #expect(state.isOccluded == false)
+        }
+
+        @Test("enabled, not paused, coverage at or above threshold occludes")
+        func enabledNotPausedAboveThreshold() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .primary, occlusionPause: OcclusionPauseStyle(enabled: true, threshold: 0.9))
+                )
+                $0.screenProvider = StubScreenProvider(screens: [largeScreen], coverageHandler: { _ in 0.9 })
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: false)
+            #expect(state.isOccluded == true)
+        }
+
+        @Test("enabled, not paused, coverage below threshold does not occlude")
+        func enabledNotPausedBelowThreshold() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .primary, occlusionPause: OcclusionPauseStyle(enabled: true, threshold: 0.9))
+                )
+                $0.screenProvider = StubScreenProvider(screens: [largeScreen], coverageHandler: { _ in 0.89 })
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: false)
+            #expect(state.isOccluded == false)
+        }
+
+        @Test("while paused, coverage within the hysteresis band keeps occluding")
+        func pausedWithinHysteresisStaysOccluded() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .primary, occlusionPause: OcclusionPauseStyle(enabled: true, threshold: 0.9))
+                )
+                $0.screenProvider = StubScreenProvider(screens: [largeScreen], coverageHandler: { _ in 0.85 })
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: true)
+            #expect(state.isOccluded == true)
+        }
+
+        @Test("while paused, coverage below the hysteresis band resumes")
+        func pausedBelowHysteresisResumes() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .primary, occlusionPause: OcclusionPauseStyle(enabled: true, threshold: 0.9))
+                )
+                $0.screenProvider = StubScreenProvider(screens: [largeScreen], coverageHandler: { _ in 0.84 })
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: true)
+            #expect(state.isOccluded == false)
+        }
+
+        @Test("resolveState's layout matches resolveLayout()")
+        func layoutMatchesResolveLayout() {
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .index(1), occlusionPause: OcclusionPauseStyle(enabled: true, threshold: 0.9))
+                )
+                $0.screenProvider = StubScreenProvider(screens: twoScreens, coverageHandler: { _ in 0.5 })
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: false)
+            let layout = interactor.resolveLayout()
+            #expect(state.layout == layout)
+        }
+
+        @Test(
+            ".vacant + enabled calls windowOccupancy once per screen and windowCoverage exactly once, from a single resolveScreen() resolution"
+        )
+        func vacantEnabledCallCounts() {
+            let provider = CountingScreenProvider()
+            provider.screens = twoScreens
+            provider.occupancyHandler = { $0.frame == largeScreen.frame ? 0.7 : 0.1 }
+            provider.coverageHandler = { _ in 0.95 }
+
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .vacant, occlusionPause: OcclusionPauseStyle(enabled: true, threshold: 0.9))
+                )
+                $0.screenProvider = provider
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: false)
+
+            // A single resolveScreen() call: windowOccupancy fires once per screen
+            // (vacant selection, mirroring the #279 regression test), and
+            // windowCoverage fires exactly once, for the resolved screen only.
+            #expect(provider.occupancyCallCount == twoScreens.count)
+            #expect(provider.coverageCallCount == 1)
+            #expect(state.isOccluded == true)
+        }
+
+        @Test(".vacant + disabled never calls windowCoverage")
+        func vacantDisabledSkipsCoverage() {
+            let provider = CountingScreenProvider()
+            provider.screens = twoScreens
+            provider.occupancyHandler = { $0.frame == largeScreen.frame ? 0.7 : 0.1 }
+
+            let interactor = withDependencies {
+                $0.configUseCase = StubConfigUseCase(
+                    style: AppStyle(screen: .vacant, occlusionPause: OcclusionPauseStyle(enabled: false, threshold: 0.9))
+                )
+                $0.screenProvider = provider
+            } operation: {
+                ScreenInteractorImpl()
+            }
+            let state = interactor.resolveState(wasPaused: false)
+
+            #expect(provider.coverageCallCount == 0)
+            #expect(state.isOccluded == false)
+        }
+    }
 }

@@ -25,6 +25,8 @@ private func collectAll(_ stream: AsyncStream<ResolvedWallpaperItem>) async -> [
 private final class MutableScreenInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector { .main }
     var screenDebounce: Double { 5 }
+    var occlusionPauseEnabled: Bool = false
+    var isOccludedToReturn: Bool = false
     private let screenChangesSubject = PassthroughSubject<Void, Never>()
     private var currentLayout: ScreenLayout
 
@@ -34,6 +36,10 @@ private final class MutableScreenInteractor: ScreenInteractor, @unchecked Sendab
 
     func resolveLayout() -> ScreenLayout {
         currentLayout
+    }
+
+    func resolveState(wasPaused: Bool) -> ScreenState {
+        ScreenState(layout: currentLayout, isOccluded: isOccludedToReturn)
     }
 
     var screenChanges: AnyPublisher<Void, Never> {

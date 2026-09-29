@@ -12,6 +12,11 @@ public struct ScreenInteractorImpl {
     @Dependency(\.configUseCase) private var configService
     @Dependency(\.screenProvider) private var screenProvider
 
+    /// The resume side of the pause/resume hysteresis band (#355):
+    /// once paused, coverage must drop below `threshold - hysteresis`
+    /// before rendering resumes, avoiding flicker around the threshold.
+    private static let hysteresis = 0.05
+
     public init() {}
 }
 
@@ -24,6 +29,11 @@ extension ScreenInteractorImpl: ScreenInteractor {
     /// The debounce interval for screen reconciliation polling.
     public var screenDebounce: Double {
         configService.appStyle.screenDebounce
+    }
+
+    /// Whether occlusion pause is enabled in configuration (#355).
+    public var occlusionPauseEnabled: Bool {
+        configService.appStyle.occlusionPause.enabled
     }
 
     /// Signals that the overlay geometry may need re-resolution. Besides screen
@@ -47,7 +57,38 @@ extension ScreenInteractorImpl: ScreenInteractor {
     ///
     /// - Returns: A `ScreenLayout` containing the window frame and hosting view geometry.
     public func resolveLayout() -> ScreenLayout {
-        guard let screen = resolveScreen() else { return .init() }
+        layout(for: resolveScreen())
+    }
+
+    /// Resolves the current screen layout and occlusion state from a single
+    /// `resolveScreen()` call, so vacant-screen selection and the occlusion
+    /// verdict are guaranteed to observe the same screen (#355).
+    ///
+    /// - Parameter wasPaused: Whether rendering is currently paused; applies
+    ///   the resume side of the hysteresis band when `true`.
+    /// - Returns: The resolved `ScreenState`.
+    public func resolveState(wasPaused: Bool) -> ScreenState {
+        let screen = resolveScreen()
+        let occlusionPause = configService.appStyle.occlusionPause
+        let coverage = occlusionPause.enabled ? screen.map(screenProvider.windowCoverage(for:)) ?? 0 : 0
+        let occluded = Self.isOccluded(
+            enabled: occlusionPause.enabled,
+            coverage: coverage,
+            threshold: occlusionPause.threshold,
+            wasPaused: wasPaused
+        )
+        return ScreenState(layout: layout(for: screen), isOccluded: occluded)
+    }
+
+    /// Pure occlusion verdict, isolated from configuration/provider access so
+    /// the hysteresis logic itself is trivially testable and side-effect free.
+    private static func isOccluded(enabled: Bool, coverage: Double, threshold: Double, wasPaused: Bool) -> Bool {
+        guard enabled else { return false }
+        return wasPaused ? coverage >= threshold - hysteresis : coverage >= threshold
+    }
+
+    private func layout(for screen: ScreenInfo?) -> ScreenLayout {
+        guard let screen else { return .init() }
 
         let fullFrame = screen.frame
         let visibleFrame = screen.visibleFrame

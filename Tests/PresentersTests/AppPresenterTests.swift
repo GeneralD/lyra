@@ -13,16 +13,24 @@ import Testing
 private struct StubScreenInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector = .main
     var screenDebounce: Double = 5
+    var occlusionPauseEnabled: Bool = false
     var layoutToReturn: ScreenLayout
+    var isOccludedToReturn: Bool = false
     var screenChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()
 
     func resolveLayout() -> ScreenLayout { layoutToReturn }
+
+    func resolveState(wasPaused: Bool) -> ScreenState {
+        ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn)
+    }
 }
 
 private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector
     var screenDebounce: Double
+    var occlusionPauseEnabled: Bool = false
     var layoutToReturn: ScreenLayout
+    var isOccludedToReturn: Bool = false
     let changes = PassthroughSubject<Void, Never>()
     /// Records the upstream cancellation `AppPresenter.stop()` triggers via
     /// `cancellables.removeAll()`, so tests can await the teardown itself
@@ -43,6 +51,10 @@ private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
     }
 
     func resolveLayout() -> ScreenLayout { layoutToReturn }
+
+    func resolveState(wasPaused: Bool) -> ScreenState {
+        ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn)
+    }
 }
 
 // MARK: - Tests
