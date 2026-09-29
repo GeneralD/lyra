@@ -43,6 +43,17 @@ public final class WallpaperPresenter: ObservableObject {
     private var sleepWakeCancellable: AnyCancellable?
     private var cancellables: Set<AnyCancellable> = []
 
+    /// Independent reasons playback may currently be held paused. Each source
+    /// (screen occlusion, system sleep) inserts/removes its own case and defers
+    /// to `reconcilePlayback()` rather than calling `player.play()`/`pause()`
+    /// directly, so neither source can override the other — e.g. `.didWake`
+    /// must not resume playback while the screen is still occluded (#355).
+    private enum Suspension: Hashable {
+        case occlusion
+        case sleep
+    }
+    private var suspensions: Set<Suspension> = []
+
     @Dependency(\.wallpaperInteractor) private var interactor
     @Dependency(\.configInteractor) private var configInteractor
     @Dependency(\.randomSource) private var randomSource
@@ -154,6 +165,24 @@ public final class WallpaperPresenter: ObservableObject {
         items = []
         currentIndex = 0
         wallpaperScale = 1.0
+        suspensions.removeAll()
+    }
+
+    /// Holds playback paused because the screen is (near-)fully occluded by
+    /// other windows (#355). Non-destructive — the player and its current item
+    /// are left intact, so any later item swap (playlist advance, hot-reload)
+    /// still resolves against `suspensions` via `reconcilePlayback()` rather
+    /// than resuming unconditionally.
+    public func pauseForOcclusion() {
+        suspensions.insert(.occlusion)
+        reconcilePlayback()
+    }
+
+    /// Releases the occlusion hold. Playback only actually resumes once every
+    /// other suspension (e.g. system sleep) has also cleared.
+    public func resumeFromOcclusion() {
+        suspensions.remove(.occlusion)
+        reconcilePlayback()
     }
 
     /// Register a side-effect to run each time a new AVPlayer instance becomes
@@ -210,6 +239,7 @@ extension WallpaperPresenter {
         endTime = item.end
         wallpaperScale = item.scale
         await controller.play(item: item)
+        reconcilePlayback()
     }
 
     /// Clears the published wallpaper state and tears the player down, for a
@@ -230,6 +260,7 @@ extension WallpaperPresenter {
     private func handleAdvanceRequest() async {
         guard items.count > 1 else {
             controller.loopCurrent()
+            reconcilePlayback()
             return
         }
         await advanceToNextItem()
@@ -240,11 +271,24 @@ extension WallpaperPresenter {
         sleepWakeCancellable = interactor.systemSleepChanges
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
+                guard let self else { return }
                 switch event {
-                case .willSleep: self?.player?.pause()
-                case .didWake: self?.player?.play()
+                case .willSleep: suspensions.insert(.sleep)
+                case .didWake: suspensions.remove(.sleep)
                 }
+                reconcilePlayback()
             }
+    }
+
+    /// Single point of truth for whether the player should be running:
+    /// playing iff no suspension (occlusion, sleep) is currently held. Called
+    /// after every path that (re)starts playback — a fresh item's first play,
+    /// a single-item loop replay, sleep/wake, and the public occlusion
+    /// toggles — so a suspended state is never silently overridden by a new
+    /// item arriving (#355). `player` (not `controller.player`) matches the
+    /// existing `observeSleepWake()` access pattern.
+    private func reconcilePlayback() {
+        suspensions.isEmpty ? player?.play() : player?.pause()
     }
 
     private func advanceToNextItem() async {
