@@ -133,6 +133,10 @@ public final class AppRouter {
             appPresenter.onWindowFrameChange { [weak window] layout in
                 window?.applyLayout(layout)
             }
+            appPresenter.onRenderingPausedChange { [weak self] paused in
+                guard let self else { return }
+                paused ? self.pauseRenderingForOcclusion() : self.resumeRenderingFromOcclusion()
+            }
             wallpaperPresenter.onPlayerAvailable { [weak window, weak wallpaperPresenter] player in
                 window?.attachPlayerLayer(for: player)
                 window?.applyWallpaperScale(wallpaperPresenter?.wallpaperScale ?? 1.0)
@@ -204,5 +208,23 @@ public final class AppRouter {
         } operation: {
             operation()
         }
+    }
+
+    /// Fans out an occlusion-pause verdict to every per-frame subsystem (#355).
+    /// Non-destructive throughout: the display link is merely suspended, the
+    /// wallpaper player is paused (not stopped), and Ripple/Spectrum stop
+    /// advancing their own state without tearing anything down.
+    private func pauseRenderingForOcclusion() {
+        frameScheduler?.pause()
+        wallpaperPresenter?.pauseForOcclusion()
+        ripplePresenter?.setOcclusionPaused(true)
+        spectrumPresenter?.setOcclusionPaused(true)
+    }
+
+    private func resumeRenderingFromOcclusion() {
+        frameScheduler?.resume()
+        wallpaperPresenter?.resumeFromOcclusion()
+        ripplePresenter?.setOcclusionPaused(false)
+        spectrumPresenter?.setOcclusionPaused(false)
     }
 }

@@ -681,6 +681,98 @@ struct AppRouterTests {
         #expect(driver.startCallCount == 1)
     }
 
+    @Test("occlusion transitions pause and resume the frame scheduler exactly once each (#355)")
+    func occlusionPauseWiringPausesAndResumesFrameScheduler() async {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let screenInteractor = MutableScreenInteractor(
+            layout: ScreenLayout(
+                windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                screenOrigin: .zero
+            )
+        )
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = screenInteractor
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = FixtureWallpaperInteractor(wallpaperState: .init(items: []))
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        defer { router.stop() }
+
+        let appPresenter: AppPresenter? = value(named: "appPresenter", from: router)
+
+        // Re-resolve with the same layout so only occlusion flips (#265's
+        // screenChange trigger reasserts unconditionally, giving an immediate
+        // re-evaluation without waiting on a poll tick).
+        screenInteractor.isOccludedToReturn = true
+        screenInteractor.updateLayout(screenInteractor.resolveLayout())
+
+        await settle(driver.$pauseCallCount) { $0 == 1 }
+        #expect(driver.pauseCallCount == 1)
+        #expect(driver.resumeCallCount == 0)
+        #expect(appPresenter?.isRenderingPaused == true)
+
+        screenInteractor.isOccludedToReturn = false
+        screenInteractor.updateLayout(screenInteractor.resolveLayout())
+
+        await settle(driver.$resumeCallCount) { $0 == 1 }
+        #expect(driver.resumeCallCount == 1)
+        #expect(driver.pauseCallCount == 1)
+        #expect(appPresenter?.isRenderingPaused == false)
+    }
+
+    @Test("stop() while occlusion-paused does not crash or hang; a later start() begins un-paused (#355)")
+    func stopWhileOcclusionPausedThenRestart() async {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let screenInteractor = MutableScreenInteractor(
+            layout: ScreenLayout(
+                windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                screenOrigin: .zero
+            )
+        )
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = screenInteractor
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = FixtureWallpaperInteractor(wallpaperState: .init(items: []))
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+
+        screenInteractor.isOccludedToReturn = true
+        screenInteractor.updateLayout(screenInteractor.resolveLayout())
+        await settle(driver.$pauseCallCount) { $0 == 1 }
+
+        router.stop()
+
+        router.start()
+        defer { router.stop() }
+
+        let appPresenter: AppPresenter? = value(named: "appPresenter", from: router)
+        #expect(appPresenter?.isRenderingPaused == false)
+    }
+
     final class SpyWindow: OverlayWindow {
         var showCallCount = 0
         var closeCallCount = 0
@@ -717,6 +809,8 @@ struct AppRouterTests {
     final class SpyFrameScheduler: FrameScheduler {
         var startCallCount = 0
         var stopCallCount = 0
+        @Published var pauseCallCount = 0
+        @Published var resumeCallCount = 0
         var startedWindow: AnyObject?
         var onFrame: (@MainActor (Double) -> Void)?
 
@@ -727,6 +821,14 @@ struct AppRouterTests {
 
         func stop() {
             stopCallCount += 1
+        }
+
+        func pause() {
+            pauseCallCount += 1
+        }
+
+        func resume() {
+            resumeCallCount += 1
         }
 
         func fire(frameInterval: Double = 1.0 / 60.0) {
