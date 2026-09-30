@@ -169,7 +169,7 @@ Controls the matrix-style text reveal animation.
 
 ### `[occlusion_pause]`
 
-Opt-in. Pauses rendering (the display link, wallpaper playback, and the ripple/spectrum overlays) while the selected screen is mostly hidden behind other windows — re-evaluated every `screen_debounce` seconds, and immediately on a screen/window-layout change.
+Opt-in. Pauses rendering (the display link, wallpaper playback, and the ripple/spectrum overlays) while the selected screen is mostly hidden behind other windows — re-evaluated every `screen_debounce` seconds (coverage from other apps' windows is only re-measured on this poll), and immediately when the display configuration changes or the overlay's own window moves/resizes.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
