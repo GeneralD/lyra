@@ -74,6 +74,21 @@ public final class AppPresenter: ObservableObject {
             .sink { [weak self] in self?.applyConfigChange() }
             .store(in: &cancellables)
         startPollingIfNeeded()
+        // Occlusion pause needs a verdict from the moment the daemon starts,
+        // not only from the first screenChanges notification or poll tick
+        // (up to screenDebounce later, default 5s) — otherwise a screen
+        // already covered at launch renders at full rate until one of those
+        // arrives (#355). Routed through the same `ticks` trigger rather than
+        // calling resolveState() directly here so it rides the existing
+        // `.receive(on: DispatchQueue.main)` pipeline: the actual evaluation
+        // runs on the next main-queue turn, after `start()` has returned —
+        // by which point a caller (AppRouter) has already subscribed via
+        // `onRenderingPausedChange`, so an already-paused verdict still
+        // reaches its pause side effects instead of being swallowed as the
+        // `dropFirst()`-dropped initial value of that subscription.
+        if interactor.occlusionPauseEnabled {
+            ticks.send(())
+        }
     }
 
     /// Stops all background tasks and subscriptions.

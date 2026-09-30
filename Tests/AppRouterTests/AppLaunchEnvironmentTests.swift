@@ -732,6 +732,53 @@ struct AppRouterTests {
         #expect(appPresenter?.isRenderingPaused == false)
     }
 
+    @Test("a screen already covered at daemon startup pauses the frame scheduler without waiting for a tick (#355)")
+    func occlusionPauseWiringPausesFrameSchedulerWhenAlreadyCoveredAtStartup() async {
+        let window = SpyWindow()
+        let driver = SpyFrameScheduler()
+        let screenInteractor = MutableScreenInteractor(
+            layout: ScreenLayout(
+                windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                hostingFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                screenOrigin: .zero
+            )
+        )
+        // The screen is already occluded before the daemon even starts —
+        // AppPresenter.start() must evaluate this immediately (#355) rather
+        // than waiting for the first poll tick or screenChanges signal, AND
+        // AppRouter must still learn about it despite subscribing to
+        // `onRenderingPausedChange` only after `appPresenter.start()`
+        // returns (a naive fix would have that subscription's `dropFirst()`
+        // silently swallow this startup verdict).
+        screenInteractor.occlusionPauseEnabled = true
+        screenInteractor.isOccludedToReturn = true
+
+        let router = AppRouter(
+            bootstrap: AppDependencyBootstrap { dependencies in
+                dependencies.screenInteractor = screenInteractor
+                dependencies.trackInteractor = FixtureTrackInteractor(title: "Song", artist: "Artist", lyrics: ["L1"])
+                dependencies.wallpaperInteractor = FixtureWallpaperInteractor(wallpaperState: .init(items: []))
+                dependencies.date = .init { Date(timeIntervalSinceReferenceDate: 0) }
+                dependencies.continuousClock = ImmediateClock()
+            },
+            windowFactory: { _, _, _, _, _, _, _ in window },
+            frameSchedulerFactory: { onFrame in
+                driver.onFrame = onFrame
+                return driver
+            }
+        )
+
+        router.start()
+        defer { router.stop() }
+
+        let appPresenter: AppPresenter? = value(named: "appPresenter", from: router)
+
+        await settle(driver.$pauseCallCount) { $0 == 1 }
+        #expect(driver.pauseCallCount == 1)
+        #expect(driver.resumeCallCount == 0)
+        #expect(appPresenter?.isRenderingPaused == true)
+    }
+
     @Test("stop() while occlusion-paused does not crash or hang; a later start() begins un-paused (#355)")
     func stopWhileOcclusionPausedThenRestart() async {
         let window = SpyWindow()

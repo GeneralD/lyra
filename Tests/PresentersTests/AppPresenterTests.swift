@@ -446,12 +446,12 @@ struct AppPresenterTests {
         }
 
         presenter.start()
-        #expect(!presenter.isRenderingPaused)
 
-        await Task.yield()
-        await Task.yield()
-        await testClock.advance(by: .seconds(1))
-
+        // A screen already covered at daemon startup must not wait for the
+        // first poll tick (up to screenDebounce later, default 5s) or a
+        // screenChanges notification before pausing — a synthetic tick
+        // evaluates it right after start() instead (#355), so no
+        // testClock.advance() is needed here.
         await settle(presenter.$isRenderingPaused) { $0 }
 
         #expect(presenter.isRenderingPaused)
@@ -762,8 +762,8 @@ struct AppPresenterTests {
 
         presenter.start()
 
-        // First evaluation: nothing was resolved yet, so no previous screen exists.
-        interactor.changes.send(())
+        // First evaluation: the synthetic startup tick (#355) runs before
+        // screenChanges ever fires, so it is the one with no previous screen.
         await interactor.receivedPreviousScreens.waitForCount(1)
         #expect(interactor.receivedPreviousScreens.values[0] == nil)
 
@@ -794,13 +794,14 @@ struct AppPresenterTests {
             AppPresenter()
         }
 
+        // occlusionPauseEnabled means start() itself fires a synthetic
+        // evaluation tick (#355), so no explicit screenChanges send is
+        // needed to observe the previousScreen each start() forwards.
         presenter.start()
-        interactor.changes.send(())
         await interactor.receivedPreviousScreens.waitForCount(1)
         presenter.stop()
 
         presenter.start()
-        interactor.changes.send(())
         await interactor.receivedPreviousScreens.waitForCount(2)
 
         #expect(interactor.receivedPreviousScreens.values[1] == nil)
