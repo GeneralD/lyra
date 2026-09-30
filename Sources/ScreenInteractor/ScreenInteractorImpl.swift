@@ -64,10 +64,17 @@ extension ScreenInteractorImpl: ScreenInteractor {
     /// `resolveScreen()` call, so vacant-screen selection and the occlusion
     /// verdict are guaranteed to observe the same screen (#355).
     ///
-    /// - Parameter wasPaused: Whether rendering is currently paused; applies
-    ///   the resume side of the hysteresis band when `true`.
+    /// - Parameters:
+    ///   - previousScreen: The screen `wasPaused` was measured against. A
+    ///     re-selection (e.g. `.vacant` picking a different screen between
+    ///     calls) must not inherit another screen's pause state, so the
+    ///     hysteresis band only applies when this call resolves the same
+    ///     screen `wasPaused` came from.
+    ///   - wasPaused: Whether rendering is currently paused; applies
+    ///     the resume side of the hysteresis band when `true` and the
+    ///     resolved screen matches `previousScreen`.
     /// - Returns: The resolved `ScreenState`.
-    public func resolveState(wasPaused: Bool) -> ScreenState {
+    public func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
         let screen = resolveScreen()
         let occlusionPause = configService.appStyle.occlusionPause
         let coverage = occlusionPause.enabled ? screen.map(screenProvider.windowCoverage(for:)) ?? 0 : 0
@@ -75,9 +82,9 @@ extension ScreenInteractorImpl: ScreenInteractor {
             enabled: occlusionPause.enabled,
             coverage: coverage,
             threshold: occlusionPause.threshold,
-            wasPaused: wasPaused
+            wasPaused: wasPaused && screen == previousScreen
         )
-        return ScreenState(layout: layout(for: screen), isOccluded: occluded)
+        return ScreenState(layout: layout(for: screen), isOccluded: occluded, screen: screen)
     }
 
     /// Pure occlusion verdict, isolated from configuration/provider access so

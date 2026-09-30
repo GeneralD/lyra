@@ -38,7 +38,7 @@ private final class MutableScreenInteractor: ScreenInteractor, @unchecked Sendab
         currentLayout
     }
 
-    func resolveState(wasPaused: Bool) -> ScreenState {
+    func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
         ScreenState(layout: currentLayout, isOccluded: isOccludedToReturn)
     }
 

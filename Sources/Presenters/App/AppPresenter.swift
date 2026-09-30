@@ -33,6 +33,12 @@ public final class AppPresenter: ObservableObject {
     /// occluded by other windows past the configured coverage threshold (#355).
     @Published public private(set) var isRenderingPaused = false
 
+    /// The screen `isRenderingPaused` was last measured against, forwarded to
+    /// `resolveState(previousScreen:wasPaused:)` so a screen selector that
+    /// re-picks a different screen (`.vacant`) does not leak this screen's
+    /// pause state onto the next one (#355).
+    private var lastResolvedScreen: ScreenInfo?
+
     @Dependency(\.screenInteractor) private var screenInteractor
     @Dependency(\.configInteractor) private var configInteractor
     @Dependency(\.continuousClock) private var clock
@@ -54,12 +60,13 @@ public final class AppPresenter: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] trigger in
                 guard let self else { return }
-                let state = interactor.resolveState(wasPaused: self.isRenderingPaused)
+                let state = interactor.resolveState(previousScreen: self.lastResolvedScreen, wasPaused: self.isRenderingPaused)
                 switch trigger {
                 case .screenChange: self.layout = state.layout
                 case .tick: if state.layout != self.layout { self.layout = state.layout }
                 }
                 self.isRenderingPaused = state.isOccluded
+                self.lastResolvedScreen = state.screen
             }
             .store(in: &cancellables)
         configInteractor.appStyleChanges
@@ -75,6 +82,7 @@ public final class AppPresenter: ObservableObject {
         pollTask = nil
         cancellables.removeAll()
         isRenderingPaused = false
+        lastResolvedScreen = nil
     }
 
     /// Push the derived ripple rect to the presenter whenever layout changes.
@@ -127,12 +135,14 @@ public final class AppPresenter: ObservableObject {
     private func applyConfigChange() {
         let interactor = screenInteractor
         if interactor.occlusionPauseEnabled {
-            let state = interactor.resolveState(wasPaused: isRenderingPaused)
+            let state = interactor.resolveState(previousScreen: lastResolvedScreen, wasPaused: isRenderingPaused)
             layout = state.layout
             isRenderingPaused = state.isOccluded
+            lastResolvedScreen = state.screen
         } else {
             layout = interactor.resolveLayout()
             isRenderingPaused = false
+            lastResolvedScreen = nil
         }
         restartPolling()
     }

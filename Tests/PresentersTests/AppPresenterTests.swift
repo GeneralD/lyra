@@ -10,6 +10,12 @@ import Testing
 
 // MARK: - Stub
 
+/// Two distinct screens used by the wiring tests below to prove `AppPresenter`
+/// threads the resolved screen's *identity* through `resolveState`, not just
+/// the `wasPaused` boolean (#355).
+private let screenA = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080), visibleFrame: .zero)
+private let screenB = ScreenInfo(frame: CGRect(x: 1920, y: 0, width: 1280, height: 720), visibleFrame: .zero)
+
 private struct StubScreenInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector = .main
     var screenDebounce: Double = 5
@@ -20,7 +26,7 @@ private struct StubScreenInteractor: ScreenInteractor, @unchecked Sendable {
 
     func resolveLayout() -> ScreenLayout { layoutToReturn }
 
-    func resolveState(wasPaused: Bool) -> ScreenState {
+    func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
         ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn)
     }
 }
@@ -31,15 +37,23 @@ private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
     var occlusionPauseEnabled: Bool = false
     var layoutToReturn: ScreenLayout
     var isOccludedToReturn: Bool = false
+    /// The screen `resolveState` reports as resolved (#355). Defaults to a
+    /// fixed screen so existing tests, which don't care about screen
+    /// identity, are unaffected.
+    var screenToReturn: ScreenInfo? = screenA
     let changes = PassthroughSubject<Void, Never>()
     /// Records the upstream cancellation `AppPresenter.stop()` triggers via
     /// `cancellables.removeAll()`, so tests can await the teardown itself
     /// instead of guessing how long propagation takes.
     let screenChangesCancellations = Collector<Void>()
-    /// Records every `resolveState(wasPaused:)` call, so tests can prove that
-    /// `stop()` genuinely halts further evaluation instead of guessing a
-    /// duration after which none should have happened.
+    /// Records every `resolveState(previousScreen:wasPaused:)` call, so tests
+    /// can prove that `stop()` genuinely halts further evaluation instead of
+    /// guessing a duration after which none should have happened.
     let resolveStateCalls = Collector<Void>()
+    /// Records the `previousScreen` argument received on each call, so tests
+    /// can prove `AppPresenter` forwards the screen it last resolved rather
+    /// than only the `wasPaused` boolean (#355).
+    let receivedPreviousScreens = Collector<ScreenInfo?>()
     var screenChanges: AnyPublisher<Void, Never> {
         changes
             .handleEvents(receiveCancel: { [screenChangesCancellations] in
@@ -56,9 +70,10 @@ private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
 
     func resolveLayout() -> ScreenLayout { layoutToReturn }
 
-    func resolveState(wasPaused: Bool) -> ScreenState {
+    func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
         resolveStateCalls.append(())
-        return ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn)
+        receivedPreviousScreens.append(previousScreen)
+        return ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn, screen: screenToReturn)
     }
 }
 
@@ -725,6 +740,70 @@ struct AppPresenterTests {
         await pausedValues.waitForCount(2)
 
         #expect(pausedValues.values == [true, false])
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("resolveState is called with the last resolved screen, not just wasPaused, so hysteresis can be scoped per screen (#355)")
+    func forwardsLastResolvedScreen() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = true
+        interactor.screenToReturn = screenA
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            // occlusionPauseEnabled arms polling; a TestClock left un-advanced
+            // keeps its sleep parked so only screenChanges below drives evaluation.
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+
+        // First evaluation: nothing was resolved yet, so no previous screen exists.
+        interactor.changes.send(())
+        await interactor.receivedPreviousScreens.waitForCount(1)
+        #expect(interactor.receivedPreviousScreens.values[0] == nil)
+
+        // Second evaluation: AppPresenter must forward the screen the FIRST call
+        // resolved (screenA) — not merely repeat the `wasPaused` boolean it
+        // returned, which alone cannot tell the interactor whether the screen
+        // about to be resolved is the same one.
+        interactor.screenToReturn = screenB
+        interactor.changes.send(())
+        await interactor.receivedPreviousScreens.waitForCount(2)
+        #expect(interactor.receivedPreviousScreens.values[1] == screenA)
+
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("stop() clears the tracked resolved screen so a later start() does not inherit it (#355)")
+    func stopClearsLastResolvedScreen() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = true
+        interactor.screenToReturn = screenA
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        interactor.changes.send(())
+        await interactor.receivedPreviousScreens.waitForCount(1)
+        presenter.stop()
+
+        presenter.start()
+        interactor.changes.send(())
+        await interactor.receivedPreviousScreens.waitForCount(2)
+
+        #expect(interactor.receivedPreviousScreens.values[1] == nil)
         presenter.stop()
     }
 }

@@ -66,7 +66,7 @@ import Foundation
             )
         }
 
-        func resolveState(wasPaused: Bool) -> ScreenState {
+        func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
             ScreenState(layout: resolveLayout(), isOccluded: false)
         }
     }
