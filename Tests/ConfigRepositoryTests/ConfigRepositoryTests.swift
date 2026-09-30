@@ -313,6 +313,27 @@ struct ConfigRepositoryTests {
                 #expect(style.occlusionPause.threshold == 0.9)
             }
         }
+
+        @Test("occlusion pause threshold of NaN falls back to the 0.9 default instead of propagating NaN")
+        func occlusionPauseThresholdNaNFallsBackToDefault() throws {
+            // A `threshold = nan` TOML literal decodes without error (TOMLKit supports
+            // TOML 1.0's nan/inf), so this must be exercised at decode time rather than
+            // via `makeAppConfig`'s JSONSerialization helper, which rejects NaN outright.
+            let json = #"{"occlusion_pause":{"enabled":true,"threshold":"nan"}}"#
+            let decoder = JSONDecoder()
+            decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+                positiveInfinity: "+inf", negativeInfinity: "-inf", nan: "nan")
+            let config = try decoder.decode(AppConfig.self, from: Data(json.utf8))
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.occlusionPause.enabled == true)
+                #expect(style.occlusionPause.threshold == 0.9)
+            }
+        }
     }
 
     @Suite("validate")

@@ -74,9 +74,15 @@ extension ConfigRepositoryImpl: ConfigRepository {
             screenDebounce: config.screenDebounce.value,
             occlusionPause: OcclusionPauseStyle(
                 enabled: config.occlusionPause.enabled,
-                // Floored above the hysteresis (0.05, in ScreenInteractor) so the resume
+                // Guarded against NaN/±inf first: min/max propagate NaN rather than
+                // clamping it (a TOML `threshold = nan` literal decodes without error),
+                // which would silently disable the feature since every coverage
+                // comparison in ScreenInteractor then evaluates to false. Otherwise
+                // floored above the hysteresis (0.05, in ScreenInteractor) so the resume
                 // threshold stays positive; capped at 1 since coverage never exceeds it.
-                threshold: min(max(config.occlusionPause.threshold.value, 0.1), 1)
+                threshold: config.occlusionPause.threshold.value.isFinite
+                    ? min(max(config.occlusionPause.threshold.value, 0.1), 1)
+                    : 0.9
             ),
             wallpaper: config.wallpaper.map { cfg in
                 WallpaperStyle(
