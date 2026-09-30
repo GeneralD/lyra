@@ -331,6 +331,32 @@ struct AppDependencyBootstrapTests {
         c1.cancel()
         c2.cancel()
     }
+
+    @Test("UI-test screen fixture never reports occlusion, regardless of the previous verdict (#355)")
+    func uiTestScreenFixtureNeverOccludes() {
+        let bootstrap = AppDependencyBootstrap(
+            launchEnvironment: .init(environment: [.uiTestMode: "1"])
+        )
+
+        let (enabled, layout, freshState, pausedState) = withDependencies {
+            bootstrap.apply(to: &$0)
+        } operation: {
+            @Dependency(\.screenInteractor) var screen
+            return (
+                screen.occlusionPauseEnabled,
+                screen.resolveLayout(),
+                screen.resolveState(previousScreen: nil, wasPaused: false),
+                screen.resolveState(previousScreen: nil, wasPaused: true)
+            )
+        }
+
+        #expect(enabled == false)
+        #expect(freshState.isOccluded == false)
+        #expect(pausedState.isOccluded == false)
+        #expect(freshState.layout == layout)
+        #expect(pausedState.layout == layout)
+        #expect(freshState.screen == nil)
+    }
 }
 
 @MainActor
