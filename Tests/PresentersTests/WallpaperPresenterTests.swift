@@ -1042,6 +1042,46 @@ struct WallpaperPresenterTests {
                 #expect(presenter.player?.rate == 0)
             }
         }
+
+        @MainActor
+        @Test("single-item loop replay while occluded keeps the player paused")
+        func singleItemLoopWhileOccludedStaysPaused() async throws {
+            let item = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/solo.mp4"),
+                start: 1.0,
+                end: 3.0
+            )
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$wallpaperURL) { $0 == item.url }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+                await rates.settle { $0.last == 0 }
+
+                // On a single-item stream, `handleItemEnd()` takes the loop
+                // branch (`WallpaperPlaybackController.loopCurrent()`), which
+                // unconditionally `play()`s before `handleAdvanceRequest()`'s
+                // follow-up `reconcilePlayback()` re-applies the occlusion
+                // hold. Without that follow-up call, the unconditional
+                // `play()` would leak through while still occluded (#355).
+                let baseline = rates.count
+                presenter.controller.handleItemEnd()
+                await rates.settle { $0.count > baseline }
+
+                withExtendedLifetime(cancellable) {}
+                #expect(rates.last == 0)
+                #expect(presenter.player?.rate == 0)
+            }
+        }
     }
 
     @Suite("hot reload", .timeLimit(.minutes(1)))
