@@ -2,6 +2,20 @@ import CoreGraphics
 import Domain
 
 extension ScreenInfo {
+    /// Tolerance for treating a union area within this fraction of
+    /// `visibleArea` as full coverage. Multiple windows that exactly tile a
+    /// non-integer-origin `visibleFrame` can leave the coordinate-compressed
+    /// union sum a few ULPs short of the visible area (windows whose shared
+    /// edge is computed from different arithmetic paths, e.g. `a + w` vs.
+    /// `a + 2w`, don't always land on the identical `Double`), so `unionArea /
+    /// visibleArea` can land at e.g. `0.9999999999999996` instead of `1.0`.
+    /// Left unhandled, a user-configured `threshold = 1.0` ("pause only when
+    /// fully covered", a value `ConfigRepositoryImpl` accepts as valid) would
+    /// never trigger for such a tiling (#355). The tolerance is far below any
+    /// perceptible gap — even on a 4K-class screen, `1e-9` of the visible area
+    /// is a small fraction of a single pixel.
+    private static let fullCoverageTolerance = 1e-9
+
     /// Pure geometry: union area of window rects clipped to `visibleFrame`,
     /// divided by the visible frame's area. Unlike `occupancy(windows:)`, this
     /// does not double-count overlapping windows — the union is computed via
@@ -38,6 +52,7 @@ extension ScreenInfo {
             return columnsArea + columnWidth * columnHeight
         }
 
-        return min(unionArea / visibleArea, 1)
+        let ratio = unionArea / visibleArea
+        return ratio >= 1 - Self.fullCoverageTolerance ? 1 : ratio
     }
 }

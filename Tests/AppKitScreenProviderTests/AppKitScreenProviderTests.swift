@@ -209,6 +209,42 @@ struct AppKitScreenProviderTests {
         }
 
         @Test(
+            "returns 1.0 when multiple windows exactly tile a fractional-origin visible frame (#355)"
+        )
+        func fullyTiledByMultipleWindowsWithFractionalOrigin() {
+            // A non-integer-origin, non-integer-size frame, tiled by a 3x4 grid
+            // of windows whose shared edges are each computed independently
+            // (e.g. one window's maxX vs. the next window's minX), which can
+            // land on adjacent-but-not-quite-equal `Double`s. Before the
+            // `fullCoverageTolerance` fix, the coordinate-compressed union sum
+            // for this exact layout came out to 0.9999999999999996 rather than
+            // 1.0, which would make a user-configured `threshold = 1.0` never
+            // trigger occlusion pause even when windows fully cover the screen.
+            let frame = CGRect(
+                x: 90.29673890246443, y: 21.859714068941326,
+                width: 1114.7979352244884 - 90.29673890246443,
+                height: 1504.6731419317423 - 21.859714068941326)
+            let fractionalScreen = ScreenInfo(frame: frame, visibleFrame: frame)
+
+            let xEdges = [90.29673890246443, 261.1268015184396, 508.33091410049633, 1114.7979352244884]
+            let yEdges = [
+                21.859714068941326, 197.92910425613113, 972.2411855279819, 973.5657578457576,
+                1504.6731419317423,
+            ]
+            let windows = (0..<(xEdges.count - 1)).flatMap { xi in
+                (0..<(yEdges.count - 1)).map { yi in
+                    CGRect(
+                        x: xEdges[xi], y: yEdges[yi],
+                        width: xEdges[xi + 1] - xEdges[xi], height: yEdges[yi + 1] - yEdges[yi])
+                }
+            }
+
+            let coverage = fractionalScreen.coverage(windows: windows)
+
+            #expect(coverage == 1.0)
+        }
+
+        @Test(
             "returns 0.5 for two identical half-screen windows (contrast: occupancy sums to 1.0)"
         )
         func identicalHalfScreenWindowsUnionNotSummed() {
