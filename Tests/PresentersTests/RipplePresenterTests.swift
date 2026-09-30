@@ -588,6 +588,56 @@ struct RipplePresenterTests {
                 #expect(presenter.isAnimating)
             }
         }
+
+        @MainActor
+        @Test("handleMouseLocation while paused does not resurrect the animation flag")
+        func handleMouseLocationWhilePausedStaysInert() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+                presenter.start()
+                presenter.handleMouseLocation(CGPoint(x: 100, y: 100))
+                #expect(presenter.isAnimating)
+                let spawnedBeforePause = presenter.rippleState?.ripples.count ?? 0
+
+                presenter.setOcclusionPaused(true)
+                #expect(!presenter.isAnimating)
+
+                // The global mouse monitor is never detached on pause (#355), so
+                // a 40pt+ move that would normally spawn a ripple and flip
+                // isAnimating back on must instead be rejected outright while
+                // occluded.
+                presenter.handleMouseLocation(CGPoint(x: 900, y: 900))
+                #expect(!presenter.isAnimating)
+                #expect((presenter.rippleState?.ripples.count ?? 0) == spawnedBeforePause)
+            }
+        }
+
+        @MainActor
+        @Test("processMouseMove while paused does not resurrect the animation flag")
+        func processMouseMoveWhilePausedStaysInert() {
+            withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true, duration: 2.0))
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(screenRect: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+                presenter.start()
+                presenter.processMouseMove(at: CGPoint(x: 100, y: 100), time: 1.0)
+                #expect(presenter.isAnimating)
+
+                presenter.setOcclusionPaused(true)
+                #expect(!presenter.isAnimating)
+
+                // Past the ~30 Hz throttle window so the sample is not dropped
+                // for timing reasons — it must be rejected because of the pause,
+                // reproducing the handleGlobalMouseMove → processMouseMove →
+                // handleMouseLocation path the global monitor actually drives.
+                presenter.processMouseMove(at: CGPoint(x: 900, y: 900), time: 2.0)
+                #expect(!presenter.isAnimating)
+            }
+        }
     }
 
     @Suite("isAnimating")

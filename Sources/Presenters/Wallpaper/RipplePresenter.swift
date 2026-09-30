@@ -43,6 +43,12 @@ public final class RipplePresenter: ObservableObject {
     // MARK: - Mouse handling
 
     public func handleMouseLocation(_ point: CGPoint) {
+        // Mirrors idle()'s guard (#355): the global mouse monitor keeps firing
+        // while occluded (it is not detached — see attachMouseMonitor), so
+        // without this bail a 40pt+ cursor move would spawn a ripple and flip
+        // isAnimating back to true through setAnimating below, resurrecting
+        // RippleView's per-frame TimelineView during the pause.
+        guard !isOcclusionPaused else { return }
         guard screenRect.width > 0, screenRect.height > 0, screenRect.contains(point) else {
             mouseInScreen = false
             return
