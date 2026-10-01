@@ -10,24 +10,50 @@ import Testing
 
 // MARK: - Stub
 
+/// Two distinct screens used by the wiring tests below to prove `AppPresenter`
+/// threads the resolved screen's *identity* through `resolveState`, not just
+/// the `wasPaused` boolean (#355).
+private let screenA = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080), visibleFrame: .zero)
+private let screenB = ScreenInfo(frame: CGRect(x: 1920, y: 0, width: 1280, height: 720), visibleFrame: .zero)
+
 private struct StubScreenInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector = .main
     var screenDebounce: Double = 5
+    var occlusionPauseEnabled: Bool = false
     var layoutToReturn: ScreenLayout
+    var isOccludedToReturn: Bool = false
     var screenChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()
 
     func resolveLayout() -> ScreenLayout { layoutToReturn }
+
+    func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
+        ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn)
+    }
 }
 
 private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
     var screenSelector: ScreenSelector
     var screenDebounce: Double
+    var occlusionPauseEnabled: Bool = false
     var layoutToReturn: ScreenLayout
+    var isOccludedToReturn: Bool = false
+    /// The screen `resolveState` reports as resolved (#355). Defaults to a
+    /// fixed screen so existing tests, which don't care about screen
+    /// identity, are unaffected.
+    var screenToReturn: ScreenInfo? = screenA
     let changes = PassthroughSubject<Void, Never>()
     /// Records the upstream cancellation `AppPresenter.stop()` triggers via
     /// `cancellables.removeAll()`, so tests can await the teardown itself
     /// instead of guessing how long propagation takes.
     let screenChangesCancellations = Collector<Void>()
+    /// Records every `resolveState(previousScreen:wasPaused:)` call, so tests
+    /// can prove that `stop()` genuinely halts further evaluation instead of
+    /// guessing a duration after which none should have happened.
+    let resolveStateCalls = Collector<Void>()
+    /// Records the `previousScreen` argument received on each call, so tests
+    /// can prove `AppPresenter` forwards the screen it last resolved rather
+    /// than only the `wasPaused` boolean (#355).
+    let receivedPreviousScreens = Collector<ScreenInfo?>()
     var screenChanges: AnyPublisher<Void, Never> {
         changes
             .handleEvents(receiveCancel: { [screenChangesCancellations] in
@@ -43,6 +69,12 @@ private final class MutableInteractor: ScreenInteractor, @unchecked Sendable {
     }
 
     func resolveLayout() -> ScreenLayout { layoutToReturn }
+
+    func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
+        resolveStateCalls.append(())
+        receivedPreviousScreens.append(previousScreen)
+        return ScreenState(layout: layoutToReturn, isOccluded: isOccludedToReturn, screen: screenToReturn)
+    }
 }
 
 // MARK: - Tests
@@ -392,6 +424,387 @@ struct AppPresenterTests {
         await settle(presenter.$layout) { $0.windowFrame == polled.windowFrame }
 
         #expect(presenter.layout.windowFrame == polled.windowFrame)
+        presenter.stop()
+    }
+
+    // MARK: - Occlusion pause (#355)
+
+    @MainActor
+    @Test("occlusion pause enabled and covered pauses rendering")
+    func occlusionPausesWhenCovered() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 1)
+        interactor.occlusionPauseEnabled = true
+        interactor.isOccludedToReturn = true
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+
+        // A screen already covered at daemon startup must not wait for the
+        // first poll tick (up to screenDebounce later, default 5s) or a
+        // screenChanges notification before pausing — a synthetic tick
+        // evaluates it right after start() instead (#355), so no
+        // testClock.advance() is needed here.
+        await settle(presenter.$isRenderingPaused) { $0 }
+
+        #expect(presenter.isRenderingPaused)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("occlusion pause resumes rendering once uncovered")
+    func occlusionResumesWhenUncovered() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 1)
+        interactor.occlusionPauseEnabled = true
+        interactor.isOccludedToReturn = true
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await settle(presenter.$isRenderingPaused) { $0 }
+
+        interactor.isOccludedToReturn = false
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await settle(presenter.$isRenderingPaused) { !$0 }
+
+        #expect(!presenter.isRenderingPaused)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("screenChanges re-evaluates occlusion immediately, without waiting for a poll tick")
+    func screenChangesReevaluatesOcclusionImmediately() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        // A large debounce means a poll tick could not plausibly fire during
+        // this test — proving the transition below came from screenChanges.
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = true
+        interactor.isOccludedToReturn = false
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            // occlusionPauseEnabled arms polling in start(); a TestClock left
+            // un-advanced keeps its sleep parked so only screenChanges below
+            // can plausibly drive the transition.
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+
+        interactor.isOccludedToReturn = true
+        interactor.changes.send(())
+
+        await settle(presenter.$isRenderingPaused) { $0 }
+
+        #expect(presenter.isRenderingPaused)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("config ping disabling occlusion pause resumes rendering immediately")
+    func configPingDisablingResumesImmediately() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = true
+        interactor.isOccludedToReturn = true
+        let config = FakeConfigInteractor()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.configInteractor = config
+            // occlusionPauseEnabled arms polling in start(); a TestClock left
+            // un-advanced keeps its sleep parked for the duration of this test.
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        interactor.changes.send(())
+        await settle(presenter.$isRenderingPaused) { $0 }
+
+        interactor.occlusionPauseEnabled = false
+        config.fire()
+        await flushMainQueue()
+
+        #expect(!presenter.isRenderingPaused)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("config ping enabling occlusion pause evaluates immediately")
+    func configPingEnablingEvaluatesImmediately() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = false
+        interactor.isOccludedToReturn = true
+        let config = FakeConfigInteractor()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.configInteractor = config
+            // The config ping below flips occlusionPauseEnabled to true, which
+            // arms polling via restartPolling(); a TestClock left un-advanced
+            // keeps its sleep parked for the duration of this test.
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        #expect(!presenter.isRenderingPaused)
+
+        interactor.occlusionPauseEnabled = true
+        config.fire()
+        await flushMainQueue()
+
+        #expect(presenter.isRenderingPaused)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("stop() resets the pause state and halts further occlusion evaluation")
+    func stopResetsAndHaltsPolling() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 1)
+        interactor.occlusionPauseEnabled = true
+        interactor.isOccludedToReturn = true
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await settle(presenter.$isRenderingPaused) { $0 }
+
+        presenter.stop()
+        #expect(!presenter.isRenderingPaused)
+
+        // Wait for the actual teardown of the merge pipeline (mirrors
+        // `stopUnsubscribesScreenChanges` above), then prove no further
+        // `resolveState` call is processed afterward, tick or not.
+        await interactor.screenChangesCancellations.waitForCount(1)
+        let callsAfterStop = interactor.resolveStateCalls.count
+
+        await testClock.advance(by: .seconds(1))
+        await Task.yield()
+        await Task.yield()
+
+        #expect(interactor.resolveStateCalls.count == callsAfterStop)
+    }
+
+    @MainActor
+    @Test("occlusion pause enabled without a vacant selector still polls")
+    func pollsWhenOcclusionEnabledEvenWithoutVacantSelector() async {
+        let initial = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let updated = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 2560, height: 1440))
+        let interactor = MutableInteractor(layout: initial, selector: .main, debounce: 1)
+        interactor.occlusionPauseEnabled = true
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+        #expect(presenter.layout.windowFrame == initial.windowFrame)
+
+        interactor.layoutToReturn = updated
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+
+        await settle(presenter.$layout) { $0.windowFrame == updated.windowFrame }
+
+        #expect(presenter.layout.windowFrame == updated.windowFrame)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("onWindowFrameChange is not called for a poll tick whose layout is unchanged")
+    func onWindowFrameChangeSkipsUnchangedTick() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .vacant, debounce: 1)
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        final class Counter: @unchecked Sendable {
+            @Published var count = 0
+        }
+        let counter = Counter()
+
+        presenter.start()
+        await settle(presenter.$layout) { $0.windowFrame == layout.windowFrame }
+        presenter.onWindowFrameChange { _ in counter.count += 1 }
+
+        // The tick resolves the same layout — no notification expected. Wait
+        // for the tick's own `resolveState` call rather than guessing how long
+        // its (synchronous) handling takes to reach the layout assignment —
+        // by the time the call is recorded, that handling has already run to
+        // completion within the same sink invocation.
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await interactor.resolveStateCalls.waitForCount(1)
+
+        #expect(counter.count == 0)
+
+        // Sentinel: a genuine screenChanges signal always notifies (#265).
+        interactor.layoutToReturn = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 3840, height: 2160))
+        interactor.changes.send(())
+        await settle(counter.$count) { $0 >= 1 }
+
+        #expect(counter.count == 1)
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("onRenderingPausedChange is not called for a duplicate value")
+    func onRenderingPausedChangeSkipsDuplicates() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .vacant, debounce: 1)
+        interactor.occlusionPauseEnabled = true
+        interactor.isOccludedToReturn = true
+        let testClock = TestClock()
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = testClock
+        } operation: {
+            AppPresenter()
+        }
+
+        let pausedValues = Collector<Bool>()
+
+        presenter.start()
+        presenter.onRenderingPausedChange { paused in pausedValues.append(paused) }
+
+        // First tick: false → true, one notification.
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await pausedValues.waitForCount(1)
+
+        // Second tick with the same occlusion verdict must not notify again.
+        // Wait for its own `resolveState` call (recorded synchronously before
+        // the sink's isRenderingPaused assignment) so the mutation below can't
+        // race ahead of this tick reading the verdict it's meant to repeat.
+        await Task.yield()
+        await Task.yield()
+        await testClock.advance(by: .seconds(1))
+        await interactor.resolveStateCalls.waitForCount(2)
+
+        #expect(pausedValues.count == 1)
+
+        // Sentinel: a real transition now lands the total at exactly 2 (not
+        // 3), proving the repeated `true` tick above contributed nothing.
+        interactor.isOccludedToReturn = false
+        interactor.changes.send(())
+        await pausedValues.waitForCount(2)
+
+        #expect(pausedValues.values == [true, false])
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("resolveState is called with the last resolved screen, not just wasPaused, so hysteresis can be scoped per screen (#355)")
+    func forwardsLastResolvedScreen() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = true
+        interactor.screenToReturn = screenA
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            // occlusionPauseEnabled arms polling; a TestClock left un-advanced
+            // keeps its sleep parked so only screenChanges below drives evaluation.
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        presenter.start()
+
+        // First evaluation: the synthetic startup tick (#355) runs before
+        // screenChanges ever fires, so it is the one with no previous screen.
+        await interactor.receivedPreviousScreens.waitForCount(1)
+        #expect(interactor.receivedPreviousScreens.values[0] == nil)
+
+        // Second evaluation: AppPresenter must forward the screen the FIRST call
+        // resolved (screenA) — not merely repeat the `wasPaused` boolean it
+        // returned, which alone cannot tell the interactor whether the screen
+        // about to be resolved is the same one.
+        interactor.screenToReturn = screenB
+        interactor.changes.send(())
+        await interactor.receivedPreviousScreens.waitForCount(2)
+        #expect(interactor.receivedPreviousScreens.values[1] == screenA)
+
+        presenter.stop()
+    }
+
+    @MainActor
+    @Test("stop() clears the tracked resolved screen so a later start() does not inherit it (#355)")
+    func stopClearsLastResolvedScreen() async {
+        let layout = ScreenLayout(windowFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let interactor = MutableInteractor(layout: layout, selector: .main, debounce: 60)
+        interactor.occlusionPauseEnabled = true
+        interactor.screenToReturn = screenA
+
+        let presenter = withDependencies {
+            $0.screenInteractor = interactor
+            $0.continuousClock = TestClock()
+        } operation: {
+            AppPresenter()
+        }
+
+        // occlusionPauseEnabled means start() itself fires a synthetic
+        // evaluation tick (#355), so no explicit screenChanges send is
+        // needed to observe the previousScreen each start() forwards.
+        presenter.start()
+        await interactor.receivedPreviousScreens.waitForCount(1)
+        presenter.stop()
+
+        presenter.start()
+        await interactor.receivedPreviousScreens.waitForCount(2)
+
+        #expect(interactor.receivedPreviousScreens.values[1] == nil)
         presenter.stop()
     }
 }

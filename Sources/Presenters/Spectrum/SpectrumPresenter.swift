@@ -43,6 +43,10 @@ public final class SpectrumPresenter: ObservableObject {
     /// drives the capture lifecycle, and any styling change republishes to
     /// re-render the View — each only on an actual change, not every ping (#41 PR3).
     private var appliedStyle: SpectrumStyle?
+    /// Set by `AppRouter` while the overlay screen is (near-)fully occluded
+    /// (#355). While `true`, `tick()` bails before touching `motion`, so no
+    /// per-frame filtering work runs during the pause.
+    private var isOcclusionPaused = false
     /// Length of the track the bars distribute along, in points, as the View
     /// last reported it — the overlay width for vertical placements, the
     /// height for the horizontal `left`/`right` ones. The bar count is derived
@@ -118,6 +122,16 @@ public final class SpectrumPresenter: ObservableObject {
         // retained, an unchanged enabled config would diff as "no change" and
         // never restart the capture this stop() just tore down.
         appliedStyle = nil
+        isOcclusionPaused = false
+    }
+
+    /// Toggles the occlusion-pause hold (#355). While paused, `isAnimating` is
+    /// forced to `false` so `SpectrumView`'s `TimelineView` stops redrawing, and
+    /// every later `tick()` bails before it can flip it back on.
+    public func setOcclusionPaused(_ paused: Bool) {
+        isOcclusionPaused = paused
+        guard paused else { return }
+        setAnimating(false)
     }
 
     /// The View reports the length of the bar track (overlay width for
@@ -135,6 +149,7 @@ public final class SpectrumPresenter: ObservableObject {
     /// variable-refresh displays (#299). Defaults to 60 fps so unit tests and
     /// any timing-agnostic caller keep the historical behavior exactly.
     public func tick(frameInterval: Double = 1.0 / 60.0) {
+        guard !isOcclusionPaused else { return }
         guard capturing || !motion.isEmpty else { return }
         let constants = spectrumFramerateConstants(frameInterval: frameInterval)
         let style = interactor.spectrumStyle

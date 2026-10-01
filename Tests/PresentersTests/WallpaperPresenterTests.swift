@@ -874,6 +874,216 @@ struct WallpaperPresenterTests {
         }
     }
 
+    @Suite("occlusion pause", .timeLimit(.minutes(1)))
+    struct OcclusionPause {
+        @MainActor
+        @Test("pauseForOcclusion pauses the player")
+        func pauseForOcclusionPauses() async throws {
+            let url = URL(fileURLWithPath: "/tmp/bg.mp4")
+            let item = ResolvedWallpaperItem(url: url)
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$player) { $0 != nil }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+
+                await rates.settle { $0.last == 0 }
+                withExtendedLifetime(cancellable) {}
+                #expect(presenter.player?.rate == 0)
+            }
+        }
+
+        @MainActor
+        @Test("occlusion pause persists across willSleep then didWake")
+        func occlusionPersistsAcrossSleepWake() async throws {
+            let url = URL(fileURLWithPath: "/tmp/bg.mp4")
+            let item = ResolvedWallpaperItem(url: url)
+            let subject = PassthroughSubject<SleepWakeEvent, Never>()
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(
+                    items: [item], sleepChangesSubject: subject)
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$player) { $0 != nil }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+                await rates.settle { $0.last == 0 }
+
+                // Sleep/wake must not override an occlusion hold still in
+                // effect: `.didWake` only clears the `.sleep` suspension, and
+                // `reconcilePlayback()` keeps the player paused as long as
+                // `.occlusion` remains in the set.
+                subject.send(.willSleep)
+                subject.send(.didWake)
+                await flushMainQueue()
+
+                withExtendedLifetime(cancellable) {}
+                #expect(presenter.player?.rate == 0)
+            }
+        }
+
+        @MainActor
+        @Test("resumeFromOcclusion resumes the player")
+        func resumeFromOcclusionResumes() async throws {
+            let url = URL(fileURLWithPath: "/tmp/bg.mp4")
+            let item = ResolvedWallpaperItem(url: url)
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$player) { $0 != nil }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+                await rates.settle { $0.last == 0 }
+
+                presenter.resumeFromOcclusion()
+                await rates.settle { ($0.last ?? -1) > 0 }
+
+                withExtendedLifetime(cancellable) {}
+                #expect((presenter.player?.rate ?? 0) > 0)
+            }
+        }
+
+        @MainActor
+        @Test("resumeFromOcclusion during sleep keeps the player paused until didWake")
+        func resumeDuringSleepStaysPausedUntilWake() async throws {
+            let url = URL(fileURLWithPath: "/tmp/bg.mp4")
+            let item = ResolvedWallpaperItem(url: url)
+            let subject = PassthroughSubject<SleepWakeEvent, Never>()
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(
+                    items: [item], sleepChangesSubject: subject)
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$player) { $0 != nil }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+                await rates.settle { $0.last == 0 }
+
+                subject.send(.willSleep)
+                await flushMainQueue()
+
+                // Clearing the occlusion hold while `.sleep` is still in the
+                // set must not resume playback — `reconcilePlayback()` is
+                // synchronous, so the player's rate is checkable immediately.
+                presenter.resumeFromOcclusion()
+                #expect(presenter.player?.rate == 0)
+
+                subject.send(.didWake)
+                await rates.settle { ($0.last ?? -1) > 0 }
+
+                withExtendedLifetime(cancellable) {}
+                #expect((presenter.player?.rate ?? 0) > 0)
+            }
+        }
+
+        @MainActor
+        @Test("applying a new item while occluded keeps the player paused")
+        func newItemWhileOccludedStaysPaused() async throws {
+            let a = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4"))
+            let b = ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/b.mp4"))
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [a, b], mode: .cycle)
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$items) { $0.count == 2 }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+                await rates.settle { $0.last == 0 }
+
+                // Advance the playlist to a brand-new item while still
+                // occluded — `activateCurrentItem()` must run
+                // `reconcilePlayback()` after `controller.play(item:)`, or the
+                // new item's unconditional `play()` would leak through.
+                let baseline = rates.count
+                presenter.controller.handleItemEnd()
+                await settle(presenter.$wallpaperURL) { $0 == b.url }
+                await rates.settle { $0.count > baseline }
+
+                withExtendedLifetime(cancellable) {}
+                #expect(rates.last == 0)
+                #expect(presenter.player?.rate == 0)
+            }
+        }
+
+        @MainActor
+        @Test("single-item loop replay while occluded keeps the player paused")
+        func singleItemLoopWhileOccludedStaysPaused() async throws {
+            let item = ResolvedWallpaperItem(
+                url: URL(fileURLWithPath: "/tmp/solo.mp4"),
+                start: 1.0,
+                end: 3.0
+            )
+
+            try await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(items: [item])
+                $0.continuousClock = ImmediateClock()
+            } operation: {
+                let presenter = WallpaperPresenter()
+                presenter.start()
+                await settle(presenter.$wallpaperURL) { $0 == item.url }
+
+                let player = try #require(presenter.player)
+                let rates = Collector<Float>()
+                let cancellable = player.publisher(for: \.rate).sink { rates.append($0) }
+
+                presenter.pauseForOcclusion()
+                await rates.settle { $0.last == 0 }
+
+                // On a single-item stream, `handleItemEnd()` takes the loop
+                // branch (`WallpaperPlaybackController.loopCurrent()`), which
+                // unconditionally `play()`s before `handleAdvanceRequest()`'s
+                // follow-up `reconcilePlayback()` re-applies the occlusion
+                // hold. Without that follow-up call, the unconditional
+                // `play()` would leak through while still occluded (#355).
+                let baseline = rates.count
+                presenter.controller.handleItemEnd()
+                await rates.settle { $0.count > baseline }
+
+                withExtendedLifetime(cancellable) {}
+                #expect(rates.last == 0)
+                #expect(presenter.player?.rate == 0)
+            }
+        }
+    }
+
     @Suite("hot reload", .timeLimit(.minutes(1)))
     struct HotReload {
         @MainActor

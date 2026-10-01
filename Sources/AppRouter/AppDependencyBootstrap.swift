@@ -55,6 +55,7 @@ import Foundation
     private struct UITestScreenInteractor: ScreenInteractor {
         var screenSelector: ScreenSelector { .main }
         var screenDebounce: Double { 5 }
+        var occlusionPauseEnabled: Bool { false }
         var screenChanges: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
 
         func resolveLayout() -> ScreenLayout {
@@ -63,6 +64,10 @@ import Foundation
                 hostingFrame: .init(x: 0, y: 0, width: 1280, height: 720),
                 screenOrigin: .zero
             )
+        }
+
+        func resolveState(previousScreen: ScreenInfo?, wasPaused: Bool) -> ScreenState {
+            ScreenState(layout: resolveLayout(), isOccluded: false)
         }
     }
 

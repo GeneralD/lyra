@@ -71,7 +71,25 @@ extension ConfigRepositoryImpl: ConfigRepository {
                 barCornerRadius: config.spectrum.barCornerRadius.map { max(0, $0.value) }
             ),
             screen: config.screen,
-            screenDebounce: config.screenDebounce.value,
+            // A TOML `screen_debounce = nan`/`inf` literal decodes without error, and
+            // the poller's `max(debounce, 1)` floor does not make NaN finite, so the
+            // value would reach `Duration.seconds(_:)` and trap. Normalize it here,
+            // once for every consumer, to the documented default.
+            screenDebounce: config.screenDebounce.value.isFinite
+                ? config.screenDebounce.value
+                : AppConfig.defaults.screenDebounce.value,
+            occlusionPause: OcclusionPauseStyle(
+                enabled: config.occlusionPause.enabled,
+                // Guarded against NaN/±inf first: min/max propagate NaN rather than
+                // clamping it (a TOML `threshold = nan` literal decodes without error),
+                // which would silently disable the feature since every coverage
+                // comparison in ScreenInteractor then evaluates to false. Otherwise
+                // floored above the hysteresis (0.05, in ScreenInteractor) so the resume
+                // threshold stays positive; capped at 1 since coverage never exceeds it.
+                threshold: config.occlusionPause.threshold.value.isFinite
+                    ? min(max(config.occlusionPause.threshold.value, 0.1), 1)
+                    : 0.9
+            ),
             wallpaper: config.wallpaper.map { cfg in
                 WallpaperStyle(
                     items: cfg.items.map {

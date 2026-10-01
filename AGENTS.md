@@ -186,8 +186,13 @@ Shared conventions:
   source and swaps the video via `replaceCurrentItem` on the same AVPlayer, so
   the overlay never blacks out; removing all wallpaper tears the player down and
   detaches the layer, restoring the transparent backing rather than leaving a
-  black surface; the screen reload re-runs `resolveLayout()` and restarts vacant
-  polling on a new selector/debounce (#41 PR4). Config hot-reload now covers
+  black surface; the screen reload re-resolves layout (and, since #355, the
+  occlusion-pause verdict) via `resolveState(previousScreen:wasPaused:)` /
+  `resolveLayout()` (the `previousScreen` argument scopes the pause/resume
+  hysteresis to the screen it was measured on, so a `.vacant` re-selection
+  cannot inherit another screen's hysteresis) and restarts the unified
+  vacant/occlusion-pause poll on a new
+  selector/debounce/enablement (#41 PR4, #355). Config hot-reload now covers
   every visual element -- #41 is functionally complete.
 
 ## Testing Rules

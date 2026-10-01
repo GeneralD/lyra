@@ -7,6 +7,7 @@ public struct AppStyle {
     public let spectrum: SpectrumStyle
     public let screen: ScreenSelector
     public let screenDebounce: Double
+    public let occlusionPause: OcclusionPauseStyle
     public let wallpaper: WallpaperStyle?
     public let configDir: String?
     public let ai: AIEndpoint?
@@ -18,6 +19,7 @@ public struct AppStyle {
         spectrum: SpectrumStyle = .init(),
         screen: ScreenSelector = .main,
         screenDebounce: Double = 5,
+        occlusionPause: OcclusionPauseStyle = .init(),
         wallpaper: WallpaperStyle? = nil,
         configDir: String? = nil,
         ai: AIEndpoint? = nil
@@ -28,6 +30,7 @@ public struct AppStyle {
         self.spectrum = spectrum
         self.screen = screen
         self.screenDebounce = screenDebounce
+        self.occlusionPause = occlusionPause
         self.wallpaper = wallpaper
         self.configDir = configDir
         self.ai = ai

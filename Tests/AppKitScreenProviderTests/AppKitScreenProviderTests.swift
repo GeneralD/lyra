@@ -49,6 +49,29 @@ struct AppKitScreenProviderTests {
         #expect(provider.windowOccupancy(for: zero) == 1)
     }
 
+    @MainActor
+    @Test("windowCoverage returns a non-negative, bounded value for a real screen")
+    func windowCoverageForRealScreen() {
+        let provider = AppKitScreenProvider()
+        guard let screen = provider.mainScreen else { return }
+
+        // Exercises the full delegation path: CGWindowList enumeration,
+        // filtering, CG→AppKit conversion, and union-area coverage math.
+        let coverage = provider.windowCoverage(for: screen)
+        #expect(coverage >= 0)
+        #expect(coverage <= 1)
+    }
+
+    @MainActor
+    @Test("windowCoverage of a zero-area synthetic screen is 1")
+    func windowCoverageZeroScreen() {
+        let provider = AppKitScreenProvider()
+        let zero = ScreenInfo(frame: .zero, visibleFrame: .zero)
+
+        // Delegates to ScreenInfo.coverage which short-circuits to 1 on zero area.
+        #expect(provider.windowCoverage(for: zero) == 1)
+    }
+
     @Suite("flippedToAppKit")
     struct FlippedToAppKit {
         @Test("flips y relative to primary height")
@@ -168,6 +191,142 @@ struct AppKitScreenProviderTests {
             let occupancy = mainScreen.occupancy(windows: [])
 
             #expect(occupancy == 0)
+        }
+    }
+
+    @Suite("Coverage")
+    struct Coverage {
+        private let screen = ScreenInfo(
+            frame: CGRect(x: 0, y: 0, width: 1000, height: 1000),
+            visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 1000))
+
+        @Test("returns 1.0 when a single window fully covers the visible frame")
+        func fullyCoveredBySingleWindow() {
+            let coverage = screen.coverage(
+                windows: [CGRect(x: 0, y: 0, width: 1000, height: 1000)])
+
+            #expect(coverage == 1.0)
+        }
+
+        @Test(
+            "returns 1.0 when multiple windows exactly tile a fractional-origin visible frame (#355)"
+        )
+        func fullyTiledByMultipleWindowsWithFractionalOrigin() {
+            // A non-integer-origin, non-integer-size frame, tiled by a 3x4 grid
+            // of windows whose shared edges are each computed independently
+            // (e.g. one window's maxX vs. the next window's minX), which can
+            // land on adjacent-but-not-quite-equal `Double`s. Before the
+            // `fullCoverageTolerance` fix, the coordinate-compressed union sum
+            // for this exact layout came out to 0.9999999999999996 rather than
+            // 1.0, which would make a user-configured `threshold = 1.0` never
+            // trigger occlusion pause even when windows fully cover the screen.
+            let frame = CGRect(
+                x: 90.29673890246443, y: 21.859714068941326,
+                width: 1114.7979352244884 - 90.29673890246443,
+                height: 1504.6731419317423 - 21.859714068941326)
+            let fractionalScreen = ScreenInfo(frame: frame, visibleFrame: frame)
+
+            let xEdges = [90.29673890246443, 261.1268015184396, 508.33091410049633, 1114.7979352244884]
+            let yEdges = [
+                21.859714068941326, 197.92910425613113, 972.2411855279819, 973.5657578457576,
+                1504.6731419317423,
+            ]
+            let windows = (0..<(xEdges.count - 1)).flatMap { xi in
+                (0..<(yEdges.count - 1)).map { yi in
+                    CGRect(
+                        x: xEdges[xi], y: yEdges[yi],
+                        width: xEdges[xi + 1] - xEdges[xi], height: yEdges[yi + 1] - yEdges[yi])
+                }
+            }
+
+            let coverage = fractionalScreen.coverage(windows: windows)
+
+            #expect(coverage == 1.0)
+        }
+
+        @Test(
+            "returns 0.5 for two identical half-screen windows (contrast: occupancy sums to 1.0)"
+        )
+        func identicalHalfScreenWindowsUnionNotSummed() {
+            let halfScreen = CGRect(x: 0, y: 0, width: 1000, height: 500)
+
+            let coverage = screen.coverage(windows: [halfScreen, halfScreen])
+            let occupancy = screen.occupancy(windows: [halfScreen, halfScreen])
+
+            #expect(abs(coverage - 0.5) < 0.0001)
+            #expect(abs(occupancy - 1.0) < 0.0001)
+        }
+
+        @Test("unions two overlapping windows (each 0.5, overlap 0.25) into 0.75")
+        func overlappingWindowsUnion() {
+            // Top half: y 0..500 (area 500,000 = 0.5 of the 1,000,000 screen).
+            let topHalf = CGRect(x: 0, y: 0, width: 1000, height: 500)
+            // Middle band: y 250..750 (area 500,000 = 0.5), overlapping topHalf
+            // over y 250..500 (area 250,000 = 0.25).
+            let middleBand = CGRect(x: 0, y: 250, width: 1000, height: 500)
+
+            let coverage = screen.coverage(windows: [topHalf, middleBand])
+
+            #expect(abs(coverage - 0.75) < 0.0001)
+        }
+
+        @Test("returns 0 for a window entirely outside the visible frame")
+        func windowOutsideVisibleFrame() {
+            let outside = CGRect(x: 2000, y: 2000, width: 500, height: 500)
+
+            let coverage = screen.coverage(windows: [outside])
+
+            #expect(coverage == 0)
+        }
+
+        @Test("returns 0 for a window covering only a menu-bar-like strip inside frame but outside visibleFrame")
+        func windowCoveringOnlyOutsideVisibleStrip() {
+            let screenWithMenuBar = ScreenInfo(
+                frame: CGRect(x: 0, y: 0, width: 1000, height: 1000),
+                visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 975))
+            // Inside `frame` (y 0..1000) but entirely outside `visibleFrame` (y 0..975).
+            let menuBarStrip = CGRect(x: 0, y: 975, width: 1000, height: 25)
+
+            let coverage = screenWithMenuBar.coverage(windows: [menuBarStrip])
+
+            #expect(coverage == 0)
+        }
+
+        @Test("returns 0 for an empty window list")
+        func noWindows() {
+            let coverage = screen.coverage(windows: [])
+
+            #expect(coverage == 0)
+        }
+
+        @Test("returns 1 for a zero-area visible frame")
+        func zeroVisibleFrameArea() {
+            let zeroScreen = ScreenInfo(frame: .zero, visibleFrame: .zero)
+
+            let coverage = zeroScreen.coverage(
+                windows: [CGRect(x: 0, y: 0, width: 100, height: 100)])
+
+            #expect(coverage == 1)
+        }
+
+        @Test("never exceeds 1.0 even with multiple overlapping full-coverage windows")
+        func neverExceedsOne() {
+            let full = CGRect(x: 0, y: 0, width: 1000, height: 1000)
+
+            let coverage = screen.coverage(windows: [full, full, full])
+
+            #expect(coverage == 1.0)
+        }
+
+        @Test("clips a window that partially overflows the visible frame before measuring it")
+        func clipsPartiallyOverflowingWindow() {
+            // Overflows 500pt to the left of the screen (x -500..500); only the
+            // x 0..500 portion (area 500,000 = 0.5 of the screen) should count.
+            let overflowing = CGRect(x: -500, y: 0, width: 1000, height: 1000)
+
+            let coverage = screen.coverage(windows: [overflowing])
+
+            #expect(abs(coverage - 0.5) < 0.0001)
         }
     }
 }

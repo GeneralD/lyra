@@ -7,6 +7,7 @@ public struct AppConfig {
     public let spectrum: SpectrumConfig
     public let screen: ScreenSelector
     public let screenDebounce: FlexibleDouble
+    public let occlusionPause: OcclusionPauseConfig
     public let wallpaper: WallpaperConfig?
     public let ai: AIConfig?
     public let lyrics: LyricsConfig?
@@ -18,13 +19,14 @@ extension AppConfig: Sendable {}
 extension AppConfig {
     public static let defaults = AppConfig(
         text: .defaults, artwork: .defaults, ripple: .defaults, spectrum: .defaults, screen: .main, screenDebounce: 5,
-        wallpaper: nil, ai: nil, lyrics: nil, developer: nil)
+        occlusionPause: .defaults, wallpaper: nil, ai: nil, lyrics: nil, developer: nil)
 }
 
 extension AppConfig: Codable {
     enum CodingKeys: String, CodingKey {
         case text, artwork, ripple, spectrum, screen
         case screenDebounce = "screen_debounce"
+        case occlusionPause = "occlusion_pause"
         case wallpaper, ai, lyrics, developer
     }
 
@@ -36,6 +38,8 @@ extension AppConfig: Codable {
         spectrum = try c.decodeIfPresent(SpectrumConfig.self, forKey: .spectrum) ?? Self.defaults.spectrum
         screen = try c.decodeIfPresent(ScreenSelector.self, forKey: .screen) ?? Self.defaults.screen
         screenDebounce = try c.decodeIfPresent(FlexibleDouble.self, forKey: .screenDebounce) ?? Self.defaults.screenDebounce
+        occlusionPause =
+            try c.decodeIfPresent(OcclusionPauseConfig.self, forKey: .occlusionPause) ?? Self.defaults.occlusionPause
         wallpaper = try c.decodeIfPresent(WallpaperConfig.self, forKey: .wallpaper) ?? Self.defaults.wallpaper
         ai = try? c.decodeIfPresent(AIConfig.self, forKey: .ai) ?? Self.defaults.ai
         lyrics = try? c.decodeIfPresent(LyricsConfig.self, forKey: .lyrics) ?? Self.defaults.lyrics
