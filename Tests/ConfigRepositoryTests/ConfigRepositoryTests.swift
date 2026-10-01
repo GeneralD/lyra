@@ -334,6 +334,39 @@ struct ConfigRepositoryTests {
                 #expect(style.occlusionPause.threshold == 0.9)
             }
         }
+
+        @Test(
+            "non-finite screen_debounce falls back to the 5s default so the poller never builds a trapping Duration",
+            arguments: ["nan", "+inf", "-inf"]
+        )
+        func screenDebounceNonFiniteFallsBackToDefault(literal: String) throws {
+            let json = #"{"screen_debounce":"\#(literal)","occlusion_pause":{"enabled":true}}"#
+            let decoder = JSONDecoder()
+            decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+                positiveInfinity: "+inf", negativeInfinity: "-inf", nan: "nan")
+            let config = try decoder.decode(AppConfig.self, from: Data(json.utf8))
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                let style = ConfigRepositoryImpl().loadAppStyle()
+                #expect(style.screenDebounce == 5)
+            }
+        }
+
+        @Test("finite screen_debounce passes through unchanged")
+        func screenDebounceFinitePassthrough() throws {
+            let json = #"{"screen_debounce":2.5}"#
+            let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+            let result = ConfigLoadResult(config: config, configDir: "/tmp")
+
+            withDependencies {
+                $0.configDataSource = StubConfigDataSource(loadResult: result)
+            } operation: {
+                #expect(ConfigRepositoryImpl().loadAppStyle().screenDebounce == 2.5)
+            }
+        }
     }
 
     @Suite("validate")
