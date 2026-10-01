@@ -4,8 +4,11 @@ BUILD_DIR = $(shell swift build --show-bin-path -c release 2>/dev/null || echo .
 
 .PHONY: build install uninstall test clean lint format benchmark
 
+# Build only the shipped product: a bare `swift build` also compiles the test
+# helper targets (TestSupport), so a test-only diagnostic on the release runner's
+# older toolchain would block the release binary.
 build:
-	swift build --disable-sandbox -c release
+	swift build --disable-sandbox -c release --product $(BINARY)
 
 install: build
 	install -d $(PREFIX)/bin

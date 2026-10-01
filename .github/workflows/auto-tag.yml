@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   tag-and-release:
+    # Keep in sync with the `release-build` job in test.yml, which builds the
+    # binary on this same runner so a release-toolchain break fails the PR.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +57,7 @@ jobs:
 
       - name: Build release binary
         if: steps.release.outputs.exists == 'false'
-        run: swift build --disable-sandbox -c release
+        run: make build
 
       - name: Package binary
         if: steps.release.outputs.exists == 'false'
@@ -87,7 +89,7 @@ jobs:
         run: |
           # Rebuild and upload if release exists but has no binary asset
           if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q 'macos-arm64'; then
-            swift build --disable-sandbox -c release
+            make build
             BUILD_DIR=$(swift build --disable-sandbox --show-bin-path -c release)
             STAGING="lyra-${VERSION}-macos-arm64"
             mkdir -p "$STAGING"

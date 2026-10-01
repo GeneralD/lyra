@@ -18,6 +18,18 @@ jobs:
       - name: Lint (swift-format)
         run: swift format lint --strict --recursive Sources/ Tests/
 
+  release-build:
+    # Builds the shipped binary exactly as auto-tag.yml does, on the same runner.
+    # That job runs on an older toolchain than `test`, so without this a
+    # release-only compile error surfaces only after merge, when the tag is
+    # already pushed and no release follows.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: make build
+
   test:
     runs-on: macos-latest
     # A test blocked on a thread (the sync→async bridge's `semaphore.wait()`) is out of
