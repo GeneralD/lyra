@@ -173,7 +173,7 @@ public final class AppPresenter: ObservableObject {
     }
 
     /// Polls periodically while the selected screen can change without a system
-    /// notification (`.vacant`, which re-picks a screen based on mouse position)
+    /// notification (`.vacant`, which re-picks a screen based on window occupancy)
     /// or while occlusion pause is enabled (coverage must be re-measured even
     /// when nothing else changed) (#355).
     private func startPollingIfNeeded() {
