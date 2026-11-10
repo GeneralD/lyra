@@ -59,10 +59,34 @@ struct MediaRemoteDataSourceImplTests {
         }
     }
 
-    @Test("a client without a reported rate is treated as playing at 1x")
-    func missingRateDefaultsToOne() async throws {
+    @Test("a client without a reported rate or timestamp plays at 1x from the moment it was read")
+    func missingRateAndTimestampAreFilledIn() async throws {
+        let readAt = Date(timeIntervalSinceReferenceDate: 1_234.0)
         let gateway = StreamingGateway(streamPlans: [
             [frameLine(clients: [clientEntry(rate: nil, timestamp: nil)])]
+        ])
+
+        await withDependencies {
+            $0.processGateway = gateway
+            $0.date = .constant(readAt)
+        } operation: {
+            let result = await MediaRemoteDataSourceImpl().poll()
+
+            guard case .info(let nowPlaying) = result else {
+                Issue.record("Expected .info, got \(result)")
+                return
+            }
+            #expect(nowPlaying.playbackRate == 1.0)
+            // Without a timestamp `PlaybackUseCase` could not interpolate elapsed.
+            #expect(nowPlaying.timestamp == readAt)
+        }
+    }
+
+    @Test("the default decoder turns a cover payload into its bytes")
+    func defaultDecoderDecodesCover() async throws {
+        let cover = Data("cover".utf8)
+        let gateway = StreamingGateway(streamPlans: [
+            [frameLine(clients: [clientEntry(artworkDigest: "d1", artworkBase64: cover.base64EncodedString())])]
         ])
 
         await withDependencies {
@@ -74,8 +98,7 @@ struct MediaRemoteDataSourceImplTests {
                 Issue.record("Expected .info, got \(result)")
                 return
             }
-            #expect(nowPlaying.playbackRate == 1.0)
-            #expect(nowPlaying.timestamp == nil)
+            #expect(nowPlaying.artworkData == cover)
         }
     }
 

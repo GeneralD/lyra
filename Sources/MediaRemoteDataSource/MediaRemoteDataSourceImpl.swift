@@ -4,6 +4,7 @@ import Foundation
 
 public final class MediaRemoteDataSourceImpl: @unchecked Sendable {
     @Dependency(\.processGateway) private var gateway
+    @Dependency(\.date) private var date
 
     private let state = StreamStateBox()
     private let selector = NowPlayingClientSelector()
@@ -87,7 +88,10 @@ extension MediaRemoteDataSourceImpl {
     /// Folds one frame into the per-client cover cache and picks the client to
     /// follow (#358). The followed client survives a frame without candidates,
     /// so a momentary gap does not cost the selection its stickiness. Covers are
-    /// decoded only when a client's digest changes (#255, #270).
+    /// decoded only when a client's digest changes (#255, #270). MediaRemote
+    /// sometimes omits a client's timestamp; the helper leaves it out so the
+    /// selector ranks that client last, and the read moment stands in for it so
+    /// elapsed still interpolates between frames.
     private func nowPlaying(following frame: HelperFrame) -> NowPlaying? {
         state.lock.lock()
         defer { state.lock.unlock() }
@@ -101,7 +105,7 @@ extension MediaRemoteDataSourceImpl {
             duration: client.duration,
             rawElapsed: client.elapsed,
             playbackRate: client.rate ?? 1.0,
-            timestamp: client.timestamp.map { Date(timeIntervalSinceReferenceDate: $0) },
+            timestamp: client.timestamp.map { Date(timeIntervalSinceReferenceDate: $0) } ?? date.now,
             pid: client.pid
         )
     }
