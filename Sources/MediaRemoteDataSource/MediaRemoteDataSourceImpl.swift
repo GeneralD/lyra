@@ -4,8 +4,10 @@ import Foundation
 
 public final class MediaRemoteDataSourceImpl: @unchecked Sendable {
     @Dependency(\.processGateway) private var gateway
+    @Dependency(\.date) private var date
 
     private let state = StreamStateBox()
+    private let selector = NowPlayingClientSelector()
     private let decodeBase64: @Sendable (String) -> Data?
 
     public convenience init() {
@@ -35,28 +37,10 @@ extension MediaRemoteDataSourceImpl: MediaRemoteDataSource {
         }
         finishPolling(nextIterator: iterator)
 
-        guard let data = line.data(using: .utf8),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            json["has_info"] as? Bool == true
-        else {
+        guard let frame = HelperFrame(line: line), let nowPlaying = nowPlaying(following: frame) else {
             return .noInfo
         }
-
-        return .info(
-            NowPlaying(
-                title: json["title"] as? String,
-                artist: json["artist"] as? String,
-                artworkData: artworkData(
-                    base64: json["artwork_base64"] as? String,
-                    isTrackChange: (json["event"] as? String) == HelperEvent.trackChange.rawValue),
-                duration: json["duration"] as? Double,
-                rawElapsed: json["elapsed"] as? Double,
-                playbackRate: json["rate"] as? Double ?? 1.0,
-                timestamp: (json["timestamp"] as? Double).map {
-                    Date(timeIntervalSinceReferenceDate: $0)
-                },
-                pid: json["pid"] as? Int
-            ))
+        return .info(nowPlaying)
     }
 }
 
@@ -101,36 +85,29 @@ extension MediaRemoteDataSourceImpl {
         state.iterator = nextIterator
     }
 
-    /// Resolves the artwork for one payload, reusing the cached cover whenever the
-    /// helper omits it. The helper sends `artwork_base64` only on `track-change`
-    /// events; periodic `tick`s drop it to avoid re-base64-encoding the
-    /// (potentially megabyte-scale) image every interval (#255). Decoding is also
-    /// memoized so an unchanged base64 is decoded only once (#270).
-    private func artworkData(base64: String?, isTrackChange: Bool) -> Data? {
+    /// Folds one frame into the per-client cover cache and picks the client to
+    /// follow (#358). The followed client survives a frame without candidates,
+    /// so a momentary gap does not cost the selection its stickiness. Covers are
+    /// decoded only when a client's digest changes (#255, #270). MediaRemote
+    /// sometimes omits a client's timestamp; the helper leaves it out so the
+    /// selector ranks that client last, and the read moment stands in for it so
+    /// elapsed still interpolates between frames.
+    private func nowPlaying(following frame: HelperFrame) -> NowPlaying? {
         state.lock.lock()
         defer { state.lock.unlock() }
-        guard let base64 else {
-            // No artwork field. On a tick the cover is unchanged — reuse the
-            // cache. On a track-change it means the new track genuinely has no
-            // cover, so drop the stale one instead of showing the previous track's.
-            guard isTrackChange else { return state.lastArtworkData }
-            state.clearArtwork()
-            return nil
-        }
-        guard state.lastArtworkBase64 != base64 else { return state.lastArtworkData }
-        let decoded = decodeBase64(base64)
-        state.lastArtworkBase64 = base64
-        state.lastArtworkData = decoded
-        return decoded
-    }
-}
-
-extension MediaRemoteDataSourceImpl {
-    /// Wire-protocol event tag emitted by `media-remote-helper.swift`. Only
-    /// `track-change` payloads carry artwork; `tick` payloads omit it (#255).
-    fileprivate enum HelperEvent: String {
-        case trackChange = "track-change"
-        case tick
+        state.artworkCache = state.artworkCache.updated(by: frame.clients, decode: decodeBase64)
+        guard let client = selector.selection(in: frame, following: state.followedKey) else { return nil }
+        state.followedKey = client.key
+        return NowPlaying(
+            title: client.title,
+            artist: client.artist,
+            artworkData: state.artworkCache.artwork(for: client.key),
+            duration: client.duration,
+            rawElapsed: client.elapsed,
+            playbackRate: client.rate ?? 1.0,
+            timestamp: client.timestamp.map { Date(timeIntervalSinceReferenceDate: $0) } ?? date.now,
+            pid: client.pid
+        )
     }
 }
 
@@ -138,12 +115,7 @@ private final class StreamStateBox: @unchecked Sendable {
     let lock = NSLock()
     var iterator: AsyncStream<String>.AsyncIterator?
     var isPolling = false
-    var lastArtworkBase64: String?
-    var lastArtworkData: Data?
-
-    /// Drops the cached cover. The caller must already hold `lock`.
-    func clearArtwork() {
-        lastArtworkBase64 = nil
-        lastArtworkData = nil
-    }
+    var artworkCache = ArtworkCache()
+    /// `HelperClient.key` of the client the last frame selected.
+    var followedKey: String?
 }
