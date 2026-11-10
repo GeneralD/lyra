@@ -144,4 +144,18 @@ struct ArtworkCacheTests {
         #expect(cache.artwork(for: "a") == nil)
         #expect(decoder.count == 1)
     }
+
+    @Test("a key listed twice in one frame keeps the later cover instead of trapping")
+    func duplicateKeyKeepsLaterCover() {
+        let later = Data("later".utf8)
+
+        let cache = ArtworkCache().updated(
+            by: [
+                helperClient(bundleID: "a", artworkDigest: "d1", artworkBase64: coverBase64),
+                helperClient(bundleID: "a", artworkDigest: "d2", artworkBase64: later.base64EncodedString()),
+            ],
+            decode: { Data(base64Encoded: $0) })
+
+        #expect(cache.artwork(for: "a") == later)
+    }
 }

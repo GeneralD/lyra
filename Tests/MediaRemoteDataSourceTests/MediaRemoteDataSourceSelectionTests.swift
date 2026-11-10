@@ -10,8 +10,10 @@ import Testing
 /// that is actually playing instead of trusting the system-designated slot.
 @Suite("MediaRemoteDataSourceImpl client selection", .timeLimit(.minutes(1)))
 struct MediaRemoteDataSourceSelectionTests {
+    /// Reported without a rate, the system client would count as playing, so
+    /// only the title filter keeps it from winning.
     private let displayLink = clientEntry(
-        bundleID: "com.displaylink.DisplayLinkUserAgent", pid: 1, title: nil, artist: nil, rate: 0)
+        bundleID: "com.displaylink.DisplayLinkUserAgent", pid: 1, title: nil, artist: nil, rate: nil)
 
     private func polled(_ lines: [String], decoder: CountingDecoder = CountingDecoder()) async
         -> [MediaRemotePollResult]
@@ -127,6 +129,23 @@ struct MediaRemoteDataSourceSelectionTests {
         #expect(results.map { nowPlaying($0)?.title } == ["A", "B"])
         #expect(results.map { nowPlaying($0)?.artworkData } == [first, second])
         #expect(decoder.count == 2)
+    }
+
+    @Test("a cover sent while its client had no title is served once the title arrives")
+    func coverSentBeforeTitleIsKept() async {
+        // The helper marks a cover delivered whenever it goes out, candidate or
+        // not, so the cache must take it in even from a frame that selects nothing.
+        let cover = Data("cover".utf8)
+
+        let results = await polled([
+            frameLine(clients: [
+                clientEntry(title: nil, artworkDigest: "d1", artworkBase64: cover.base64EncodedString())
+            ]),
+            frameLine(clients: [clientEntry(title: "Song", artworkDigest: "d1")]),
+        ])
+
+        #expect(nowPlaying(results[0]) == nil)
+        #expect(nowPlaying(results[1])?.artworkData == cover)
     }
 
     @Test("an unchanged cover digest is decoded once across frames (#255, #270)")

@@ -6,11 +6,18 @@ import Testing
 struct NowPlayingClientSelectorTests {
     private let selector = NowPlayingClientSelector()
 
+    /// Selects from the clients in both orders: the helper's ordering must never
+    /// decide, and a rank comparison that reads one side wrongly shows up as a
+    /// disagreement between the two.
     private func selectedKey(
-        _ clients: [HelperClient], systemPid: Int? = nil, following followed: String? = nil
+        _ clients: [HelperClient], systemPid: Int? = nil, following followed: String? = nil,
+        sourceLocation: SourceLocation = #_sourceLocation
     ) -> String? {
-        selector.selection(
-            in: HelperFrame(systemPid: systemPid, clients: clients), following: followed)?.key
+        let selected = [clients, clients.reversed()].map {
+            selector.selection(in: HelperFrame(systemPid: systemPid, clients: $0), following: followed)?.key
+        }
+        #expect(selected[0] == selected[1], "selection depends on client order", sourceLocation: sourceLocation)
+        return selected[0]
     }
 
     @Test("no clients selects nothing")
@@ -130,11 +137,12 @@ struct NowPlayingClientSelectorTests {
         #expect(selectedKey(clients, systemPid: 1, following: "com.google.Chrome") == "com.apple.Music")
     }
 
-    @Test("a client without a pid is never the system client")
+    @Test("a client without a pid is never the system client, even when no system pid is known")
     func pidlessClientIsNotSystem() {
+        // Matching `nil == nil` would make the older, pid-less client the system one.
         let clients = [
             helperClient(bundleID: "a.player", pid: nil, timestamp: 1),
-            helperClient(bundleID: "b.player", pid: nil, timestamp: 99),
+            helperClient(bundleID: "b.player", pid: 5, timestamp: 99),
         ]
 
         #expect(selectedKey(clients, systemPid: nil) == "b.player")
