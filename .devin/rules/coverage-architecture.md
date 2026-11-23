@@ -74,15 +74,20 @@ zero line reads as a gap, a named one as a decision.
 
 ## Measuring
 
-`swift test` does not emit coverage. The recipe:
+`swift test` does not emit coverage. The recipe mirrors CI
+(`.github/workflows/test.yml`): CoreAudio HAL suites run separately
+because their activity destabilizes AVPlayer-dependent suites — merge
+both profiles before reporting.
 
 ```sh
 rm -rf .build/debug/codecov
-swift test --enable-code-coverage
+swift test --enable-code-coverage --skip CoreAudioTapGatewayTests
+swift test --enable-code-coverage --filter CoreAudioTapGatewayTests
 BIN=.build/debug/LyraPackageTests.xctest/Contents/MacOS/LyraPackageTests
-PROF=.build/debug/codecov/default.profdata
-xcrun llvm-cov report "$BIN" -instr-profile "$PROF" \
+xcrun llvm-profdata merge -sparse .build/debug/codecov/*.profdata \
+    -o /tmp/merged.profdata
+xcrun llvm-cov report "$BIN" -instr-profile /tmp/merged.profdata \
     -ignore-filename-regex 'Tests/'
-xcrun llvm-cov show "$BIN" -instr-profile "$PROF" \
+xcrun llvm-cov show "$BIN" -instr-profile /tmp/merged.profdata \
     -ignore-filename-regex 'Tests/' | grep -n " 0|"   # zero-execution lines
 ```

@@ -133,15 +133,15 @@ struct DarwinGatewayRunProcessTests {
         // between `Process.run()` returning and `markLaunched` into a
         // deterministic hit, then launching for real so the kill path runs on a
         // live process.
-        let spawnEntered = Collector<Void>()
+        let spawnEntered = DispatchSemaphore(value: 0)
         let releaseSpawn = DispatchSemaphore(value: 0)
         final class ProcessBox: @unchecked Sendable { var process: Process? }
         let spawned = ProcessBox()
         let gateway = DarwinGateway(spawnProcess: { process in
-            // Written before spawnEntered is recorded, so the test's
-            // waitForCount below establishes the read.
+            // Written before spawnEntered is signalled, so the driver's
+            // wait() below establishes the read.
             spawned.process = process
-            spawnEntered.append(())
+            spawnEntered.signal()
             releaseSpawn.wait()
             try process.run()
         })
@@ -151,13 +151,17 @@ struct DarwinGatewayRunProcessTests {
                 executable: "/bin/sleep", arguments: ["30"], environment: [:])
         }
 
-        await spawnEntered.waitForCount(1)
-        task.cancel()
-        // The continuation's registration closure is still synchronously parked
-        // inside spawnProcess — the cancel-side resume is only buffered until
-        // that closure returns, so the spawn must be released BEFORE awaiting
-        // the task's result (the reverse order deadlocks).
-        releaseSpawn.signal()
+        // Drive cancel+release from a dedicated thread, not an await: the spawn
+        // callback holds a cooperative worker hostage on releaseSpawn, so a
+        // continuation that needs a second worker could deadlock the test.
+        Thread.detachNewThread {
+            spawnEntered.wait()
+            task.cancel()
+            // The continuation's registration closure is still synchronously
+            // parked inside spawnProcess — the cancel-side resume is buffered
+            // until that closure returns, so release the spawn unconditionally.
+            releaseSpawn.signal()
+        }
         // markLaunched observes the already-recorded termination request and
         // kills the just-spawned child itself; the buffered CancellationError
         // then delivers.
