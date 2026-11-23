@@ -117,6 +117,13 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
             await spectrum.stopCapture()
             subject.send(false)
         }
+        adoptCandidate(candidate, token: token)
+    }
+
+    /// Stores the freshly built loop under its reservation token. A `stop()`
+    /// that ran while the task was being created cleared the reservation —
+    /// the superseded candidate is cancelled and never drives the tap.
+    func adoptCandidate(_ candidate: Task<Void, Never>, token: UUID) {
         processor.withLock { state in
             guard case .starting(let current) = state, current == token else {
                 // stop() cleared the reservation while the task was being

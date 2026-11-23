@@ -9,7 +9,7 @@ import Testing
 struct LRCLibHealthCheckTests {
     @Test("serviceName is LRCLIB API")
     func serviceName() {
-        #expect(LRCLibHealthCheck().serviceName == "LRCLIB API")
+        #expect(LRCLibHealthCheck {}.serviceName == "LRCLIB API")
     }
 
     @Test("healthCheck passes for 2xx responses")

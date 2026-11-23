@@ -9,7 +9,7 @@ import Testing
 struct MusicBrainzHealthCheckTests {
     @Test("serviceName is MusicBrainz API")
     func serviceName() {
-        #expect(MusicBrainzHealthCheck().serviceName == "MusicBrainz API")
+        #expect(MusicBrainzHealthCheck {}.serviceName == "MusicBrainz API")
     }
 
     @Test("healthCheck passes for 2xx responses")

@@ -80,7 +80,15 @@ extension NowPlayingRepositoryImpl {
             return true
         }
         guard reserved else { return }
-        let task = pumpTask()
+        adoptPump(pumpTask(), token: token)
+    }
+
+    /// Stores the freshly built pump under its reservation token. An
+    /// immediate EOF (`finishAll()`) can reset the hub between the
+    /// reservation and this store — adopting there would install an
+    /// already-finished task and block every future pump, so the superseded
+    /// candidate is cancelled instead.
+    func adoptPump(_ task: Task<Void, Never>, token: UUID) {
         hub.withLock { state in
             guard case .starting(let current) = state.pump, current == token else {
                 // The pump hit EOF and `finishAll()` reset the hub before

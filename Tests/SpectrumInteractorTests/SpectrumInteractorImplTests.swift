@@ -210,6 +210,18 @@ struct SpectrumInteractorImplTests {
         let harness = Harness()
         #expect(harness.interactor.magnitudes(barCount: 16).isEmpty)
     }
+
+    @Test("a candidate whose reservation was cleared is cancelled, never adopted")
+    func supersededCandidateIsCancelled() {
+        let harness = Harness()
+        // A fresh interactor's processor is `.idle` — the same state `stop()`
+        // leaves behind when it clears a `.starting` reservation mid-create.
+        // Adopting then must cancel the candidate rather than run a loop that
+        // would drive the tap lifecycle outside the state machine.
+        let parked = Task { _ = await suspendUntilCancelled() }
+        harness.interactor.adoptCandidate(parked, token: UUID())
+        #expect(parked.isCancelled)
+    }
 }
 
 // MARK: - Harness

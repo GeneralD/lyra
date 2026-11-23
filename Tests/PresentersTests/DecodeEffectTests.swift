@@ -104,6 +104,21 @@ struct DecodeEffectStateTests {
     }
 
     @MainActor
+    @Test("decode with empty text and positive duration completes immediately")
+    func decodeEmptyTextPositiveDuration() {
+        withDependencies {
+            $0.continuousClock = ImmediateClock()
+        } operation: {
+            let state = DecodeEffectState(config: DecodeEffect(duration: 1.0, charsets: [.latin]))
+            var completed = false
+            state.decode(to: "") { completed = true }
+            #expect(completed)
+            #expect(state.displayText == "")
+            #expect(!state.isAnimating)
+        }
+    }
+
+    @MainActor
     @Test("stop cancels animation")
     func stopCancels() {
         withDependencies {
