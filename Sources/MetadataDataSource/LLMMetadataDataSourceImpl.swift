@@ -9,14 +9,6 @@ public struct LLMMetadataDataSourceImpl {
     @Dependency(\.errorLog) private var errorLog
     private let sessionFactory: @Sendable (AIEndpoint) -> ScopedAPISession<any OpenAICompatible>
 
-    public init() {
-        self.init(sessionFactory: { config in
-            ScopedAPISession(timeout: 60) {
-                OpenAICompatibleAPI(provider: OpenAICompatibleAPI.provider(for: config, urlSession: $0))
-            }
-        })
-    }
-
     // Test seam: inject a plain API factory (a stub). The scoped session it is
     // wrapped in creates and tears down a throwaway ephemeral session the stub
     // ignores, so the production call path is exercised without a network call.
@@ -26,7 +18,7 @@ public struct LLMMetadataDataSourceImpl {
         })
     }
 
-    init(sessionFactory: @escaping @Sendable (AIEndpoint) -> ScopedAPISession<any OpenAICompatible>) {
+    public init(sessionFactory: @escaping @Sendable (AIEndpoint) -> ScopedAPISession<any OpenAICompatible>) {
         self.sessionFactory = sessionFactory
     }
 }

@@ -12,28 +12,30 @@ struct LLMMetadataDataSourceImplTests {
         let dataSource = withDependencies {
             $0.configDataSource = StubConfigDataSource(loadResult: nil)
         } operation: {
-            LLMMetadataDataSourceImpl()
+            LLMMetadataDataSourceImpl(apiFactory: { _ in OpenAICompatibleStub { _ in .init(choices: []) } })
         }
 
         let result = await dataSource.resolve(track: Track(title: "Some Song", artist: "Some Artist"))
         #expect(result.isEmpty)
     }
 
-    @Test("Default init() wires the production OpenAICompatibleAPI factory (degrades to empty on refused port)")
-    func defaultFactoryWiresProductionAPI() async throws {
-        // Cover the default `apiFactory` closure body which builds
-        // `OpenAICompatibleAPI(provider: OpenAICompatibleAPI.provider(for:))`.
-        // The provider owns a private ephemeral URLSession (#318), so a globally
-        // registered URLProtocol mock cannot intercept it; point the endpoint at
-        // a refused local port instead — same pattern as
-        // OpenAICompatibleHealthCheckDefaultBackendTests — and assert the
-        // graceful empty fallback. The success path through the API is covered
-        // by the apiFactory-injected resolve tests.
+    @Test("Production api(for:) factory degrades to empty on refused port")
+    func productionFactoryDegradesOnRefusedPort() async throws {
+        // Exercise the production `OpenAICompatibleAPI.api(for:)` construction
+        // (the same factory `DataSourceRegistration` wires) through the
+        // apiFactory seam. The ephemeral session ignores globally
+        // registered URLProtocol mocks, so the endpoint points at a refused
+        // local port — same pattern as
+        // OpenAICompatibleHealthCheckDefaultBackendTests — and asserts the
+        // graceful empty fallback. The success path is covered by the
+        // apiFactory-injected resolve tests.
         let config = try makeLLMConfig(endpoint: "http://127.0.0.1:1")
         let result = await withDependencies {
             $0.configDataSource = StubConfigDataSource(loadResult: config)
         } operation: {
-            await LLMMetadataDataSourceImpl().resolve(track: Track(title: "x", artist: "y"))
+            await LLMMetadataDataSourceImpl(apiFactory: { config in
+                OpenAICompatibleAPI.api(for: config)
+            }).resolve(track: Track(title: "x", artist: "y"))
         }
 
         #expect(result.isEmpty)

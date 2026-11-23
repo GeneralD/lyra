@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import ScopedAPISession
 
 public struct OpenAICompatibleHealthCheck: Sendable {
     private let config: AIEndpoint
@@ -20,7 +21,10 @@ public struct OpenAICompatibleHealthCheck: Sendable {
     /// Default backend used by `init(config:)`. Exposed `internal` so coverage
     /// tests can invoke it directly without going through the network-bound init.
     static let defaultRequestPerformer: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
-        try await URLSession.shared.data(for: request)
+        // Per-call ephemeral session like every other network path (#318);
+        // the request's own timeoutInterval governs the actual deadline.
+        try await ScopedAPISession<URLSession>(timeout: 60) { $0 }
+            .withAPI { try await $0.data(for: request) }
     }
 
     private var normalizedEndpoint: String {

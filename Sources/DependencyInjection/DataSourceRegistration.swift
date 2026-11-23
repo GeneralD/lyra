@@ -35,7 +35,12 @@ extension MediaRemoteDataSourceKey: DependencyKey {
 }
 
 extension LLMMetadataDataSourceKey: DependencyKey {
-    public static let liveValue: any MetadataDataSource<Track> = LLMMetadataDataSourceImpl()
+    public static let liveValue: any MetadataDataSource<Track> = LLMMetadataDataSourceImpl(
+        sessionFactory: { config in
+            ScopedAPISession(timeout: 60) {
+                OpenAICompatibleAPI.api(for: config, urlSession: $0)
+            }
+        })
 }
 
 extension MusicBrainzMetadataDataSourceKey: DependencyKey {
@@ -56,7 +61,10 @@ extension LocalWallpaperDataSourceKey: DependencyKey {
 
 extension RemoteWallpaperDataSourceKey: DependencyKey {
     public static let liveValue: any WallpaperDataSource<RemoteWallpaper> = RemoteWallpaperDataSourceImpl { url in
-        try await URLSession.shared.download(from: url)
+        // Per-call ephemeral session like every other network path (#318) —
+        // timeoutIntervalForRequest bounds idle gaps, not total download time.
+        try await ScopedAPISession<URLSession>(timeout: 60) { $0 }
+            .withAPI { try await $0.download(from: url) }
     }
 }
 

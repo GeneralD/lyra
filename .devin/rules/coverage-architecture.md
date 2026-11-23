@@ -31,6 +31,19 @@ declaring module and stay dead. Move it to an excluded module, or split
 into `convenience init` (live calls, exercised through the injected path)
 plus an internal injected `init` for tests.
 
+Covered-module code must not name generated/concrete client types either
+— an impl works through `any Xxx` (the Papyrus protocol), and the
+concrete `XxxAPI` name belongs to the registration file alone
+(`LLMMetadataDataSourceImpl` embedded `OpenAICompatibleAPI` until #370).
+One-level factories (`OpenAICompatible.api(for:)`) keep the call site
+flat without re-leaking the concrete into the impl.
+
+Every outbound network path goes through `ScopedAPISession` (issues 318
+and 370): API data sources, health-check runners, the remote wallpaper
+download (`ScopedAPISession<URLSession>` where `API == URLSession`). No
+process-lifetime `URLSession`, no hand-rolled ephemeral sessions (the
+latter historically leaked one session per health-check run).
+
 ## Injected seams already in place
 
 - `WallpaperPlaybackController(addPeriodicObserver:addItemEndObserver:)` —
