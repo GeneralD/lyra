@@ -12,11 +12,12 @@ struct ProcessHandlerImplTests {
     @Suite("start")
     struct Start {
         @Test("returns alreadyRunning when lock is held")
-        func lockedReturnsAlreadyRunning() {
-            withDependencies {
+        func lockedReturnsAlreadyRunning() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(locked: true)
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().start()
+                let result = await makeHandler().start()
                 guard case .failure(.alreadyRunning) = result else {
                     Issue.record("Expected .alreadyRunning")
                     return
@@ -25,11 +26,12 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("returns alreadyRunning when overlay PIDs exist")
-        func pidsReturnsAlreadyRunning() {
-            withDependencies {
+        func pidsReturnsAlreadyRunning() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(pids: [12345])
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().start()
+                let result = await makeHandler().start()
                 guard case .failure(.alreadyRunning) = result else {
                     Issue.record("Expected .alreadyRunning")
                     return
@@ -38,11 +40,12 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("returns spawnFailed when gateway fails to spawn")
-        func spawnFailed() {
-            withDependencies {
+        func spawnFailed() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: nil)
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().start()
+                let result = await makeHandler().start()
                 guard case .failure(.spawnFailed) = result else {
                     Issue.record("Expected .spawnFailed, got \(result)")
                     return
@@ -51,11 +54,12 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("returns daemonExitedImmediately when spawned daemon dies before health check")
-        func daemonExitedImmediately() {
-            withDependencies {
+        func daemonExitedImmediately() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: 42)
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().start()
+                let result = await makeHandler().start()
                 guard case .failure(.daemonExitedImmediately) = result else {
                     Issue.record("Expected .daemonExitedImmediately, got \(result)")
                     return
@@ -64,11 +68,12 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("returns started with PID on success")
-        func success() {
-            withDependencies {
+        func success() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: 42, runningPIDs: [42])
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().start()
+                let result = await makeHandler().start()
                 guard case .success(.started(let pid)) = result else {
                     Issue.record("Expected .started, got \(result)")
                     return
@@ -77,16 +82,13 @@ struct ProcessHandlerImplTests {
             }
         }
 
-        @Test("default sleep closure path still starts daemon")
-        func defaultSleepClosureStart() {
-            withDependencies {
+        @Test("default delays still start daemon")
+        func defaultInitStart() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(spawnResult: 42, runningPIDs: [42])
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = ProcessHandlerImpl(
-                    startupDelayMicroseconds: 0,
-                    pollDelayMicroseconds: 0,
-                    maxPollingAttempts: 1
-                ).start()
+                let result = await ProcessHandlerImpl().start()
                 #expect(result == .success(.started(pid: 42)))
             }
         }
@@ -97,21 +99,23 @@ struct ProcessHandlerImplTests {
     @Suite("stop")
     struct Stop {
         @Test("public init returns notRunning on stop when no process exists")
-        func publicInitSmoke() {
-            withDependencies {
+        func publicInitSmoke() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway()
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = ProcessHandlerImpl().stop()
+                let result = await ProcessHandlerImpl().stop()
                 #expect(result == .success(.notRunning))
             }
         }
 
         @Test("returns notRunning when no PIDs and lock is free")
-        func noPidsNoLock() {
-            withDependencies {
+        func noPidsNoLock() async {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway()
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().stop()
+                let result = await makeHandler().stop()
                 guard case .success(.notRunning) = result else {
                     Issue.record("Expected .notRunning")
                     return
@@ -120,12 +124,13 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("cleans up stale lock when no PIDs but lock is held")
-        func staleLock() {
+        func staleLock() async {
             let spy = SpyProcessGateway(locked: true)
-            withDependencies {
+            await withDependencies {
                 $0.processGateway = spy
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().stop()
+                let result = await makeHandler().stop()
                 guard case .success(.notRunning) = result else {
                     Issue.record("Expected .notRunning")
                     return
@@ -135,16 +140,17 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("stops after TERM when process exits cleanly")
-        func stopsAfterTerm() {
+        func stopsAfterTerm() async {
             let spy = SpyProcessGateway(
                 overlayPIDs: [42],
                 locked: true,
                 runningResponses: [42: [false, false]]
             )
-            withDependencies {
+            await withDependencies {
                 $0.processGateway = spy
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().stop()
+                let result = await makeHandler().stop()
                 #expect(result == .success(.stopped))
             }
             #expect(spy.sentSignals == [.init(pid: 42, signal: SIGTERM)])
@@ -152,16 +158,17 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("falls back to KILL when TERM does not stop the process")
-        func escalatesToKill() {
+        func escalatesToKill() async {
             let spy = SpyProcessGateway(
                 overlayPIDs: [42],
                 locked: true,
                 runningResponses: [42: Array(repeating: true, count: 21)]
             )
-            withDependencies {
+            await withDependencies {
                 $0.processGateway = spy
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().stop()
+                let result = await makeHandler().stop()
                 #expect(result == .success(.stopped))
             }
             #expect(spy.sentSignals == [.init(pid: 42, signal: SIGTERM), .init(pid: 42, signal: SIGKILL)])
@@ -169,17 +176,18 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("fails when lock never releases after stopping")
-        func lockReleaseTimesOut() {
+        func lockReleaseTimesOut() async {
             let spy = SpyProcessGateway(
                 overlayPIDs: [42],
                 locked: true,
                 runningResponses: [42: [false, false]],
                 releaseClearsLock: false
             )
-            withDependencies {
+            await withDependencies {
                 $0.processGateway = spy
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().stop()
+                let result = await makeHandler().stop()
                 #expect(result == .failure(.lockReleaseTimedOut))
             }
             #expect(spy.releaseLockCalled)
@@ -191,12 +199,13 @@ struct ProcessHandlerImplTests {
     @Suite("restart")
     struct Restart {
         @Test("returns stopFailed when stop fails")
-        func stopFails() {
+        func stopFails() async {
             // PIDs exist but isRunning always true → stop can't kill → lockReleaseTimedOut → restart fails
-            withDependencies {
+            await withDependencies {
                 $0.processGateway = StubProcessGateway(pids: [99], locked: true, runningPIDs: [99])
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().restart()
+                let result = await makeHandler().restart()
                 guard case .failure(.stopFailed) = result else {
                     Issue.record("Expected .stopFailed, got \(result)")
                     return
@@ -205,12 +214,13 @@ struct ProcessHandlerImplTests {
         }
 
         @Test("restarts successfully when stop and start both succeed")
-        func success() {
+        func success() async {
             let spy = RestartSuccessProcessGateway()
-            withDependencies {
+            await withDependencies {
                 $0.processGateway = spy
+                $0.continuousClock = ImmediateClock()
             } operation: {
-                let result = makeHandler().restart()
+                let result = await makeHandler().restart()
                 #expect(result == .success(.started(pid: 84)))
             }
             #expect(spy.sentSignals == [.init(pid: 42, signal: SIGTERM)])
@@ -243,12 +253,7 @@ struct ProcessHandlerImplTests {
 }
 
 private func makeHandler() -> ProcessHandlerImpl {
-    ProcessHandlerImpl(
-        startupDelayMicroseconds: 0,
-        pollDelayMicroseconds: 0,
-        maxPollingAttempts: 20,
-        sleepMicroseconds: { _ in }
-    )
+    ProcessHandlerImpl()
 }
 
 // MARK: - Stubs

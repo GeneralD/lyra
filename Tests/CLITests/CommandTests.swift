@@ -14,9 +14,9 @@ private struct StubProcessHandler: ProcessHandler {
     var restartResult: StartResult = .success(.started(pid: 43))
     var acquireDaemonLockResult = false
 
-    func start() -> StartResult { startResult }
-    func stop() -> StopResult { stopResult }
-    func restart() -> StartResult { restartResult }
+    func start() async -> StartResult { startResult }
+    func stop() async -> StopResult { stopResult }
+    func restart() async -> StartResult { restartResult }
     func acquireDaemonLock() -> Bool { acquireDaemonLockResult }
 }
 
@@ -119,40 +119,40 @@ private final class SpyForegroundApplicationRunner {
 @Suite("StartCommand")
 struct StartCommandTests {
     @Test("success path does not throw")
-    func successPath() throws {
-        try withDependencies {
+    func successPath() async throws {
+        try await withDependencies {
             $0.processHandler = StubProcessHandler(startResult: .success(.started(pid: 123)))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = StartCommand()
-            try cmd.run()
+            try await cmd.run()
         }
     }
 
     @Test("failure path throws ExitCode.failure")
-    func failurePath() {
-        withDependencies {
+    func failurePath() async {
+        await withDependencies {
             $0.processHandler = StubProcessHandler(startResult: .failure(.alreadyRunning))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = StartCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
 
     @Test("spawn failure throws ExitCode.failure")
-    func spawnFailure() {
-        withDependencies {
+    func spawnFailure() async {
+        await withDependencies {
             $0.processHandler = StubProcessHandler(
                 startResult: .failure(.spawnFailed(detail: "exec failed"))
             )
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = StartCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
@@ -163,36 +163,36 @@ struct StartCommandTests {
 @Suite("StopCommand")
 struct StopCommandTests {
     @Test("stopped successfully does not throw")
-    func stopped() throws {
-        try withDependencies {
+    func stopped() async throws {
+        try await withDependencies {
             $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = StopCommand()
-            try cmd.run()
+            try await cmd.run()
         }
     }
 
     @Test("not running does not throw")
-    func notRunning() throws {
-        try withDependencies {
+    func notRunning() async throws {
+        try await withDependencies {
             $0.processHandler = StubProcessHandler(stopResult: .success(.notRunning))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = StopCommand()
-            try cmd.run()
+            try await cmd.run()
         }
     }
 
     @Test("lock release timed out throws ExitCode.failure")
-    func lockReleaseTimedOut() {
-        withDependencies {
+    func lockReleaseTimedOut() async {
+        await withDependencies {
             $0.processHandler = StubProcessHandler(stopResult: .failure(.lockReleaseTimedOut))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = StopCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
@@ -203,25 +203,25 @@ struct StopCommandTests {
 @Suite("RestartCommand")
 struct RestartCommandTests {
     @Test("success path does not throw")
-    func successPath() throws {
-        try withDependencies {
+    func successPath() async throws {
+        try await withDependencies {
             $0.processHandler = StubProcessHandler(restartResult: .success(.started(pid: 99)))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = RestartCommand()
-            try cmd.run()
+            try await cmd.run()
         }
     }
 
     @Test("failure path throws ExitCode.failure")
-    func failurePath() {
-        withDependencies {
+    func failurePath() async {
+        await withDependencies {
             $0.processHandler = StubProcessHandler(restartResult: .failure(.stopFailed))
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = RestartCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
@@ -323,8 +323,8 @@ struct HealthcheckCommandTests {
 @Suite("ServiceInstallCommand")
 struct ServiceInstallCommandTests {
     @Test("stop succeeds and install succeeds does not throw")
-    func bothSucceed() throws {
-        try withDependencies {
+    func bothSucceed() async throws {
+        try await withDependencies {
             $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
             $0.serviceHandler = StubServiceHandler(
                 installResult: .success(.installed(path: "/tmp/plist"))
@@ -332,27 +332,27 @@ struct ServiceInstallCommandTests {
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = ServiceInstallCommand()
-            try cmd.run()
+            try await cmd.run()
         }
     }
 
     @Test("stop fails throws before install")
-    func stopFails() {
-        withDependencies {
+    func stopFails() async {
+        await withDependencies {
             $0.processHandler = StubProcessHandler(stopResult: .failure(.lockReleaseTimedOut))
             $0.serviceHandler = StubServiceHandler()
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = ServiceInstallCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
 
     @Test("stop succeeds but install fails throws ExitCode.failure")
-    func installFails() {
-        withDependencies {
+    func installFails() async {
+        await withDependencies {
             $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
             $0.serviceHandler = StubServiceHandler(
                 installResult: .failure(.managedByHomebrew)
@@ -360,8 +360,8 @@ struct ServiceInstallCommandTests {
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = ServiceInstallCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
@@ -372,8 +372,8 @@ struct ServiceInstallCommandTests {
 @Suite("ServiceUninstallCommand")
 struct ServiceUninstallCommandTests {
     @Test("uninstall succeeds and stop succeeds does not throw")
-    func bothSucceed() throws {
-        try withDependencies {
+    func bothSucceed() async throws {
+        try await withDependencies {
             $0.serviceHandler = StubServiceHandler(
                 uninstallResult: .success(.uninstalled)
             )
@@ -381,13 +381,13 @@ struct ServiceUninstallCommandTests {
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = ServiceUninstallCommand()
-            try cmd.run()
+            try await cmd.run()
         }
     }
 
     @Test("uninstall fails throws ExitCode.failure")
-    func uninstallFails() {
-        withDependencies {
+    func uninstallFails() async {
+        await withDependencies {
             $0.serviceHandler = StubServiceHandler(
                 uninstallResult: .failure(.notInstalled)
             )
@@ -395,15 +395,15 @@ struct ServiceUninstallCommandTests {
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = ServiceUninstallCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
 
     @Test("uninstall succeeds but stop fails throws ExitCode.failure")
-    func stopFails() {
-        withDependencies {
+    func stopFails() async {
+        await withDependencies {
             $0.serviceHandler = StubServiceHandler(
                 uninstallResult: .success(.uninstalled)
             )
@@ -411,8 +411,8 @@ struct ServiceUninstallCommandTests {
             $0.standardOutput = SpyStandardOutput()
         } operation: {
             let cmd = ServiceUninstallCommand()
-            #expect(throws: ExitCode.failure) {
-                try cmd.run()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
             }
         }
     }
