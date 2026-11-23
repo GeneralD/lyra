@@ -1,4 +1,5 @@
 import ArgumentParser
+import AsyncRunnableCommand
 import Dependencies
 import Domain
 
@@ -10,17 +11,17 @@ struct ServiceCommand: ParsableCommand {
     )
 }
 
-struct ServiceInstallCommand: ParsableCommand {
+struct ServiceInstallCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install",
         abstract: "Register as login item (LaunchAgent)"
     )
 
-    func run() throws {
+    func run() async throws {
         @Dependency(\.processHandler) var processHandler
         @Dependency(\.serviceHandler) var handler
         @Dependency(\.standardOutput) var output
-        let stopResult = processHandler.stop()
+        let stopResult = await processHandler.stop()
         output.write(stopResult)
         guard case .success = stopResult else { throw ExitCode.failure }
         let result = handler.install()
@@ -29,20 +30,20 @@ struct ServiceInstallCommand: ParsableCommand {
     }
 }
 
-struct ServiceUninstallCommand: ParsableCommand {
+struct ServiceUninstallCommand: AsyncRunnableCommand {
     static let configuration = CommandConfiguration(
         commandName: "uninstall",
         abstract: "Remove login item"
     )
 
-    func run() throws {
+    func run() async throws {
         @Dependency(\.processHandler) var processHandler
         @Dependency(\.serviceHandler) var handler
         @Dependency(\.standardOutput) var output
         let result = handler.uninstall()
         output.write(result)
         guard case .success = result else { throw ExitCode.failure }
-        let stopResult = processHandler.stop()
+        let stopResult = await processHandler.stop()
         output.write(stopResult)
         guard case .success = stopResult else { throw ExitCode.failure }
     }
