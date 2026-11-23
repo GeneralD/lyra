@@ -26,31 +26,44 @@ public final class TrackInteractorImpl: @unchecked Sendable {
     /// display (#360).
     private static let clearGrace: Duration = .seconds(5)
 
+    /// What one upstream event means for `activeNowPlaying`.
+    private enum ScanEvent {
+        /// A titled client answered but the report must not change the
+        /// display (e.g. mute's artist-dropped report). It still proves the
+        /// source is alive, so it cancels a pending clear while emitting
+        /// nothing itself.
+        case suppressed
+        /// The first `nil` of a run — arms the grace task.
+        case gone
+        /// An ordinary active element.
+        case track(NowPlaying)
+    }
+
     /// The active now-playing element, or `nil` once no titled client has
-    /// been seen for `clearGrace`. A `nil` is the display's clear boundary:
-    /// it must not be emitted for a *suppressed* event — an event that arrives
-    /// but is filtered out, like the artist-dropped report below — because a
-    /// suppressed stream would eventually park on `nil` and clear a display
-    /// that is still live. The scan therefore yields `NowPlaying??`: `nil`
-    /// outer = swallowed event, `.some(nil)` = source gone, `.some(np)` =
-    /// track element. Only the first `nil` of a run is emitted — a `nil`
-    /// emitted downstream is the grace timer's arm, and re-arming it on every
-    /// polling tick would never let it fire. Nothing else dedups here: pause
-    /// (rate → 0) must still reach `playbackPosition`.
+    /// been seen for `clearGrace`. Downstream `nil` is the display's clear
+    /// boundary. The scan classifies each upstream event into a `ScanEvent`
+    /// (or no event at all for a `nil` repeated inside one run — the armed
+    /// grace must not be re-armed on every polling tick or it could never
+    /// fire). `.suppressed` reaches `switchToLatest` as an `Empty` publisher,
+    /// so a mute-style report cancels a pending clear without producing
+    /// output — dropping it earlier would leave a live display to be cleared
+    /// by a timer that the client's presence already invalidated (#361
+    /// review). Nothing else dedups here: pause (rate → 0) must still reach
+    /// `playbackPosition`.
     private lazy var activeNowPlaying: AnyPublisher<NowPlaying?, Never> =
         shared
         .scan(
-            (lastTrack: NowPlaying?.none, inNilRun: false, emit: NowPlaying??.none)
+            (lastTrack: NowPlaying?.none, inNilRun: false, emit: ScanEvent?.none)
         ) { state, incoming in
             guard let incoming else {
                 return (
                     lastTrack: state.lastTrack,
                     inNilRun: true,
-                    emit: state.inNilRun ? nil : .some(nil)
+                    emit: state.inNilRun ? nil : .gone
                 )
             }
             // Same title with the artist newly empty (e.g. system volume
-            // mute): swallow the event, keeping the previous full report.
+            // mute): suppress the report, keeping the previous full report.
             let suppressed =
                 state.lastTrack.map { last in
                     incoming.title == last.title
@@ -60,14 +73,20 @@ public final class TrackInteractorImpl: @unchecked Sendable {
             return (
                 lastTrack: incoming,
                 inNilRun: false,
-                emit: suppressed ? nil : .some(incoming)
+                emit: suppressed ? .suppressed : .track(incoming)
             )
         }
         .compactMap { $0.emit }
-        .map { [weak self] info -> AnyPublisher<NowPlaying?, Never> in
+        .map { [weak self] event -> AnyPublisher<NowPlaying?, Never> in
             guard let self else { return Empty().eraseToAnyPublisher() }
-            guard info == nil else { return Just(info).eraseToAnyPublisher() }
-            return clearedAfterGrace()
+            switch event {
+            case .suppressed:
+                return Empty().eraseToAnyPublisher()
+            case .gone:
+                return clearedAfterGrace()
+            case .track(let info):
+                return Just(info as NowPlaying?).eraseToAnyPublisher()
+            }
         }
         .switchToLatest()
         .share()

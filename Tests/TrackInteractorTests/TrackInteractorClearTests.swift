@@ -165,8 +165,15 @@ struct TrackInteractorClearTests {
 
         playback.subject.send(nowPlaying(title: "Track A", artist: "Artist A"))
         await clock.advance(by: .milliseconds(300))
-        let resolved = collector.values.filter { $0.title == "Track A" && $0.lyricsState == .resolved }
-        #expect(resolved.count == 2, "the nil boundary must break dedup so the same track re-resolves")
+        // The second resolve is async past the debounce — wait on the
+        // collector itself rather than reading values on a timing guess.
+        await collector.settle {
+            $0.filter { $0.title == "Track A" && $0.lyricsState == .resolved }.count >= 2
+        }
+        #expect(
+            collector.values.filter { $0.title == "Track A" && $0.lyricsState == .resolved }.count
+                == 2,
+            "the nil boundary must break dedup so the same track re-resolves")
     }
 
     @Test("artwork emits nil when the clear fires")
@@ -210,6 +217,40 @@ struct TrackInteractorClearTests {
         await clock.advance(by: .seconds(30))
 
         #expect(!collector.contains { $0.lyricsState == .idle }, "suppressed events are not a clear boundary")
+    }
+
+    @Test("a suppressed report inside the grace cancels the pending clear")
+    func suppressedCancelsGrace() async throws {
+        let playback = StubPlaybackUseCase()
+        let clock = TestClock<Duration>()
+        let interactor = makeInteractor(playback: playback, clock: clock)
+
+        let collector = Collector<TrackUpdate>()
+        let cancellable = interactor.trackChange.sink { collector.append($0) }
+        defer { cancellable.cancel() }
+
+        playback.subject.send(nowPlaying(title: "Track A", artist: "Artist A"))
+        await clock.advance(by: .milliseconds(300))
+        _ = await collector.waitFor { $0.lyricsState == .resolved }
+
+        playback.subject.send(nil)
+        await clock.advance(by: .seconds(3))
+
+        // A titled client answering again — even a muted-style report whose
+        // display is suppressed — proves the source is alive: the armed
+        // grace must be cancelled, not left to fire on a live display.
+        playback.subject.send(nowPlaying(title: "Track A", artist: ""))
+        await clock.advance(by: .seconds(30))
+
+        #expect(
+            !collector.contains { $0.lyricsState == .idle },
+            "a live client's suppressed report cancels the pending clear")
+
+        // A nil run that starts *after* the suppressed report is a new run:
+        // it arms a fresh grace and clears on expiry.
+        playback.subject.send(nil)
+        await clock.advance(by: .seconds(6))
+        _ = try #require(await collector.waitFor { $0.lyricsState == .idle })
     }
 
     @Test("pause (rate 0) never triggers a clear and still reaches playbackPosition")
