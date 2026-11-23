@@ -122,16 +122,40 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
 
     /// Stores the freshly built loop under its reservation token. A `stop()`
     /// that ran while the task was being created cleared the reservation —
-    /// the superseded candidate is cancelled and never drives the tap.
+    /// but `Task {}` starts executing immediately, so a superseded candidate
+    /// may already have consumed a replayed event and driven `startCapture`
+    /// before this lock runs. Cancel alone would strand that capture (`stop()`
+    /// saw `.starting` and scheduled no teardown), so the candidate's effects
+    /// are torn down after it drains, gated on `.idle` exactly like `stop()`'s
+    /// own teardown so a newer generation's capture is never destroyed.
     func adoptCandidate(_ candidate: Task<Void, Never>, token: UUID) {
-        processor.withLock { state in
-            guard case .starting(let current) = state, current == token else {
-                // stop() cleared the reservation while the task was being
-                // created; the candidate must not drive the tap lifecycle.
-                candidate.cancel()
-                return
-            }
+        let adopted = processor.withLock { state -> Bool in
+            guard case .starting(let current) = state, current == token else { return false }
             state = .running(candidate)
+            return true
+        }
+        guard !adopted else { return }
+        candidate.cancel()
+        teardownAfterDrain(of: candidate)
+    }
+
+    /// Waits for a cancelled processor to drain — ordering teardown after its
+    /// in-flight capture call — then releases the capture unless a newer
+    /// generation took ownership in the meantime (`state` is no longer
+    /// `.idle`): a stale teardown must not destroy a live capture.
+    private func teardownAfterDrain(of task: Task<Void, Never>) {
+        let spectrum = spectrumService
+        let subject = capturingSubject
+        let processor = processor
+        Task {
+            await task.value
+            let superseded = processor.withLock { state in
+                if case .idle = state { return false }
+                return true
+            }
+            guard !superseded else { return }
+            await spectrum.stopCapture()
+            subject.send(false)
         }
     }
 
@@ -143,24 +167,7 @@ extension SpectrumInteractorImpl: SpectrumInteractor {
         }
         guard let stopped else { return }
         stopped.cancel()
-        let spectrum = spectrumService
-        let subject = capturingSubject
-        let processor = processor
-        Task {
-            // Awaiting the cancelled processor first keeps this teardown
-            // ordered after its in-flight capture call.
-            await stopped.value
-            // A restart may have taken ownership while the old processor
-            // drained; the new generation owns the tap then, and a stale
-            // teardown must not destroy its capture.
-            let superseded = processor.withLock { state in
-                if case .idle = state { return false }
-                return true
-            }
-            guard !superseded else { return }
-            await spectrum.stopCapture()
-            subject.send(false)
-        }
+        teardownAfterDrain(of: stopped)
     }
 
     public func magnitudes(barCount: Int) -> [Float] {

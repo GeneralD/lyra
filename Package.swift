@@ -297,6 +297,7 @@ let package = Package(
                 "ConfigHandler",
                 "StandardOutput",
                 .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "Papyrus", package: "papyrus"),
             ]
         ),
 
