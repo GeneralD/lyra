@@ -60,6 +60,22 @@ struct NowPlayingRepositoryTests {
         }
     }
 
+    @Test("a pump whose reservation was reset by EOF is cancelled, not adopted")
+    func supersededPumpIsCancelled() {
+        withDependencies {
+            $0.mediaRemoteDataSource = MockMediaRemoteDataSource(results: [.eof])
+        } operation: {
+            let repo = NowPlayingRepositoryImpl()
+            // `finishAll()` on an instant-EOF pump resets the hub to `.idle`
+            // before the reserving call can store its task; adopting must
+            // cancel the stale task, or the already-finished pump would block
+            // every future `stream()` from starting a fresh one.
+            let parked = Task { _ = await suspendUntilCancelled() }
+            repo.adoptPump(parked, token: UUID())
+            #expect(parked.isCancelled)
+        }
+    }
+
     @Test("yields multiple items in order before eof")
     func multipleItemsInOrder() async {
         let track1 = NowPlaying(

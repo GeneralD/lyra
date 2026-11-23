@@ -241,3 +241,40 @@ struct ConfigDataSourceImplLastGoodLoadTests {
         #expect(dataSource.load()?.config.screen == .largest)
     }
 }
+
+@Suite("ConfigDataSourceImpl XDG_CONFIG_HOME")
+struct ConfigDataSourceImplXDGTests {
+    @Test("XDG_CONFIG_HOME is honored and trimmed when no configHome override is set")
+    func honorsInjectedXdgConfigHome() throws {
+        let xdgConfig = try Folder.temporary.createSubfolder(named: UUID().uuidString)
+        defer { try? xdgConfig.delete() }
+        let lyraDir = try xdgConfig.createSubfolder(named: "lyra")
+        try lyraDir.createFile(named: "config.toml").write("screen = \"main\"")
+
+        // Strip Folder.path's trailing slash — expectedConfigDirectory joins raw
+        // strings, so an env value ending in "/" would double it.
+        let xdgPath = String(xdgConfig.path.dropLast())
+        let dataSource = ConfigDataSourceImpl(environment: ["XDG_CONFIG_HOME": "  \(xdgPath)  "])
+
+        #expect(dataSource.expectedConfigDirectory == "\(xdgPath)/lyra")
+        #expect(dataSource.load()?.config.screen == .main)
+        #expect(dataSource.configDir == lyraDir.path)
+    }
+
+    @Test("whitespace-only XDG_CONFIG_HOME falls back to ~/.config")
+    func whitespaceXdgFallsBackToDotConfig() {
+        let dataSource = ConfigDataSourceImpl(environment: ["XDG_CONFIG_HOME": "   "])
+
+        #expect(dataSource.expectedConfigDirectory == "\(Folder.home.path).config/lyra")
+    }
+
+    @Test("absent XDG_CONFIG_HOME falls back to ~/.config")
+    func absentXdgFallsBackToDotConfig() {
+        let dataSource = ConfigDataSourceImpl(environment: [:])
+
+        #expect(dataSource.expectedConfigDirectory == "\(Folder.home.path).config/lyra")
+        // The file lookup resolves the same ~/.config root — whether a config
+        // exists there or not, the answer stays under home.
+        #expect(dataSource.configDir.hasPrefix(Folder.home.path))
+    }
+}

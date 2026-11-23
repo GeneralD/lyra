@@ -5,17 +5,7 @@ import Foundation
 public struct LRCLibHealthCheck: Sendable {
     private let healthCheckRunner: @Sendable () async throws -> Void
 
-    public init() {
-        self.init {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 10
-            let session = URLSession(configuration: configuration)
-            let api = LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: session))
-            _ = try await api.healthCheck()
-        }
-    }
-
-    init(
+    public init(
         healthCheckRunner: @escaping @Sendable () async throws -> Void
     ) {
         self.healthCheckRunner = healthCheckRunner

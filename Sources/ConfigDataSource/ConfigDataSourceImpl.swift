@@ -8,6 +8,9 @@ import os
 public struct ConfigDataSourceImpl: Sendable {
     @Dependency(\.configWatchGateway) var watchGateway
     private let configHomeOverride: String?
+    /// The process environment, captured at init so `XDG_CONFIG_HOME` is read
+    /// through the same injected value in tests — never `setenv` (#testing).
+    private let environment: [String: String]
     /// The last successfully decoded load, shared across value copies of this
     /// struct (the DI `liveValue` is a single long-lived instance). `load()`
     /// falls back to it while the on-disk config fails the *required* decode
@@ -21,8 +24,12 @@ public struct ConfigDataSourceImpl: Sendable {
     /// the cache is overwritten — matching what `reload()` accepts (#330).
     private let lastGoodLoad = LastGoodLoadBox()
 
-    public init(configHome: String? = nil) {
+    public init(
+        configHome: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         configHomeOverride = configHome?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.environment = environment
     }
 }
 
@@ -126,7 +133,7 @@ extension ConfigDataSourceImpl {
         let xdgConfigFolder: Folder? = {
             let explicit =
                 configHomeOverride
-                ?? ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
+                ?? environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
                     in: .whitespacesAndNewlines)
             guard let path = explicit, !path.isEmpty else {
                 return try? home.subfolder(named: ".config")
@@ -157,7 +164,7 @@ extension ConfigDataSourceImpl {
     var expectedConfigDirectory: String {
         let explicit =
             configHomeOverride
-            ?? ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
+            ?? environment["XDG_CONFIG_HOME"]?.trimmingCharacters(
                 in: .whitespacesAndNewlines)
         let xdgConfigPath =
             (explicit?.isEmpty == false) ? explicit! : "\(Folder.home.path).config"

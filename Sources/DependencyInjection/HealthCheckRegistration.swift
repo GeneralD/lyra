@@ -1,8 +1,10 @@
 import ConfigRepository
 import Dependencies
 import Domain
+import Foundation
 import LyricsDataSource
 import MetadataDataSource
+@preconcurrency import Papyrus
 import WallpaperDataSource
 
 extension HealthCheckersKey: DependencyKey {
@@ -11,8 +13,20 @@ extension HealthCheckersKey: DependencyKey {
 
         var checkers: [any HealthCheckable] = [
             ConfigRepositoryImpl(),
-            LRCLibHealthCheck(),
-            MusicBrainzHealthCheck(),
+            LRCLibHealthCheck {
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.timeoutIntervalForRequest = 10
+                let session = URLSession(configuration: configuration)
+                let api = LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: session))
+                _ = try await api.healthCheck()
+            },
+            MusicBrainzHealthCheck {
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.timeoutIntervalForRequest = 10
+                let session = URLSession(configuration: configuration)
+                let api = MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: session))
+                _ = try await api.healthCheck()
+            },
         ]
 
         if let ai = configDataSource.load()?.config.ai {
