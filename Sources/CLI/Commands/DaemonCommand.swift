@@ -1,4 +1,4 @@
-import App
+import AppWiring
 import ArgumentParser
 import Dependencies
 import Domain

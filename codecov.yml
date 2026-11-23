@@ -9,6 +9,7 @@ coverage:
         target: 80%
 
 ignore:
+  - "Sources/AppWiring/**"
   - "Sources/DependencyInjection/**"
   - "Sources/Domain/**"
   - "Sources/LyraKit/**"

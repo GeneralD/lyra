@@ -38,7 +38,7 @@ let package = Package(
         .executableTarget(
             name: "CLI",
             dependencies: [
-                "App",
+                "AppWiring",
                 "AsyncRunnableCommand",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Dependencies", package: "swift-dependencies"),
@@ -59,6 +59,23 @@ let package = Package(
                     "-Xlinker", "__info_plist",
                     "-Xlinker", "Sources/CLI/Info.plist",
                 ])
+            ]
+        ),
+
+        // ── AppWiring (composition root, #366) ──
+        // The app's live construction tree (NSApplication + AppDelegate +
+        // signal handler) cannot live in DependencyInjection — the DAG runs
+        // CLI → AppWiring → App → AppRouter → DependencyInjection, so DI
+        // cannot see App. A dedicated leaf target keeps live I/O out of the
+        // coverage-measured App module, matching the wiring-only rule for
+        // coverage-excluded modules.
+        .target(
+            name: "AppWiring",
+            dependencies: [
+                "App",
+                "AppRouter",
+                "Domain",
+                .product(name: "Dependencies", package: "swift-dependencies"),
             ]
         ),
 
