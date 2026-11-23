@@ -13,12 +13,26 @@ private func libcSystem(_ command: UnsafePointer<CChar>?) -> Int32
 public final class DarwinGateway: @unchecked Sendable {
     private let lockState = OSAllocatedUnfairLock(initialState: LockState())
     private let lockDirectory: URL
+    /// Launches the configured `Process` in `runProcess`. Injectable so tests can
+    /// hold the child unlaunched until task cancellation lands — the only way to
+    /// close the launch/cancel race deterministically (the real `run()` returns
+    /// too fast to interleave reliably).
+    let spawnProcess: @Sendable (Process) throws -> Void
 
-    public init(
+    public convenience init(
         lockDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cache/lyra")
     ) {
+        self.init(lockDirectory: lockDirectory, spawnProcess: { try $0.run() })
+    }
+
+    init(
+        lockDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/lyra"),
+        spawnProcess: @escaping @Sendable (Process) throws -> Void
+    ) {
         self.lockDirectory = lockDirectory
+        self.spawnProcess = spawnProcess
     }
 
     deinit {

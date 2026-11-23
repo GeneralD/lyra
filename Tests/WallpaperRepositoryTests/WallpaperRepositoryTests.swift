@@ -474,4 +474,28 @@ struct WallpaperRepositoryCacheTests {
         #expect(!FileManager.default.fileExists(atPath: first))
         #expect(!FileManager.default.fileExists(atPath: second))
     }
+
+    @Test("throws when the data source returns an empty temp path — InputStream cannot be created")
+    func throwsWhenHashInputUnreadable() async throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // A missing file still constructs an InputStream (open() fails lazily);
+        // only an empty path makes InputStream(fileAtPath:) return nil, which
+        // is the guard this exercises.
+        let remote = SpyRemoteDataSource()
+        remote.result = ""
+
+        await withDependencies {
+            $0.localWallpaperDataSource = SpyLocalDataSource()
+            $0.remoteWallpaperDataSource = remote
+            $0.youtubeWallpaperDataSource = SpyYouTubeDataSource()
+            $0.wallpaperCacheStore = StubCacheStore()
+        } operation: {
+            let repo = WallpaperRepositoryImpl(cacheHome: tempDir)
+            await #expect(throws: NSError.self) {
+                _ = try await repo.resolve(value: "https://example.com/bg.mp4", configDir: "/tmp")
+            }
+        }
+    }
 }

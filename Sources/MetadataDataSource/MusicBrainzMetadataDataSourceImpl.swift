@@ -8,20 +8,12 @@ public struct MusicBrainzMetadataDataSourceImpl {
     @Dependency(\.errorLog) private var errorLog
     private let apiSession: ScopedAPISession<any MusicBrainz>
 
-    public init() {
-        self.init(
-            apiSession: ScopedAPISession(timeout: 10) {
-                MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: $0))
-            }
-        )
+    public init(apiSession: ScopedAPISession<any MusicBrainz>) {
+        self.apiSession = apiSession
     }
 
     init(api: any MusicBrainz) {
         self.init(apiSession: ScopedAPISession(timeout: 10) { _ in api })
-    }
-
-    init(apiSession: ScopedAPISession<any MusicBrainz>) {
-        self.apiSession = apiSession
     }
 }
 

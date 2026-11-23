@@ -242,4 +242,24 @@ struct MediaRemoteDataSourceImplTests {
             #expect(gateway.runCommands.isEmpty)
         }
     }
+
+    @Test("missing helper resource yields .eof without invoking the gateway")
+    func missingHelperResourceReturnsEof() async throws {
+        let gateway = StreamingGateway(streamPlans: [[]])
+
+        await withDependencies {
+            $0.processGateway = gateway
+        } operation: {
+            let dataSource = MediaRemoteDataSourceImpl(
+                helperResourceURL: { nil },
+                decodeBase64: { Data(base64Encoded: $0) })
+            let result = await dataSource.poll()
+
+            guard case .eof = result else {
+                Issue.record("Expected .eof, got \(result)")
+                return
+            }
+            #expect(gateway.streamingCommands.isEmpty)
+        }
+    }
 }

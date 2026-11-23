@@ -8,20 +8,12 @@ public struct LyricsDataSourceImpl {
     @Dependency(\.errorLog) private var errorLog
     private let apiSession: ScopedAPISession<any LRCLib>
 
-    public init() {
-        self.init(
-            apiSession: ScopedAPISession(timeout: 10) {
-                LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: $0))
-            }
-        )
+    public init(apiSession: ScopedAPISession<any LRCLib>) {
+        self.apiSession = apiSession
     }
 
     init(api: any LRCLib) {
         self.init(apiSession: ScopedAPISession(timeout: 10) { _ in api })
-    }
-
-    init(apiSession: ScopedAPISession<any LRCLib>) {
-        self.apiSession = apiSession
     }
 }
 

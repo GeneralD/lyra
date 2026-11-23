@@ -418,6 +418,11 @@ struct ConfigRepositoryTests {
 
     @Suite("healthCheck")
     struct HealthCheck {
+        @Test("serviceName identifies the component")
+        func serviceName() {
+            #expect(ConfigRepositoryImpl().serviceName == "Config")
+        }
+
         @Test("returns .pass when config is loaded")
         func passWhenLoaded() async {
             await withDependencies {

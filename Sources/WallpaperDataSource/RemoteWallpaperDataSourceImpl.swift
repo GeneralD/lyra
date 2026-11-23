@@ -4,13 +4,7 @@ import Foundation
 public struct RemoteWallpaperDataSourceImpl: Sendable {
     private let downloadPerformer: @Sendable (URL) async throws -> (URL, URLResponse)
 
-    public init() {
-        self.init { url in
-            try await URLSession.shared.download(from: url)
-        }
-    }
-
-    init(downloadPerformer: @escaping @Sendable (URL) async throws -> (URL, URLResponse)) {
+    public init(downloadPerformer: @escaping @Sendable (URL) async throws -> (URL, URLResponse)) {
         self.downloadPerformer = downloadPerformer
     }
 }

@@ -33,8 +33,26 @@ public final class RipplePresenter: ObservableObject {
     /// layer does not redraw the Canvas every frame (#258).
     @Published public private(set) var isAnimating = false
 
-    public init(screenRect: CGRect = .zero) {
+    private let addGlobalMonitor: @Sendable (@escaping (NSEvent) -> Void) -> Any?
+    private let removeGlobalMonitor: @Sendable (Any) -> Void
+
+    public convenience init(screenRect: CGRect = .zero) {
+        self.init(
+            screenRect: screenRect,
+            addGlobalMonitor: { handler in
+                NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: handler)
+            },
+            removeGlobalMonitor: { NSEvent.removeMonitor($0) })
+    }
+
+    init(
+        screenRect: CGRect = .zero,
+        addGlobalMonitor: @escaping @Sendable (@escaping (NSEvent) -> Void) -> Any?,
+        removeGlobalMonitor: @escaping @Sendable (Any) -> Void
+    ) {
         self.screenRect = screenRect
+        self.addGlobalMonitor = addGlobalMonitor
+        self.removeGlobalMonitor = removeGlobalMonitor
     }
 
     public var isEnabled: Bool { interactor.rippleConfig.enabled }
@@ -150,13 +168,13 @@ public final class RipplePresenter: ObservableObject {
 
     private func attachMouseMonitor() {
         guard mouseMonitor == nil else { return }
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+        mouseMonitor = addGlobalMonitor { [weak self] _ in
             self?.handleGlobalMouseMove()
         }
     }
 
     private func detachMouseMonitor() {
-        mouseMonitor.map(NSEvent.removeMonitor)
+        mouseMonitor.map(removeGlobalMonitor)
         mouseMonitor = nil
     }
 

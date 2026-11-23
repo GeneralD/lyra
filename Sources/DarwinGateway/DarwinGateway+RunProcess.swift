@@ -48,7 +48,7 @@ extension DarwinGateway {
                 drainPipe(stderrPipe.fileHandleForReading, into: { state.appendStderr($0) }, onEOF: { group.leave() })
 
                 do {
-                    try process.run()
+                    try spawnProcess(process)
                 } catch {
                     stdoutPipe.fileHandleForReading.readabilityHandler = nil
                     stderrPipe.fileHandleForReading.readabilityHandler = nil

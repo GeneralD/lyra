@@ -20,7 +20,28 @@ final class WallpaperPlaybackController: ObservableObject {
     private var loopObserver: NSObjectProtocol?
     private var isSeeking: Bool = false
 
-    init() {}
+    private let addPeriodicObserver: @Sendable (AVPlayer, CMTime, @escaping @Sendable (CMTime) -> Void) -> Any
+    private let addItemEndObserver: @Sendable (AVPlayerItem, @escaping @Sendable (Notification) -> Void) -> NSObjectProtocol
+
+    init(
+        addPeriodicObserver: @escaping @Sendable (AVPlayer, CMTime, @escaping @Sendable (CMTime) -> Void) -> Any,
+        addItemEndObserver: @escaping @Sendable (AVPlayerItem, @escaping @Sendable (Notification) -> Void) -> NSObjectProtocol
+    ) {
+        self.addPeriodicObserver = addPeriodicObserver
+        self.addItemEndObserver = addItemEndObserver
+    }
+
+    convenience init() {
+        self.init(
+            addPeriodicObserver: { player, interval, handler in
+                player.addPeriodicTimeObserver(forInterval: interval, queue: .main, using: handler)
+            },
+            addItemEndObserver: { item, handler in
+                NotificationCenter.default.addObserver(
+                    forName: .AVPlayerItemDidPlayToEndTime,
+                    object: item, queue: .main, using: handler)
+            })
+    }
 }
 
 extension WallpaperPlaybackController {
@@ -93,8 +114,7 @@ extension WallpaperPlaybackController {
         }
         guard seekEnd != nil else { return }
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-        endTimeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
-            [weak self, weak player] time in
+        endTimeObserver = addPeriodicObserver(player, interval) { [weak self, weak player] time in
             Task { @MainActor in
                 guard let self, let player, player === self.player else { return }
                 self.handleBoundary(at: time)
@@ -104,10 +124,7 @@ extension WallpaperPlaybackController {
 
     private func rebindLoopObserver(for item: AVPlayerItem) {
         loopObserver.map(NotificationCenter.default.removeObserver)
-        loopObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item, queue: .main
-        ) { [weak self] _ in
+        loopObserver = addItemEndObserver(item) { [weak self] _ in
             Task { @MainActor in self?.handleItemEnd() }
         }
     }

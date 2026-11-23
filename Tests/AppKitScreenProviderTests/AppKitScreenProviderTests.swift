@@ -329,4 +329,20 @@ struct AppKitScreenProviderTests {
             #expect(abs(coverage - 0.5) < 0.0001)
         }
     }
+
+    @Suite("window info lookup")
+    struct WindowInfoLookup {
+        // The CGWindowList query is injected so the nil-return guard — the path
+        // taken when the window server cannot enumerate — is reachable.
+        @Test("nil window info yields zero occupancy and coverage")
+        func nilWindowInfo() {
+            let provider = AppKitScreenProvider(windowInfoList: { nil })
+            let screen = ScreenInfo(
+                frame: CGRect(x: 0, y: 0, width: 100, height: 100),
+                visibleFrame: CGRect(x: 0, y: 0, width: 100, height: 100))
+
+            #expect(provider.windowOccupancy(for: screen) == 0)
+            #expect(provider.windowCoverage(for: screen) == 0)
+        }
+    }
 }

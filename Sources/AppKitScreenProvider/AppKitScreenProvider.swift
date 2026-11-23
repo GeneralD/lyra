@@ -3,7 +3,19 @@ import CoreGraphics
 import Domain
 
 public struct AppKitScreenProvider {
-    public init() {}
+    private let windowInfoList: @Sendable () -> [[String: Any]]?
+
+    public init() {
+        self.init(windowInfoList: {
+            CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+            ) as? [[String: Any]]
+        })
+    }
+
+    init(windowInfoList: @escaping @Sendable () -> [[String: Any]]?) {
+        self.windowInfoList = windowInfoList
+    }
 }
 
 extension AppKitScreenProvider: ScreenProvider {
@@ -24,10 +36,7 @@ extension AppKitScreenProvider: ScreenProvider {
     }
 
     private func visibleWindowBounds() -> [CGRect] {
-        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let infoList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
-            return []
-        }
+        guard let infoList = windowInfoList() else { return [] }
         let myPID = Int(ProcessInfo.processInfo.processIdentifier)
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         return infoList.compactMap { info -> CGRect? in

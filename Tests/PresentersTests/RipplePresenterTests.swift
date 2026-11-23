@@ -1,7 +1,9 @@
+import AppKit
 import Combine
 import Dependencies
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -697,6 +699,58 @@ struct RipplePresenterTests {
                 #expect(!presenter.isAnimating)
                 #expect(presenter.rippleState?.ripples.isEmpty == true)
             }
+        }
+    }
+
+    @Suite("mouse monitor")
+    struct MouseMonitor {
+        // The monitor registration is injected so the test can fire the exact
+        // callback NSEvent would deliver — the real global monitor cannot be
+        // triggered from a test, and its dispatch line is the only uncovered hop
+        // between OS delivery and `handleGlobalMouseMove`.
+        @MainActor
+        @Test("attaches when enabled, fires the callback into handleGlobalMouseMove, and removes the same token on stop")
+        func monitorLifecycle() async {
+            // The handler type NSEvent delivers is non-Sendable, so it cannot
+            // live in a Collector — a plain box records it instead.
+            final class HandlerBox: @unchecked Sendable {
+                var handler: ((NSEvent) -> Void)?
+            }
+            final class TokenBox: @unchecked Sendable {}
+            let handlerBox = HandlerBox()
+            let attached = Collector<Void>()
+            let removed = Collector<ObjectIdentifier>()
+            let token = TokenBox()
+            // The whole exercise — not just construction — must stay inside the
+            // dependency scope: firing the handler reads \.date through
+            // RippleState, which would fall back to the live generator outside
+            // it and record an issue.
+            await withDependencies {
+                $0.wallpaperInteractor = StubWallpaperInteractor(rippleConfig: .init(enabled: true))
+                $0.configInteractor = FakeConfigInteractor()
+                $0.date = .init { fixedDate }
+            } operation: {
+                let presenter = RipplePresenter(
+                    screenRect: CGRect(x: -10_000, y: -10_000, width: 20_000, height: 20_000),
+                    addGlobalMonitor: { handler in
+                        handlerBox.handler = handler
+                        attached.append(())
+                        return token
+                    },
+                    removeGlobalMonitor: { removed.append(ObjectIdentifier($0 as AnyObject)) })
+
+                presenter.start()
+                await attached.waitForCount(1)
+
+                // Fires the monitor callback — dispatches into
+                // handleGlobalMouseMove, which runs its assumeIsolated hop on
+                // this test's main actor.
+                handlerBox.handler?(NSEvent())
+
+                presenter.stop()
+                await removed.waitForCount(1)
+            }
+            #expect(removed.contains { $0 == ObjectIdentifier(token) })
         }
     }
 }
