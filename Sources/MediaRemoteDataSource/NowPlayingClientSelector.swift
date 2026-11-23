@@ -1,8 +1,11 @@
 /// Chooses which now-playing client to follow from one helper frame (#358).
 ///
-/// Only clients with a title are candidates — a title-less client such as
-/// DisplayLink Manager's paused video can hold the system slot but has nothing
-/// to show. Among candidates, the first difference in this order wins:
+/// Only clients with a showable title are candidates — a title-less client
+/// such as DisplayLink Manager's paused video can hold the system slot but
+/// has nothing to show, and a vendor placeholder title (Chromium's
+/// incognito-masked "A site is playing media") carries no more information
+/// than a missing one (#367). Among candidates, the first difference in this
+/// order wins:
 ///
 /// 1. playing (a missing rate counts as playing, as `NowPlaying` assumes 1x)
 /// 2. the system-designated client, so macOS's own "most recently active"
@@ -15,7 +18,7 @@ struct NowPlayingClientSelector {}
 extension NowPlayingClientSelector {
     func selection(in frame: HelperFrame, following followedKey: String?) -> HelperClient? {
         frame.clients
-            .filter { !($0.title ?? "").isEmpty }
+            .filter(\.hasShowableTitle)
             .map { (client: $0, rank: rank(of: $0, in: frame, following: followedKey)) }
             .max { $0.rank < $1.rank }?
             .client
