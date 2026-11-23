@@ -147,4 +147,52 @@ struct NowPlayingClientSelectorTests {
 
         #expect(selectedKey(clients, systemPid: nil) == "b.player")
     }
+
+    @Test("a Chromium placeholder title is never selected (#367)")
+    func chromiumPlaceholderIsIneligible() {
+        // Incognito masking reports a synthesized title and no artist.
+        let clients = [
+            helperClient(
+                bundleID: "com.google.Chrome", pid: 1,
+                title: "A site is playing media", artist: nil, rate: 1)
+        ]
+
+        #expect(selectedKey(clients, systemPid: 1) == nil)
+    }
+
+    @Test("a Firefox placeholder title is never selected (#367)")
+    func firefoxPlaceholderIsIneligible() {
+        let clients = [
+            helperClient(
+                bundleID: "org.mozilla.firefox", pid: 1,
+                title: "Firefox is playing media", artist: nil, rate: 1)
+        ]
+
+        #expect(selectedKey(clients, systemPid: 1) == nil)
+    }
+
+    @Test("a real track wins over a playing placeholder client")
+    func realTrackBeatsPlaceholder() {
+        // The placeholder is excluded from candidacy entirely, not merely
+        // ranked lower — a paused but titled client still outranks it.
+        let clients = [
+            helperClient(
+                bundleID: "com.google.Chrome", pid: 1,
+                title: "A site is playing media", artist: nil, rate: 1),
+            helperClient(bundleID: "com.apple.Music", pid: 2, rate: 0),
+        ]
+
+        #expect(selectedKey(clients, systemPid: 1) == "com.apple.Music")
+    }
+
+    @Test("the followed key does not resurrect a placeholder client")
+    func followedPlaceholderStaysIneligible() {
+        let clients = [
+            helperClient(
+                bundleID: "com.google.Chrome", pid: 1,
+                title: "A site is playing media", artist: nil, rate: 1, timestamp: 99)
+        ]
+
+        #expect(selectedKey(clients, following: "com.google.Chrome") == nil)
+    }
 }

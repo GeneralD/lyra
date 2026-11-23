@@ -46,6 +46,24 @@ extension HelperClient {
     var key: String {
         bundleID ?? pid.map { "pid:\($0)" } ?? "unknown"
     }
+
+    /// Whether `title` is a real track title the overlay can show — as opposed
+    /// to missing, or a vendor placeholder that only claims something plays
+    /// (#367). Chromium's incognito privacy masking (`HideIncognitoMediaMetadata`,
+    /// on by default) and Firefox's private windows report a synthesized title
+    /// instead of real metadata; it passes a non-empty check but carries no
+    /// track information, so it counts the same as a missing title. Entries
+    /// are matched verbatim — extend the list as localized or new vendor
+    /// variants are observed in the wild.
+    var hasShowableTitle: Bool {
+        guard let title, !title.isEmpty else { return false }
+        return !Self.placeholderTitles.contains(title)
+    }
+
+    private static let placeholderTitles: Set<String> = [
+        "A site is playing media",
+        "Firefox is playing media",
+    ]
 }
 
 extension HelperFrame: Decodable {
