@@ -217,6 +217,34 @@ struct ServiceHandlerImplTests {
                 #expect(!plistExists)
             }
         }
+
+        @Test("returns failed when the plist cannot be deleted")
+        func deleteFailure() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer {
+                // Restore writability first or cleanup cannot remove the plist.
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o755], ofItemAtPath: path)
+                cleanup(path)
+            }
+            try createFile(at: path, named: "com.generald.lyra.plist")
+            // Removing a file needs write+execute on its directory — a 0555 dir
+            // makes the real File.delete() throw through the production path.
+            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: path)
+
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path)
+                let result = handler.uninstall()
+                guard case .failure(.failed(let detail)) = result else {
+                    Issue.record("Expected .failed, got \(result)")
+                    return
+                }
+                #expect(detail == "Failed to delete plist file")
+            }
+        }
     }
 }
 

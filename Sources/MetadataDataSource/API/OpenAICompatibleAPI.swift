@@ -23,6 +23,13 @@ extension OpenAICompatible {
             req.addHeader("Authorization", value: "Bearer \(config.apiKey)")
         }
     }
+
+    /// Builds the generated client around the auth-attaching `provider(for:)` —
+    /// keeps the `X(provider: X.provider(for:))` nesting inside the extension so
+    /// call sites name the factory once. Construction performs no I/O.
+    public static func api(for config: AIEndpoint, urlSession: URLSession? = nil) -> any OpenAICompatible {
+        OpenAICompatibleAPI(provider: provider(for: config, urlSession: urlSession))
+    }
 }
 
 public struct ChatCompletionRequest: Codable, Sendable {

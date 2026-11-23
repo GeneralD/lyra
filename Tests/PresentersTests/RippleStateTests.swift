@@ -158,4 +158,20 @@ struct RippleStateTests {
             #expect(state.ripples.isEmpty)
         }
     }
+
+    @Suite("Ripple")
+    struct Ripple {
+        @Test("memberwise init stores fields and picks a hueShift inside the jitter range")
+        func memberwiseDefaults() {
+            let ripple = RippleState.Ripple(
+                position: CGPoint(x: 10, y: 20),
+                startTime: Date(timeIntervalSinceReferenceDate: 0),
+                idle: true)
+
+            #expect(ripple.position == CGPoint(x: 10, y: 20))
+            #expect(ripple.startTime == Date(timeIntervalSinceReferenceDate: 0))
+            #expect(ripple.idle)
+            #expect((-0.15...0.15).contains(ripple.hueShift))
+        }
+    }
 }

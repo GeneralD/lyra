@@ -8,13 +8,22 @@ public final class MediaRemoteDataSourceImpl: @unchecked Sendable {
 
     private let state = StreamStateBox()
     private let selector = NowPlayingClientSelector()
+    private let helperResourceURL: @Sendable () -> URL?
     private let decodeBase64: @Sendable (String) -> Data?
 
     public convenience init() {
-        self.init(decodeBase64: { Data(base64Encoded: $0) })
+        self.init(
+            helperResourceURL: {
+                Bundle.module.url(forResource: "media-remote-helper", withExtension: "swift")
+            },
+            decodeBase64: { Data(base64Encoded: $0) })
     }
 
-    init(decodeBase64: @escaping @Sendable (String) -> Data?) {
+    init(
+        helperResourceURL: @escaping @Sendable () -> URL?,
+        decodeBase64: @escaping @Sendable (String) -> Data?
+    ) {
+        self.helperResourceURL = helperResourceURL
         self.decodeBase64 = decodeBase64
     }
 }
@@ -51,10 +60,7 @@ extension MediaRemoteDataSourceImpl {
 
         guard !state.isPolling else { return nil }
         if state.iterator == nil {
-            guard
-                let sourceURL = Bundle.module.url(
-                    forResource: "media-remote-helper", withExtension: "swift")
-            else {
+            guard let sourceURL = helperResourceURL() else {
                 state.isPolling = true
                 return AsyncStream<String> { $0.finish() }.makeAsyncIterator()
             }

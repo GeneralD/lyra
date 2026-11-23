@@ -1,4 +1,5 @@
 import AppKit
+import Dependencies
 import Domain
 import Testing
 
@@ -267,5 +268,35 @@ struct SwiftUIResolverTests {
         let noSpacing = resolver.lineHeight(from: TextAppearance(spacing: 0, fontSize: 14))
         let largeSpacing = resolver.lineHeight(from: TextAppearance(spacing: 20, fontSize: 14))
         #expect(largeSpacing > noSpacing)
+    }
+
+    @Suite("testValue stub")
+    struct TestValueStub {
+        // Resolving through DependencyValues in a test context yields the stub —
+        // every method must answer so views under test never hit liveValue.
+        @MainActor
+        @Test("stub answers every resolver call and the accessor round-trips")
+        func stubAnswersAndAccessor() {
+            var deps = DependencyValues()
+            let stub = deps.swiftUIResolver
+            let style = TextAppearance(spacing: 4, fontSize: 14)
+            let solid = ColorStyle.solid(ColorConfig(hex: "#FF0000FF"))
+            let gradient = ColorStyle.gradient([ColorConfig(hex: "#FF0000FF"), ColorConfig(hex: "#00FF00FF")])
+
+            _ = stub.font(from: style)
+            _ = stub.color(from: "#FF0000FF")
+            _ = stub.solidColor(from: solid)
+            _ = stub.shapeStyle(from: gradient)
+            let g = stub.gradient(from: gradient)
+            #expect(g.stops.count == 1)
+            _ = stub.color(from: gradient, at: 0.5)
+            _ = stub.color(solid, hueShiftedBy: 0.1, opacity: 0.8)
+            let hsb = stub.hsbComponents(from: solid)
+            #expect(hsb == (0, 0, 1))
+            #expect(stub.lineHeight(from: style) == style.fontSize + style.spacing * 2)
+
+            deps.swiftUIResolver = SwiftUIResolverImpl()
+            #expect(deps.swiftUIResolver is SwiftUIResolverImpl)
+        }
     }
 }

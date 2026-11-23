@@ -125,4 +125,48 @@ struct DarwinGatewayRunProcessTests {
         let reaped = await pollUntil { kill(pid, 0) != 0 }
         #expect(reaped, "a SIGTERM-ignoring child must be SIGKILLed, not left running")
     }
+
+    @Test("cancellation landing mid-spawn kills the child via the markLaunched race")
+    func cancelDuringSpawnClosesLaunchRace() async throws {
+        // The injected spawn parks the child unlaunched until task cancellation
+        // has landed inside requestCancel — widening the nanosecond window
+        // between `Process.run()` returning and `markLaunched` into a
+        // deterministic hit, then launching for real so the kill path runs on a
+        // live process.
+        let spawnEntered = DispatchSemaphore(value: 0)
+        let releaseSpawn = DispatchSemaphore(value: 0)
+        final class ProcessBox: @unchecked Sendable { var process: Process? }
+        let spawned = ProcessBox()
+        let gateway = DarwinGateway(spawnProcess: { process in
+            // Written before spawnEntered is signalled, so the driver's
+            // wait() below establishes the read.
+            spawned.process = process
+            spawnEntered.signal()
+            releaseSpawn.wait()
+            try process.run()
+        })
+
+        let task = Task {
+            try await gateway.runProcess(
+                executable: "/bin/sleep", arguments: ["30"], environment: [:])
+        }
+
+        // Drive cancel+release from a dedicated thread, not an await: the spawn
+        // callback holds a cooperative worker hostage on releaseSpawn, so a
+        // continuation that needs a second worker could deadlock the test.
+        Thread.detachNewThread {
+            spawnEntered.wait()
+            task.cancel()
+            // The continuation's registration closure is still synchronously
+            // parked inside spawnProcess — the cancel-side resume is buffered
+            // until that closure returns, so release the spawn unconditionally.
+            releaseSpawn.signal()
+        }
+        // markLaunched observes the already-recorded termination request and
+        // kills the just-spawned child itself; the buffered CancellationError
+        // then delivers.
+        await #expect(throws: CancellationError.self) { try await task.value }
+        let child = try #require(spawned.process)
+        try #require(await pollUntil { !child.isRunning })
+    }
 }

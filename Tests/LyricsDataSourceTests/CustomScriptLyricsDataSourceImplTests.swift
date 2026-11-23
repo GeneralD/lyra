@@ -252,6 +252,22 @@ struct CustomScriptLyricsDataSourceImplTests {
         #expect(await spy.lastCall?.timeoutMs == 5000)
     }
 
+    @Test("search(trackName:) returns nil — the script contract has no search endpoint")
+    func searchTrackNameReturnsNil() async {
+        let dataSource = CustomScriptLyricsDataSourceImpl(processRunner: { _, _, _, _ in
+            (status: 0, stdout: "", stderr: "")
+        })
+        #expect(await dataSource.search(trackName: "Song") == nil)
+    }
+
+    @Test("search(query:) returns nil — the script contract has no search endpoint")
+    func searchQueryReturnsNil() async {
+        let dataSource = CustomScriptLyricsDataSourceImpl(processRunner: { _, _, _, _ in
+            (status: 0, stdout: "", stderr: "")
+        })
+        #expect(await dataSource.search(query: "Song") == nil)
+    }
+
     // MARK: - Config hot reload (#41)
     //
     // get() must read fallback_command/timeout_ms from configDataSource on EVERY call,

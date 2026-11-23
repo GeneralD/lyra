@@ -34,4 +34,12 @@ struct FlexibleDoubleTests {
         let decoded = try JSONDecoder().decode(FlexibleDouble.self, from: data)
         #expect(decoded.value == original.value)
     }
+
+    @Test("float and integer literals produce matching values")
+    func literalConformances() {
+        let fromFloat: FlexibleDouble = 2.5
+        let fromInt: FlexibleDouble = 7
+        #expect(fromFloat.value == 2.5)
+        #expect(fromInt.value == 7.0)
+    }
 }

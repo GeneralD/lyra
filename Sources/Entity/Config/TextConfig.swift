@@ -80,10 +80,6 @@ extension UnresolvedTextAppearance {
         color: .gradient(["#B8942DFF", "#EDCF73FF", "#FFEB99FF", "#CCA64DFF", "#A68038FF"])
     )
 
-    fileprivate func resolve(defaults: UnresolvedTextAppearance..., filled: TextAppearanceConfig) -> TextAppearanceConfig {
-        resolve(defaults: defaults, filled: filled)
-    }
-
     fileprivate func resolve(defaults: [UnresolvedTextAppearance], filled: TextAppearanceConfig) -> TextAppearanceConfig {
         guard let first = defaults.first else {
             return TextAppearanceConfig(

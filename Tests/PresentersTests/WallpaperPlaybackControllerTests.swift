@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import Domain
 import Foundation
+import TestSupport
 import Testing
 
 @testable import Presenters
@@ -209,6 +210,58 @@ struct WallpaperPlaybackControllerTests {
             controller.handleItemEnd()
 
             #expect(counter.count == 1)
+        }
+    }
+
+    @Suite("observer callbacks")
+    struct ObserverCallbacks {
+        // The observer-registration closures are injected so a test can fire the
+        // exact callback AVPlayer/NotificationCenter would deliver — covering the
+        // weak-self guard and the MainActor hop that a headless player never
+        // drives by itself.
+        @MainActor
+        @Test("periodic observer callback reaches handleBoundary through the main-actor hop")
+        func periodicCallbackAdvances() async {
+            let handlers = Collector<@Sendable (CMTime) -> Void>()
+            let controller = WallpaperPlaybackController(
+                addPeriodicObserver: { _, _, handler in
+                    handlers.append(handler)
+                    return NSObject()
+                },
+                addItemEndObserver: { _, _ in NSObject() })
+            let advances = Collector<Void>()
+            controller.onAdvanceRequested = { advances.append(()) }
+
+            await controller.play(
+                item: ResolvedWallpaperItem(
+                    url: URL(fileURLWithPath: "/tmp/a.mp4"), end: 5.0))
+            let handler = await handlers.waitFor { _ in true }
+
+            handler?(CMTime(seconds: 6, preferredTimescale: 600))
+
+            await advances.waitForCount(1)
+        }
+
+        @MainActor
+        @Test("item-end observer callback reaches handleItemEnd through the main-actor hop")
+        func itemEndCallbackAdvances() async {
+            let handlers = Collector<@Sendable (Notification) -> Void>()
+            let controller = WallpaperPlaybackController(
+                addPeriodicObserver: { _, _, _ in NSObject() },
+                addItemEndObserver: { _, handler in
+                    handlers.append(handler)
+                    return NSObject()
+                })
+            let advances = Collector<Void>()
+            controller.onAdvanceRequested = { advances.append(()) }
+
+            await controller.play(
+                item: ResolvedWallpaperItem(url: URL(fileURLWithPath: "/tmp/a.mp4")))
+            let handler = await handlers.waitFor { _ in true }
+
+            handler?(Notification(name: .AVPlayerItemDidPlayToEndTime))
+
+            await advances.waitForCount(1)
         }
     }
 }

@@ -313,6 +313,7 @@ let package = Package(
                 "TrackHandler",
                 "ConfigHandler",
                 "StandardOutput",
+                "ScopedAPISession",
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Papyrus", package: "papyrus"),
             ]

@@ -5,6 +5,7 @@ import Foundation
 import LyricsDataSource
 import MetadataDataSource
 @preconcurrency import Papyrus
+import ScopedAPISession
 import WallpaperDataSource
 
 extension HealthCheckersKey: DependencyKey {
@@ -14,18 +15,14 @@ extension HealthCheckersKey: DependencyKey {
         var checkers: [any HealthCheckable] = [
             ConfigRepositoryImpl(),
             LRCLibHealthCheck {
-                let configuration = URLSessionConfiguration.ephemeral
-                configuration.timeoutIntervalForRequest = 10
-                let session = URLSession(configuration: configuration)
-                let api = LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: session))
-                _ = try await api.healthCheck()
+                try await ScopedAPISession(timeout: 10) {
+                    LRCLibAPI(provider: Provider(baseURL: LRCLibAPI.baseURL, urlSession: $0))
+                }.withAPI { _ = try await $0.healthCheck() }
             },
             MusicBrainzHealthCheck {
-                let configuration = URLSessionConfiguration.ephemeral
-                configuration.timeoutIntervalForRequest = 10
-                let session = URLSession(configuration: configuration)
-                let api = MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: session))
-                _ = try await api.healthCheck()
+                try await ScopedAPISession(timeout: 10) {
+                    MusicBrainzAPI(provider: Provider(baseURL: MusicBrainzAPI.baseURL, urlSession: $0))
+                }.withAPI { _ = try await $0.healthCheck() }
             },
         ]
 

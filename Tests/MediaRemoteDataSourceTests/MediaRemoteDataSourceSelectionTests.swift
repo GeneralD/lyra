@@ -21,7 +21,9 @@ struct MediaRemoteDataSourceSelectionTests {
         await withDependencies {
             $0.processGateway = StreamingGateway(streamPlans: [lines])
         } operation: {
-            let dataSource = MediaRemoteDataSourceImpl(decodeBase64: decoder.decode)
+            let dataSource = MediaRemoteDataSourceImpl(
+                helperResourceURL: { URL(fileURLWithPath: "/tmp/media-remote-helper.swift") },
+                decodeBase64: decoder.decode)
             return await lines.asyncMap { _ in await dataSource.poll() }
         }
     }
