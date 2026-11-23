@@ -6,14 +6,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let routerFactory: @MainActor () -> any AppRouting
     private let terminationHandler: any TerminationHandling
 
-    public override convenience init() {
-        self.init(
-            routerFactory: { AppRouter() },
-            terminationHandler: SignalTerminationHandler()
-        )
-    }
-
-    init(
+    public init(
         routerFactory: @escaping @MainActor () -> any AppRouting,
         terminationHandler: any TerminationHandling
     ) {
@@ -33,7 +26,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-protocol AppRouting: AnyObject {
+public protocol AppRouting: AnyObject {
     func start()
     func stop()
 }
@@ -41,6 +34,6 @@ protocol AppRouting: AnyObject {
 extension AppRouter: AppRouting {}
 
 @MainActor
-protocol TerminationHandling: AnyObject {
+public protocol TerminationHandling: AnyObject {
     func install(onTermination: @escaping @MainActor () -> Void)
 }

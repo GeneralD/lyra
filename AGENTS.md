@@ -46,20 +46,20 @@ swift .claude/scripts/check-overlay.swift
 Core dependency direction:
 
 ```text
-CLI/App -> AppRouter/Views/Presenters -> Interactors -> UseCases
-         -> Repositories -> DataSources/DataStores
+CLI -> AppWiring -> App -> AppRouter/Views/Presenters -> Interactors -> UseCases
+     -> Repositories -> DataSources/DataStores
 ```
 
 Shared conventions:
 
 - `Entity` owns pure data types.
 - `Domain` owns protocols and `DependencyKey` definitions for
-  cross-layer contracts. The one exception is the `App`-module
-  AppKit foreground lifecycle key (`ForegroundApplicationRunnerKey`),
-  which lives in `App` because its live implementation owns
-  `NSApplication` and `AppDelegate` setup.
-- `DependencyInjection` owns Domain-facing live registrations. The
-  App-module bootstrap key is the lone non-Domain registration site.
+  cross-layer contracts.
+- `DependencyInjection` owns Domain-facing live registrations.
+- `AppWiring` owns the App composition root — the live
+  `ForegroundApplicationRunner` tree (`NSApplication`, `AppDelegate`,
+  signal handling) — as a dedicated coverage-excluded wiring module;
+  `DependencyInjection` cannot see `App` in the DAG (#366).
 - `App` owns AppKit foreground lifecycle and termination-signal seams.
 - `Presenters` own display state.
 - `Views` stay declarative and rendering-focused.

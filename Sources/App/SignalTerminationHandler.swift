@@ -2,20 +2,20 @@ import Darwin
 import Dispatch
 
 @MainActor
-final class SignalTerminationHandler: TerminationHandling {
+public final class SignalTerminationHandler: TerminationHandling {
     private let signals: [Int32]
     private let backend: any SignalHandlingBackend
     private var signalSources: [any AppSignalSource] = []
 
-    init(
-        signals: [Int32] = [SIGTERM, SIGINT],
-        backend: any SignalHandlingBackend = LiveSignalHandlingBackend()
+    public init(
+        signals: [Int32],
+        backend: any SignalHandlingBackend
     ) {
         self.signals = signals
         self.backend = backend
     }
 
-    func install(onTermination: @escaping @MainActor () -> Void) {
+    public func install(onTermination: @escaping @MainActor () -> Void) {
         let backend = backend
         signalSources = signals.map { signalType in
             backend.ignoreSignal(signalType)
@@ -33,34 +33,34 @@ final class SignalTerminationHandler: TerminationHandling {
 }
 
 @MainActor
-protocol SignalHandlingBackend: AnyObject {
+public protocol SignalHandlingBackend: AnyObject {
     func ignoreSignal(_ signalType: Int32)
     func makeSignalSource(signal signalType: Int32, queue: DispatchQueue) -> any AppSignalSource
     func terminateProcess(_ status: Int32)
 }
 
-protocol AppSignalSource: AnyObject {
+public protocol AppSignalSource: AnyObject {
     func setEventHandler(_ handler: @escaping () -> Void)
     func resume()
 }
 
 @MainActor
-final class LiveSignalHandlingBackend: SignalHandlingBackend {
+public final class LiveSignalHandlingBackend: SignalHandlingBackend {
     private let terminateProcessCall: @MainActor (Int32) -> Void
 
-    init(terminateProcess: @escaping @MainActor (Int32) -> Void = { exit($0) }) {
+    public init(terminateProcess: @escaping @MainActor (Int32) -> Void) {
         terminateProcessCall = terminateProcess
     }
 
-    func ignoreSignal(_ signalType: Int32) {
+    public func ignoreSignal(_ signalType: Int32) {
         signal(signalType, SIG_IGN)
     }
 
-    func makeSignalSource(signal signalType: Int32, queue: DispatchQueue) -> any AppSignalSource {
+    public func makeSignalSource(signal signalType: Int32, queue: DispatchQueue) -> any AppSignalSource {
         LiveAppSignalSource(source: DispatchSource.makeSignalSource(signal: signalType, queue: queue))
     }
 
-    func terminateProcess(_ status: Int32) {
+    public func terminateProcess(_ status: Int32) {
         terminateProcessCall(status)
     }
 }

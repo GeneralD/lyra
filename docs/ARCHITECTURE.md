@@ -17,7 +17,7 @@ edges are direct module dependencies.
 graph TD
     subgraph Entry
         CLI[CLI]
-        AsyncParsableCommand[AsyncParsableCommand]
+        AsyncRunnableCommand[AsyncRunnableCommand]
     end
 
     subgraph AppLayer["App"]
@@ -32,6 +32,7 @@ graph TD
 
     subgraph DI Wiring
         DependencyInjection[DependencyInjection]
+        AppWiring[AppWiring]
     end
 
     subgraph DI Contract
@@ -52,7 +53,8 @@ graph TD
         Support[Provider / Support]
     end
 
-    CLI --> App & AppRouter & AsyncParsableCommand
+    CLI --> AppWiring & AsyncRunnableCommand
+    AppWiring --> App & AppRouter
     App --> AppRouter
     AppRouter --> Views & Presenters & DependencyInjection
     DependencyInjection --> Implementations
@@ -76,6 +78,7 @@ graph TD
     style Views fill:#6a5,stroke:#333,color:#fff
     style Presenters fill:#6a5,stroke:#E9B84C,stroke-width:3px,color:#fff
     style DependencyInjection fill:#c44,stroke:#E9B84C,stroke-width:3px,color:#fff
+    style AppWiring fill:#c44,stroke:#333,color:#fff
     style Entity fill:#4a9,stroke:#E9B84C,stroke-width:3px,color:#fff
     style Domain fill:#38b,stroke:#E9B84C,stroke-width:3px,color:#fff
     style Interactor fill:#7b5,stroke:#333,color:#fff
@@ -257,7 +260,7 @@ Presenters subscribe to Interactors via Combine. Interactors access UseCases via
 | Handler | `ProcessHandler`, `VersionHandler`, `ServiceHandler`, `HealthHandler`, `TrackHandler`, `ConfigHandler`, `BenchmarkHandler` | CLI command logic. ProcessHandler: process lifecycle. VersionHandler: version string. ServiceHandler: LaunchAgent install/uninstall. HealthHandler: connectivity checks. TrackHandler: now-playing info with metadata/lyrics resolution. ConfigHandler: config template/init/path resolution. BenchmarkHandler: CPU/memory measurement via `ProcessGateway`. Protocols in Domain, injected via `@Dependency`. All handlers return `Result<Success, Failure>` — never throw |
 | Provider / Support | `AppKitScreenProvider`, `StandardOutput`, `DarwinGateway`, `CoreAudioTapGateway`, `FrequencyAnalyzer`, `FileWatchGateway`, `DeveloperLog`, `ErrorLog`, `ProcessExecutor`, `RandomSource` | Platform/provider implementations that do not fit the core Clean Architecture layers directly. `AppKitScreenProvider` adapts `NSScreen` into `ScreenProvider`; `StandardOutput` owns CLI output rendering; `DarwinGateway` owns macOS process/system calls; `CoreAudioTapGateway` owns the live CoreAudio process-tap calls (`AudioTapGateway` implementation); `FrequencyAnalyzer` owns the vDSP FFT to per-bar magnitude conversion (pure computation behind Domain's `FrequencyAnalyzing` / `FrequencyAnalyzerFactory`); `FileWatchGateway` owns the DispatchSource-based config watch — directory + file two-tier (`ConfigWatchGateway` implementation, consumed by `ConfigDataSource`, #41); `DeveloperLog` (`FileDeveloperLog`) is a general write-only config-gated diagnostic sink (StandardOutput family, not a DataStore), injected as a cross-cutting service — the lyrics-resolution trace (#331) is its first instance; `ErrorLog` (`StandardErrorLog`) is the always-on stderr error sink that replaced hand-written `fputs` at four sites (#345), owning the `lyra: <Subsystem> …` convention so it has exactly one home; `ProcessExecutor` (`ProcessExecutorImpl`) is the DataSource-tier collaborator that adds a clock-driven timeout + capture over `ProcessGateway.runProcess`, shared by the lyrics and YouTube DataSources so neither carries its own subprocess plumbing (#340); `RandomSource` (`SystemRandomSource`) provides injectable randomness consumed by Presenters (`DecodeEffect`, wallpaper shuffle) so random behavior is deterministic under test |
 | Interactor | `TrackInteractor`, `ScreenInteractor`, `WallpaperInteractor`, `SpectrumInteractor`, `ConfigInteractor` | Combine-based reactive pipelines over UseCases (GUI) |
-| DI Wiring | `DependencyInjection` | All liveValue registrations; also hosts two thin boundary pieces with no module of their own — `AppKitFontMetrics` (`FontMetricsProvider` live, consumed by Views' `SwiftUIResolver`) and the `healthCheckers` aggregation (the `HealthCheckable` implementations live beside their APIs in the DataSource/Repository modules) |
+| DI Wiring | `DependencyInjection`, `AppWiring` | All liveValue registrations; `DependencyInjection` also hosts two thin boundary pieces with no module of their own — `AppKitFontMetrics` (`FontMetricsProvider` live, consumed by Views' `SwiftUIResolver`) and the `healthCheckers` aggregation (the `HealthCheckable` implementations live beside their APIs in the DataSource/Repository modules). `AppWiring` holds the App composition root — the live `ForegroundApplicationRunner` tree (`NSApplication` + `AppDelegate` + signal-handler construction) — which cannot sit in `DependencyInjection` because the DAG would cycle (#366) |
 | Entity | `Entity` | Pure data types, zero external dependencies |
 | Domain | `Domain` | Protocols, DependencyKeys (`@_exported import Entity`) |
 | UseCase | `ConfigUseCase`, `PlaybackUseCase`, `LyricsUseCase`, `MetadataUseCase`, `WallpaperUseCase`, `SpectrumUseCase` | Business logic only, no cross-UseCase deps |
@@ -318,7 +321,9 @@ graph TD
 
 **Analyzer memoization is UseCase-private state, not a DataStore (#313)**: `SpectrumUseCaseImpl` keeps the built analyzer in a private var keyed on `(bars, sampleRate)`. Modeling this as an in-memory DataStore was considered and rejected: the DataStore layer caches *domain data* — Entity values a Repository can read back (`MetadataDataStore.read(title:artist:)`) — whereas this memo reuses a *computational resource* (vDSP FFT setup) that is single-slot, instance-scoped, and main-thread-confined (the documented reason the class is `@unchecked Sendable`). Moving it behind a shared injected store would weaken the thread-confinement story and add indirection with no testability gain (rebuild-on-change is already covered by tests). Boundary for future work: if spectrum *results* (per-track bar data, resolved values) ever need caching across consumers, that IS domain data — put it in a DataStore behind the Repository, per the MetadataRepository precedent.
 
-**AppKit lifecycle boundary**: The `App` module owns foreground `NSApplication` setup, accessory activation, `AppDelegate` retention, and termination signal registration. `DaemonCommand` stays CLI glue after lock acquisition and calls the App lifecycle runner instead of touching AppKit directly. `AppDelegate` receives router and termination-handler collaborators so launch bootstrap and signal-triggered shutdown can be unit-tested without `NSApplication.run()` or live signal registration.
+**AppKit lifecycle boundary**: The `App` module owns foreground `NSApplication` setup, accessory activation, `AppDelegate` retention, and termination signal registration. `DaemonCommand` stays CLI glue after lock acquisition and calls the App lifecycle runner instead of touching AppKit directly. `AppDelegate` receives router and termination-handler collaborators so launch bootstrap and signal-triggered shutdown can be unit-tested without `NSApplication.run()` or live signal registration. The *live* construction of that collaborator tree sits in `AppWiring` (composition root, #366), not in `App` itself.
+
+**App composition root in a dedicated wiring module (#366)**: `AppDelegate`'s `convenience init()` — which built `AppRouter()` and `SignalTerminationHandler()` — plus the no-arg `runAccessory()`, the `ForegroundApplicationRunnerKey.liveValue`/`testValue`, and the runner's `init` were the only RED lines left in the covered `App` module: tests always exercise the injected path, so the live construction tree could never execute under `swift test`. The standard escape (moving `liveValue` into `DependencyInjection`) is impossible here — the DAG is `CLI → App → AppRouter → DependencyInjection`, so DI importing `App` would cycle. The runner contract (`ForegroundApplicationRunner` + key + `DependencyValues` accessor) moved to `Domain` beside every other `*Key` — eliminating what `AGENTS.md` documented as the lone non-Domain registration site — and the live tree moved to a new `AppWiring` target that `CLI` depends on and imports in `DaemonCommand`. `App`'s injection seams went `public` (`runAccessory(backend:delegateFactory:)`, `AppDelegate.init`, `SignalTerminationHandler`, `LiveSignalHandlingBackend`, `NSApplicationForegroundBackend`), and their live default arguments were *removed* rather than kept: a default argument's thunk is emitted in the declaring module, so an uncalled default is the same uncovered line wearing a different name — `AppWiring` passes every argument explicitly (`NSApplication.shared`, `[SIGTERM, SIGINT]`, `{ exit($0) }`). `AppRouter()` keeps its `launchEnvironment` default because `AppRouterTests` already call the bare init, so that thunk is covered where it lives. `AppDelegate`'s convenience init is gone entirely — production and tests now share the single injected init, and `Sources/App/**` holds only injectable, test-reachable code.
 
 **VIPER data flow**: `TrackInteractor` exposes a shared Combine publisher (`AnyPublisher<TrackUpdate, Never>`) built as a declarative pipeline: NowPlaying stream → `removeDuplicates` → `switchToLatest(resolve)` → `share()` — over an internal `NowPlaying?` stream since #360, where a sustained `nil` run emits one clear boundary (`TrackUpdate(lyricsState: .idle)` + `nil` artwork). `HeaderPresenter` and `LyricsPresenter` each subscribe independently via `.sink`. No manual dispatch or procedural send calls.
 
