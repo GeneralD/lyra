@@ -17,30 +17,93 @@ public final class TrackInteractorImpl: @unchecked Sendable {
 
     private lazy var shared = nowPlayingPublisher.share()
 
-    private lazy var activeNowPlaying =
-        shared
-        .compactMap { $0 }
-        .scan((previous: nil as NowPlaying?, current: nil as NowPlaying?)) { state, incoming in
-            (previous: state.current, current: incoming)
-        }
-        .compactMap { state -> NowPlaying? in
-            guard let current = state.current else { return nil }
-            guard let previous = state.previous else { return current }
-            let prevArtist = previous.artist ?? ""
-            let curArtist = current.artist ?? ""
-            guard current.title == previous.title, !prevArtist.isEmpty, curArtist.isEmpty else {
-                return current
-            }
-            return nil
-        }
-        .share()
+    /// How long a run of `nil` now-playing events must persist before the
+    /// overlay clears. A `nil` means no client reported a title — the source
+    /// app quit — while a paused client keeps reporting `rate = 0` info and a
+    /// muted one still arrives with its title (#132), so neither pause nor
+    /// mute ever produces it. The grace absorbs transient gaps (track-switch
+    /// flashes, a MediaRemote hiccup) that would otherwise flicker the
+    /// display (#360).
+    private static let clearGrace: Duration = .seconds(5)
 
-    /// A publisher that emits `TrackUpdate` events whenever the active track changes.
+    /// What one upstream event means for `activeNowPlaying`.
+    private enum ScanEvent {
+        /// A titled client answered but the report must not change the
+        /// display (e.g. mute's artist-dropped report). It still proves the
+        /// source is alive, so it cancels a pending clear while emitting
+        /// nothing itself.
+        case suppressed
+        /// The first `nil` of a run — arms the grace task.
+        case gone
+        /// An ordinary active element.
+        case track(NowPlaying)
+    }
+
+    /// The active now-playing element, or `nil` once no titled client has
+    /// been seen for `clearGrace`. Downstream `nil` is the display's clear
+    /// boundary. The scan classifies each upstream event into a `ScanEvent`
+    /// (or no event at all for a `nil` repeated inside one run — the armed
+    /// grace must not be re-armed on every polling tick or it could never
+    /// fire). `.suppressed` reaches `switchToLatest` as an `Empty` publisher,
+    /// so a mute-style report cancels a pending clear without producing
+    /// output — dropping it earlier would leave a live display to be cleared
+    /// by a timer that the client's presence already invalidated (#361
+    /// review). Nothing else dedups here: pause (rate → 0) must still reach
+    /// `playbackPosition`.
+    private lazy var activeNowPlaying: AnyPublisher<NowPlaying?, Never> =
+        shared
+        .scan(
+            (lastTrack: NowPlaying?.none, inNilRun: false, emit: ScanEvent?.none)
+        ) { state, incoming in
+            guard let incoming else {
+                return (
+                    lastTrack: state.lastTrack,
+                    inNilRun: true,
+                    emit: state.inNilRun ? nil : .gone
+                )
+            }
+            // Same title with the artist newly empty (e.g. system volume
+            // mute): suppress the report, keeping the previous full report.
+            let suppressed =
+                state.lastTrack.map { last in
+                    incoming.title == last.title
+                        && !(last.artist ?? "").isEmpty
+                        && (incoming.artist ?? "").isEmpty
+                } ?? false
+            return (
+                lastTrack: incoming,
+                inNilRun: false,
+                emit: suppressed ? .suppressed : .track(incoming)
+            )
+        }
+        .compactMap { $0.emit }
+        .map { [weak self] event -> AnyPublisher<NowPlaying?, Never> in
+            guard let self else { return Empty().eraseToAnyPublisher() }
+            switch event {
+            case .suppressed:
+                return Empty().eraseToAnyPublisher()
+            case .gone:
+                return clearedAfterGrace()
+            case .track(let info):
+                return Just(info as NowPlaying?).eraseToAnyPublisher()
+            }
+        }
+        .switchToLatest()
+        .share()
+        .eraseToAnyPublisher()
+
+    /// A publisher that emits `TrackUpdate` events whenever the active track
+    /// changes, and one `.idle` update when the source has gone away for
+    /// `clearGrace` — presenters treat it as "clear title, artist and
+    /// lyrics" (#360).
     public lazy var trackChange: AnyPublisher<TrackUpdate, Never> =
         activeNowPlaying
-        .removeDuplicates(by: Self.sameTrack)
+        .removeDuplicates(by: Self.sameOptionalTrack)
         .map { [weak self] info -> AnyPublisher<TrackUpdate, Never> in
             guard let self else { return Empty().eraseToAnyPublisher() }
+            guard let info else {
+                return Just(TrackUpdate(lyricsState: .idle)).eraseToAnyPublisher()
+            }
             return resolveTrack(from: info)
         }
         .switchToLatest()
@@ -51,10 +114,12 @@ public final class TrackInteractorImpl: @unchecked Sendable {
     /// re-broadcasts (e.g. during display reconfiguration) often omit the
     /// artwork bytes, and a raw `map(\.artworkData)` would blank the artwork
     /// until the next event that happens to carry them (#265). A track change
-    /// without artwork still clears it.
+    /// without artwork still clears it — as does the `nil` clear boundary,
+    /// which emits `nil` data (#360).
     public lazy var artwork: AnyPublisher<Data?, Never> =
         activeNowPlaying
         .scan((track: NowPlaying?.none, data: Data?.none)) { state, incoming in
+            guard let incoming else { return (track: nil, data: nil) }
             let isSameTrack = state.track.map { $0.title != nil && Self.sameTrack($0, incoming) } ?? false
             return (track: incoming, data: incoming.artworkData ?? (isSameTrack ? state.data : nil))
         }
@@ -74,9 +139,50 @@ public final class TrackInteractorImpl: @unchecked Sendable {
         return lhs.title == rhs.title && lhsArtist == rhsArtist
     }
 
+    /// Returns `true` when two optional `NowPlaying` values carry the same
+    /// track — `nil == nil`, so a source-gone run dedups to one boundary,
+    /// while `nil` vs a track is distinct so a resumed track re-resolves.
+    static func sameOptionalTrack(_ lhs: NowPlaying?, _ rhs: NowPlaying?) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none): return true
+        case (.some(let l), .some(let r)): return sameTrack(l, r)
+        default: return false
+        }
+    }
+
+    /// Emits a single `nil` after `clearGrace`, unless a new element supersedes
+    /// it first (the enclosing `switchToLatest` cancels this task). Runs on the
+    /// injected clock so tests advance it deterministically.
+    private func clearedAfterGrace() -> AnyPublisher<NowPlaying?, Never> {
+        let subject = PassthroughSubject<NowPlaying?, Never>()
+        nonisolated(unsafe) let unsafeSubject = subject
+        let clock = self.clock
+        let taskLock = OSAllocatedUnfairLock(initialState: Task<Void, Never>?.none)
+        return subject.handleEvents(
+            receiveSubscription: { _ in
+                taskLock.withLock { task in
+                    task = Task { @Sendable in
+                        try? await clock.sleep(for: Self.clearGrace)
+                        guard !Task.isCancelled else { return }
+                        unsafeSubject.send(nil)
+                        unsafeSubject.send(completion: .finished)
+                    }
+                }
+            },
+            receiveCancel: {
+                taskLock.withLock { task in
+                    task?.cancel()
+                    task = nil
+                }
+            }
+        )
+        .eraseToAnyPublisher()
+    }
+
     /// A publisher that emits the current playback position.
     public lazy var playbackPosition: AnyPublisher<PlaybackPosition, Never> =
         activeNowPlaying
+        .compactMap { $0 }
         .map { np in
             PlaybackPosition(
                 rawElapsed: np.rawElapsed, timestamp: np.timestamp, playbackRate: np.playbackRate)

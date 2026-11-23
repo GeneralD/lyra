@@ -180,6 +180,44 @@ struct HeaderPresenterTests {
                 #expect(presenter.artworkImage == nil)
             }
         }
+
+        @MainActor
+        @Test("idle update mid-decode stops the effect — phase never flips back")
+        func idleStopsMidDecode() async throws {
+            let subject = PassthroughSubject<TrackUpdate, Never>()
+            // A long decode held mid-flight by the injected clock: without a
+            // stop on the clear path its completion would flip the phase back
+            // to `.revealed` and write the decoded text over the cleared
+            // field (#361 review).
+            let clock = TestClock<Duration>()
+
+            await withDependencies {
+                $0.trackInteractor = StubTrackInteractor(
+                    trackChangePublisher: subject.eraseToAnyPublisher(),
+                    decodeEffectConfig: .init(duration: 10)
+                )
+                $0.continuousClock = clock
+            } operation: {
+                let presenter = HeaderPresenter()
+                presenter.start()
+
+                subject.send(TrackUpdate(title: "Song", artist: "Artist"))
+                await settle(presenter.$titlePhase) { $0 == .revealing }
+                await settle(presenter.$artistPhase) { $0 == .revealing }
+
+                subject.send(TrackUpdate())
+                await settle(presenter.$titlePhase) { $0 == .idle }
+
+                // Advance well past the decode duration: a cancelled effect
+                // neither completes (`.revealed` flip) nor writes onUpdate.
+                await clock.advance(by: .seconds(30))
+
+                #expect(presenter.titlePhase == .idle, "a stopped decode must not flip the phase back")
+                #expect(presenter.artistPhase == .idle)
+                #expect(presenter.displayTitle == " ", "a stopped decode must not write stale text")
+                #expect(presenter.displayArtist == " ")
+            }
+        }
     }
 
     @Suite("AI processing indicator", .timeLimit(.minutes(1)))

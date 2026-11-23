@@ -117,6 +117,10 @@ extension HeaderPresenter {
             titleTarget = nil
             titlePhase = .idle
             displayTitle = " "
+            // A running decode or AI-processing scramble keeps writing
+            // `displayTitle` and would flip the phase back to `.revealed`
+            // on completion — clear means the effect stops too (#361 review).
+            titleEffect?.stop()
             return
         }
         guard titleTarget != text else { return }
@@ -137,6 +141,9 @@ extension HeaderPresenter {
             artistTarget = nil
             artistPhase = .idle
             displayArtist = " "
+            // Same as revealTitle(nil): the pending scramble/decode must not
+            // write stale text over the cleared field (#361 review).
+            artistEffect?.stop()
             return
         }
         guard artistTarget != text else { return }
