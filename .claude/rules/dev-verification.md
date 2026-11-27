@@ -23,7 +23,7 @@ with the lock race or the service lifecycle by hand.
 
 ## Why the installed service gets in the way
 
-- The brew service (`homebrew.mxcl.lyra`) runs under launchd with
+- The brew service (`sh.brew.lyra`; `homebrew.mxcl.lyra` on older Homebrew) runs under launchd with
   `KeepAlive = true`. `lyra stop` (pgrep + `SIGTERM`/`SIGKILL`) cannot keep it
   down — launchd resurrects the brew binary the instant it dies, and the
   resurrected process re-grabs the single-instance flock at
@@ -35,7 +35,7 @@ with the lock race or the service lifecycle by hand.
   reports multiple windows. Verification becomes meaningless. Exclusivity is
   required, not coexistence.
 - Only `brew services stop lyra` (which boots the launchd job out, like
-  `launchctl bootout gui/$UID/homebrew.mxcl.lyra`) keeps it down. General
+  `launchctl bootout gui/$UID/sh.brew.lyra`) keeps it down. General
   principle: **a KeepAlive launchd job must be booted out, not just killed.**
 
 ## Procedure

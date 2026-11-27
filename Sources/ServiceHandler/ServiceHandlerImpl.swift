@@ -5,7 +5,9 @@ import Foundation
 
 public struct ServiceHandlerImpl {
     private let label = "com.generald.lyra"
-    private let homebrewLabel = "homebrew.mxcl.lyra"
+    // Homebrew names the job `sh.brew.lyra` (`Service#plist_name`); releases before that
+    // used `homebrew.mxcl.lyra`, which it still recognizes as `legacy_plist_name`.
+    private let homebrewLabels = ["sh.brew.lyra", "homebrew.mxcl.lyra"]
     private let launchAgentsPath: String
     private let executablePathOverride: String?
 
@@ -23,11 +25,14 @@ public struct ServiceHandlerImpl {
 
 extension ServiceHandlerImpl: ServiceHandler {
     public func install() -> ServiceInstallResult {
-        guard homebrewPlistFile == nil else { return .failure(.managedByHomebrew) }
+        guard !isManagedByHomebrew else { return .failure(.managedByHomebrew) }
 
+        // ProcessType: Interactive — left unspecified, launchd throttles the job's
+        // CPU and I/O, so a saturated machine starves the always-animating overlay (#374).
         let plistDict: [String: Any] = [
             "Label": label,
             "ProgramArguments": programArguments,
+            "ProcessType": "Interactive",
             "RunAtLoad": true,
         ]
         guard
@@ -53,7 +58,7 @@ extension ServiceHandlerImpl: ServiceHandler {
 
     public func uninstall() -> ServiceUninstallResult {
         guard let file = plistFile else {
-            return homebrewPlistFile != nil ? .failure(.managedByHomebrew) : .failure(.notInstalled)
+            return isManagedByHomebrew ? .failure(.managedByHomebrew) : .failure(.notInstalled)
         }
         let uid = getuid()
         gateway.runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
@@ -74,8 +79,10 @@ extension ServiceHandlerImpl {
         try? launchAgentsFolder.file(named: "\(label).plist")
     }
 
-    private var homebrewPlistFile: File? {
-        try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
+    /// Looks each label up once: `lazy.compactMap(_:).first` would evaluate the hit twice
+    /// and trap if `brew services stop` removed the plist in between.
+    private var isManagedByHomebrew: Bool {
+        homebrewLabels.contains { (try? launchAgentsFolder.file(named: "\($0).plist")) != nil }
     }
 
     private var programArguments: [String] {
