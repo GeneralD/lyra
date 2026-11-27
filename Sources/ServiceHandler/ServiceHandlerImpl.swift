@@ -25,9 +25,12 @@ extension ServiceHandlerImpl: ServiceHandler {
     public func install() -> ServiceInstallResult {
         guard homebrewPlistFile == nil else { return .failure(.managedByHomebrew) }
 
+        // ProcessType: Interactive — left unspecified, launchd throttles the job's
+        // CPU and I/O, so a saturated machine starves the always-animating overlay (#374).
         let plistDict: [String: Any] = [
             "Label": label,
             "ProgramArguments": programArguments,
+            "ProcessType": "Interactive",
             "RunAtLoad": true,
         ]
         guard

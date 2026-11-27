@@ -103,6 +103,27 @@ struct ServiceHandlerImplTests {
             }
         }
 
+        @Test("writes ProcessType Interactive so launchd does not throttle the daemon")
+        func writesInteractiveProcessType() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+
+            withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                let handler = ServiceHandlerImpl(launchAgentsPath: path, executablePath: "/tmp/lyra")
+                let result = handler.install()
+                guard let plist = try? readPlist(from: path) else {
+                    Issue.record("Failed to read generated plist")
+                    return
+                }
+                #expect(result == .success(.installed(path: "\(path)/com.generald.lyra.plist")))
+                #expect(plist["ProcessType"] as? String == "Interactive")
+                #expect(plist["RunAtLoad"] as? Bool == true)
+            }
+        }
+
         @Test("writes mint invocation when current executable is under .mint")
         func usesMintProgramArguments() throws {
             let path = tempDir.path
@@ -268,11 +289,14 @@ private func cleanup(_ path: String) {
     try? FileManager.default.removeItem(atPath: path)
 }
 
-private func readProgramArguments(from launchAgentsPath: String) throws -> [String] {
+private func readPlist(from launchAgentsPath: String) throws -> [String: Any] {
     let plistPath = "\(launchAgentsPath)/com.generald.lyra.plist"
     let data = try Data(contentsOf: URL(fileURLWithPath: plistPath))
-    let plist = try #require(
+    return try #require(
         PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
     )
-    return try #require(plist["ProgramArguments"] as? [String])
+}
+
+private func readProgramArguments(from launchAgentsPath: String) throws -> [String] {
+    try #require(readPlist(from: launchAgentsPath)["ProgramArguments"] as? [String])
 }
