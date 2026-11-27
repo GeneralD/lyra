@@ -25,7 +25,7 @@ public struct ServiceHandlerImpl {
 
 extension ServiceHandlerImpl: ServiceHandler {
     public func install() -> ServiceInstallResult {
-        guard homebrewPlistFile == nil else { return .failure(.managedByHomebrew) }
+        guard !isManagedByHomebrew else { return .failure(.managedByHomebrew) }
 
         // ProcessType: Interactive — left unspecified, launchd throttles the job's
         // CPU and I/O, so a saturated machine starves the always-animating overlay (#374).
@@ -58,7 +58,7 @@ extension ServiceHandlerImpl: ServiceHandler {
 
     public func uninstall() -> ServiceUninstallResult {
         guard let file = plistFile else {
-            return homebrewPlistFile != nil ? .failure(.managedByHomebrew) : .failure(.notInstalled)
+            return isManagedByHomebrew ? .failure(.managedByHomebrew) : .failure(.notInstalled)
         }
         let uid = getuid()
         gateway.runLaunchctl(["bootout", "gui/\(uid)/\(label)"])
@@ -79,10 +79,10 @@ extension ServiceHandlerImpl {
         try? launchAgentsFolder.file(named: "\(label).plist")
     }
 
-    private var homebrewPlistFile: File? {
-        homebrewLabels.lazy
-            .compactMap { try? launchAgentsFolder.file(named: "\($0).plist") }
-            .first
+    /// Looks each label up once: `lazy.compactMap(_:).first` would evaluate the hit twice
+    /// and trap if `brew services stop` removed the plist in between.
+    private var isManagedByHomebrew: Bool {
+        homebrewLabels.contains { (try? launchAgentsFolder.file(named: "\($0).plist")) != nil }
     }
 
     private var programArguments: [String] {
