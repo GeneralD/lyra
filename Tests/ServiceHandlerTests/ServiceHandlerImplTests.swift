@@ -28,6 +28,9 @@ private struct StubGateway: ProcessGateway {
     }
 }
 
+/// The plist names `brew services` writes: the current `sh.brew.*` and the legacy `homebrew.mxcl.*`.
+private let homebrewPlistNames = ["sh.brew.lyra.plist", "homebrew.mxcl.lyra.plist"]
+
 @Suite("ServiceHandlerImpl", .serialized)
 struct ServiceHandlerImplTests {
     // MARK: - install
@@ -37,12 +40,12 @@ struct ServiceHandlerImplTests {
         private let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("lyra-service-test-\(ProcessInfo.processInfo.processIdentifier)/install")
 
-        @Test("returns managedByHomebrew when homebrew plist exists")
-        func homebrewManaged() throws {
+        @Test("returns managedByHomebrew when a brew services plist exists", arguments: homebrewPlistNames)
+        func homebrewManaged(plistName: String) throws {
             let path = tempDir.path
             try createDir(path)
             defer { cleanup(path) }
-            try createFile(at: path, named: "homebrew.mxcl.lyra.plist")
+            try createFile(at: path, named: plistName)
 
             withDependencies {
                 $0.processGateway = StubGateway()
@@ -197,12 +200,12 @@ struct ServiceHandlerImplTests {
             }
         }
 
-        @Test("returns managedByHomebrew when only homebrew plist exists")
-        func homebrewManaged() throws {
+        @Test("returns managedByHomebrew when only a brew services plist exists", arguments: homebrewPlistNames)
+        func homebrewManaged(plistName: String) throws {
             let path = tempDir.path
             try createDir(path)
             defer { cleanup(path) }
-            try createFile(at: path, named: "homebrew.mxcl.lyra.plist")
+            try createFile(at: path, named: plistName)
 
             withDependencies {
                 $0.processGateway = StubGateway()

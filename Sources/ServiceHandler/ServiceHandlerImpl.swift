@@ -5,7 +5,9 @@ import Foundation
 
 public struct ServiceHandlerImpl {
     private let label = "com.generald.lyra"
-    private let homebrewLabel = "homebrew.mxcl.lyra"
+    // Homebrew names the job `sh.brew.lyra` (`Service#plist_name`); releases before that
+    // used `homebrew.mxcl.lyra`, which it still recognizes as `legacy_plist_name`.
+    private let homebrewLabels = ["sh.brew.lyra", "homebrew.mxcl.lyra"]
     private let launchAgentsPath: String
     private let executablePathOverride: String?
 
@@ -78,7 +80,9 @@ extension ServiceHandlerImpl {
     }
 
     private var homebrewPlistFile: File? {
-        try? launchAgentsFolder.file(named: "\(homebrewLabel).plist")
+        homebrewLabels.lazy
+            .compactMap { try? launchAgentsFolder.file(named: "\($0).plist") }
+            .first
     }
 
     private var programArguments: [String] {
