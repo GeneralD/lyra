@@ -149,6 +149,12 @@ let package = Package(
                 "Domain"
             ]
         ),
+        .target(
+            name: "AppKitFontMetrics",
+            dependencies: [
+                "Domain"
+            ]
+        ),
 
         // ── RandomSource ──
         .target(
@@ -272,6 +278,7 @@ let package = Package(
             name: "DependencyInjection",
             dependencies: [
                 "AppKitScreenProvider",
+                "AppKitFontMetrics",
                 "Domain",
                 "RandomSource",
                 "DeveloperLog",
@@ -682,6 +689,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "AppKitScreenProviderTests", dependencies: ["AppKitScreenProvider", "Domain"]),
+        .testTarget(name: "AppKitFontMetricsTests", dependencies: ["AppKitFontMetrics", "Domain"]),
         .testTarget(name: "RandomSourceTests", dependencies: ["RandomSource", "Domain"]),
         .testTarget(
             name: "ErrorLogTests",
