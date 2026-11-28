@@ -1,0 +1,1 @@
+public typealias ServiceUninstallResult = Result<ServiceUninstallSuccess, ServiceUninstallFailure>

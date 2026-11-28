@@ -1,0 +1,1 @@
+public typealias ServiceInstallReadinessResult = Result<ServiceInstallReady, ServiceInstallFailure>
