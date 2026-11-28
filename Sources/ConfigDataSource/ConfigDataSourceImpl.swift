@@ -230,7 +230,7 @@ extension ConfigDataSourceImpl {
 
     /// The config's current `includes` paths, re-resolved from the on-disk TOML
     /// each call WITHOUT requiring the files to exist. Feeds the hot-reload
-    /// watch targets (ConfigWatch) through the same entry parsing decode uses,
+    /// watch targets (`watchTargets`) through the same entry parsing decode uses,
     /// so the watched set can never drift from what decode would merge — and a
     /// missing include still contributes its parent directory to the watch, so
     /// creating the file later fires an event instead of going unnoticed.
