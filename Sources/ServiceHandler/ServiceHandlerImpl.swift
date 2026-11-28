@@ -24,8 +24,14 @@ public struct ServiceHandlerImpl {
 }
 
 extension ServiceHandlerImpl: ServiceHandler {
+    public var installReadiness: ServiceInstallReadinessResult {
+        isManagedByHomebrew ? .failure(.managedByHomebrew) : .success(.ready)
+    }
+
     public func install() -> ServiceInstallResult {
-        guard !isManagedByHomebrew else { return .failure(.managedByHomebrew) }
+        // Checked again here, not only by the caller: stopping the daemon takes seconds,
+        // and `brew services start` can register the brew job in between (#380).
+        if case .failure(let failure) = installReadiness { return .failure(failure) }
 
         // ProcessType: Interactive — left unspecified, launchd throttles the job's
         // CPU and I/O, so a saturated machine starves the always-animating overlay (#374).
