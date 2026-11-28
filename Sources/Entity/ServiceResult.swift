@@ -1,8 +1,13 @@
 public typealias ServiceInstallResult = Result<ServiceInstallSuccess, ServiceInstallFailure>
+public typealias ServiceInstallReadinessResult = Result<ServiceInstallReady, ServiceInstallFailure>
 public typealias ServiceUninstallResult = Result<ServiceUninstallSuccess, ServiceUninstallFailure>
 
 public enum ServiceInstallSuccess: Sendable, Equatable {
     case installed(path: String)
+}
+
+public enum ServiceInstallReady: Sendable, Equatable {
+    case ready
 }
 
 public enum ServiceInstallFailure: Error, Sendable, Equatable {

@@ -94,6 +94,12 @@ public struct PrintStandardOutput: StandardOutput {
         }
     }
 
+    /// Silent when ready; a refusal reads exactly as the install would have reported it.
+    public func write(_ result: ServiceInstallReadinessResult) {
+        guard case .failure(let failure) = result else { return }
+        write(ServiceInstallResult.failure(failure))
+    }
+
     public func write(_ result: ServiceUninstallResult) {
         switch result {
         case .success(.uninstalled): write("Uninstalled")

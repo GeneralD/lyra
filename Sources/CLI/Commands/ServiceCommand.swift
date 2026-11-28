@@ -21,6 +21,9 @@ struct ServiceInstallCommand: AsyncRunnableCommand {
         @Dependency(\.processHandler) var processHandler
         @Dependency(\.serviceHandler) var handler
         @Dependency(\.standardOutput) var output
+        let readiness = handler.installReadiness
+        output.write(readiness)
+        guard case .success = readiness else { throw ExitCode.failure }
         let stopResult = await processHandler.stop()
         output.write(stopResult)
         guard case .success = stopResult else { throw ExitCode.failure }

@@ -20,7 +20,21 @@ private struct StubProcessHandler: ProcessHandler {
     func acquireDaemonLock() -> Bool { acquireDaemonLockResult }
 }
 
+/// Counts `stop()` so a test can prove the command never reached it.
+private final class SpyProcessHandler: ProcessHandler, @unchecked Sendable {
+    private(set) var stopCount = 0
+
+    func start() async -> StartResult { .success(.started(pid: 42)) }
+    func stop() async -> StopResult {
+        stopCount += 1
+        return .success(.stopped)
+    }
+    func restart() async -> StartResult { .success(.started(pid: 43)) }
+    func acquireDaemonLock() -> Bool { false }
+}
+
 private struct StubServiceHandler: ServiceHandler {
+    var installReadiness: ServiceInstallReadinessResult = .success(.ready)
     var installResult: ServiceInstallResult = .success(.installed(path: "/tmp/plist"))
     var uninstallResult: ServiceUninstallResult = .success(.uninstalled)
 
@@ -90,13 +104,16 @@ private final class SpyStandardOutput: StandardOutput, @unchecked Sendable {
     private(set) var writtenMessages: [String] = []
     private(set) var writtenJsonCount = 0
     private(set) var writtenBenchmarkUpdates: [BenchmarkUpdate] = []
+    private(set) var writtenInstallReadiness: [ServiceInstallReadinessResult] = []
+    private(set) var writtenInstallResults: [ServiceInstallResult] = []
 
     func write(_ message: String) { writtenMessages.append(message) }
     func writeError(_ message: String) {}
     func writeJson(_ value: some Encodable & Sendable) { writtenJsonCount += 1 }
     func write(_ result: StartResult) {}
     func write(_ result: StopResult) {}
-    func write(_ result: ServiceInstallResult) {}
+    func write(_ result: ServiceInstallResult) { writtenInstallResults.append(result) }
+    func write(_ result: ServiceInstallReadinessResult) { writtenInstallReadiness.append(result) }
     func write(_ result: ServiceUninstallResult) {}
     func write(_ result: ConfigWriteResult) {}
     func write(_ result: ConfigPathResult) {}
@@ -324,16 +341,40 @@ struct HealthcheckCommandTests {
 struct ServiceInstallCommandTests {
     @Test("stop succeeds and install succeeds does not throw")
     func bothSucceed() async throws {
+        let processHandler = SpyProcessHandler()
+        let output = SpyStandardOutput()
         try await withDependencies {
-            $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
+            $0.processHandler = processHandler
             $0.serviceHandler = StubServiceHandler(
                 installResult: .success(.installed(path: "/tmp/plist"))
             )
-            $0.standardOutput = SpyStandardOutput()
+            $0.standardOutput = output
         } operation: {
             let cmd = ServiceInstallCommand()
             try await cmd.run()
         }
+        #expect(processHandler.stopCount == 1)
+        #expect(output.writtenInstallReadiness == [.success(.ready)])
+        #expect(output.writtenInstallResults == [.success(.installed(path: "/tmp/plist"))])
+    }
+
+    @Test("brew-managed install stops nothing and reports managedByHomebrew (#380)")
+    func managedByHomebrewStopsNothing() async {
+        let processHandler = SpyProcessHandler()
+        let output = SpyStandardOutput()
+        await withDependencies {
+            $0.processHandler = processHandler
+            $0.serviceHandler = StubServiceHandler(installReadiness: .failure(.managedByHomebrew))
+            $0.standardOutput = output
+        } operation: {
+            let cmd = ServiceInstallCommand()
+            await #expect(throws: ExitCode.failure) {
+                try await cmd.run()
+            }
+        }
+        #expect(processHandler.stopCount == 0)
+        #expect(output.writtenInstallReadiness == [.failure(.managedByHomebrew)])
+        #expect(output.writtenInstallResults.isEmpty)
     }
 
     @Test("stop fails throws before install")

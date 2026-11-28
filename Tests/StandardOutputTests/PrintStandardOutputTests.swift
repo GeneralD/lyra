@@ -103,6 +103,23 @@ struct PrintStandardOutputTests {
         #expect(failed == "Install failed: write failed\n")
     }
 
+    @Test("write service install readiness is silent when ready and reports a refusal like install")
+    func writeServiceInstallReadiness() throws {
+        let readyStdout = try captureStdout { output in
+            output.write(.success(.ready) as ServiceInstallReadinessResult)
+        }
+        let readyStderr = try captureStderr { output in
+            output.write(.success(.ready) as ServiceInstallReadinessResult)
+        }
+        let homebrew = try captureStderr { output in
+            output.write(.failure(.managedByHomebrew) as ServiceInstallReadinessResult)
+        }
+
+        #expect(readyStdout.isEmpty)
+        #expect(readyStderr.isEmpty)
+        #expect(homebrew == "Already managed by brew services. Run 'brew services stop lyra' first.\n")
+    }
+
     @Test("write service uninstall results maps each branch to expected output")
     func writeServiceUninstallResults() throws {
         let uninstalled = try captureStdout { output in

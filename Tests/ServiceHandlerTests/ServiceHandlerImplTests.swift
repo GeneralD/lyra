@@ -59,6 +59,27 @@ struct ServiceHandlerImplTests {
             }
         }
 
+        @Test("installReadiness refuses when a brew services plist exists", arguments: homebrewPlistNames)
+        func readinessRefusesHomebrew(plistName: String) throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+            try createFile(at: path, named: plistName)
+
+            let readiness = ServiceHandlerImpl(launchAgentsPath: path).installReadiness
+            #expect(readiness == .failure(.managedByHomebrew))
+        }
+
+        @Test("installReadiness is ready when no brew services plist exists")
+        func readinessReady() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+
+            let readiness = ServiceHandlerImpl(launchAgentsPath: path).installReadiness
+            #expect(readiness == .success(.ready))
+        }
+
         @Test("creates plist file when no homebrew conflict")
         func createsPlist() throws {
             let path = tempDir.path
