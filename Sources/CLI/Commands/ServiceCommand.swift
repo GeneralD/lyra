@@ -45,7 +45,8 @@ struct ServiceUninstallCommand: AsyncRunnableCommand {
         @Dependency(\.standardOutput) var output
         let result = handler.uninstall()
         output.write(result)
-        guard case .success = result else { throw ExitCode.failure }
+        guard case .success(let success) = result else { throw ExitCode.failure }
+        guard case .uninstalled = success else { return }
         let stopResult = await processHandler.stop()
         output.write(stopResult)
         guard case .success = stopResult else { throw ExitCode.failure }

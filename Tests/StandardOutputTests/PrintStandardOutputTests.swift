@@ -125,6 +125,12 @@ struct PrintStandardOutputTests {
         let uninstalled = try captureStdout { output in
             output.write(.success(.uninstalled) as ServiceUninstallResult)
         }
+        let keepingHomebrew = try captureStdout { output in
+            output.write(.success(.uninstalledKeepingHomebrew) as ServiceUninstallResult)
+        }
+        let keepingHomebrewStderr = try captureStderr { output in
+            output.write(.success(.uninstalledKeepingHomebrew) as ServiceUninstallResult)
+        }
         let homebrew = try captureStderr { output in
             output.write(.failure(.managedByHomebrew) as ServiceUninstallResult)
         }
@@ -136,6 +142,11 @@ struct PrintStandardOutputTests {
         }
 
         #expect(uninstalled == "Uninstalled\n")
+        #expect(
+            keepingHomebrew
+                == "Uninstalled. Did not stop lyra because brew services still has it registered. "
+                + "Run 'brew services stop lyra' to stop it and remove that registration.\n")
+        #expect(keepingHomebrewStderr.isEmpty)
         #expect(homebrew == "Managed by brew services. Run 'brew services stop lyra' instead.\n")
         #expect(notInstalled == "Not installed\n")
         #expect(failed == "Uninstall failed: delete failed\n")
