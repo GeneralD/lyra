@@ -29,44 +29,44 @@ let declarationPattern =
 
 let tripleQuote = "\"\"\""
 
-/// Index just past the `"` that closes a one-line string literal whose text starts at `index`;
-/// the line's end when the literal does not close on it.
-func indexAfterString(in chars: [Character], from index: Int) -> Int {
-    guard index < chars.count else { return chars.count }
-    switch chars[index] {
-    case "\\": return indexAfterString(in: chars, from: index + 2)
-    case "\"": return index + 1
-    default: return indexAfterString(in: chars, from: index + 1)
-    }
+/// The length of the string-literal delimiter that opens at `index` (`"`, `"""`, `#"`, `#"""`, …) and the
+/// delimiter that closes it (the quotes followed by the same number signs); nil when no literal opens there.
+func stringDelimiter(in chars: [Character], at index: Int) -> (length: Int, closing: String)? {
+    let numberSigns = chars[index...].prefix { $0 == "#" }.count
+    let quoteStart = index + numberSigns
+    guard quoteStart < chars.count, chars[quoteStart] == "\"" else { return nil }
+    let quotes = chars[quoteStart...].starts(with: tripleQuote) ? tripleQuote : "\""
+    return (numberSigns + quotes.count, quotes + String(repeating: "#", count: numberSigns))
 }
 
 /// The code on a line with comments and string-literal text removed, read left to right, plus the
-/// block-comment depth (Swift nests them) and `"""` state the next line starts in. `/*`, `*/` and
-/// `//` inside a string literal are text, and a string inside a block comment is comment.
+/// block-comment depth (Swift nests them) and the closing delimiter of a multi-line string literal still
+/// open, both carried to the next line. `/*`, `*/` and `//` inside a literal are text, a literal inside a
+/// block comment is comment, and a removed block comment leaves a space (Swift reads it as whitespace).
 func strippedCode(
-    _ chars: [Character], from index: Int = 0, depth: Int, inText: Bool, kept: String = ""
-) -> (code: String, depth: Int, inText: Bool) {
-    guard index < chars.count else { return (kept, depth, inText) }
+    _ chars: [Character], from index: Int = 0, depth: Int, closing: String?, kept: String = ""
+) -> (code: String, depth: Int, closing: String?) {
+    guard index < chars.count else { return (kept, depth, closing?.hasPrefix(tripleQuote) == true ? closing : nil) }
     let rest = chars[index...]
-    switch (inText, depth > 0) {
-    case (true, _):
-        return rest.starts(with: tripleQuote)
-            ? strippedCode(chars, from: index + 3, depth: depth, inText: false, kept: kept)
-            : strippedCode(chars, from: index + 1, depth: depth, inText: true, kept: kept)
-    case (false, true):
+    switch (closing, depth > 0) {
+    case (let closing?, _):
+        // An escape is `\` plus the delimiter's number signs, then one character: `\"`, `\#"`.
+        let escape = "\\" + closing.drop { $0 == "\"" }
+        let closes = !rest.starts(with: escape) && rest.starts(with: closing)
+        let skip = rest.starts(with: escape) ? escape.count + 1 : closes ? closing.count : 1
+        return strippedCode(chars, from: index + skip, depth: depth, closing: closes ? nil : closing, kept: kept)
+    case (nil, true):
         let delta = rest.starts(with: "/*") ? 1 : rest.starts(with: "*/") ? -1 : 0
-        return strippedCode(chars, from: index + (delta == 0 ? 1 : 2), depth: depth + delta, inText: false, kept: kept)
-    case (false, false) where rest.starts(with: "//"):
-        return (kept, 0, false)
-    case (false, false) where rest.starts(with: "/*"):
-        return strippedCode(chars, from: index + 2, depth: 1, inText: false, kept: kept)
-    case (false, false) where rest.starts(with: tripleQuote):
-        return strippedCode(chars, from: index + 3, depth: 0, inText: true, kept: kept + "\"\"")
-    case (false, false) where chars[index] == "\"":
-        let next = indexAfterString(in: chars, from: index + 1)
-        return strippedCode(chars, from: next, depth: 0, inText: false, kept: kept + "\"\"")
-    case (false, false):
-        return strippedCode(chars, from: index + 1, depth: 0, inText: false, kept: kept + String(chars[index]))
+        return strippedCode(chars, from: index + (delta == 0 ? 1 : 2), depth: depth + delta, closing: nil, kept: kept)
+    case (nil, false) where rest.starts(with: "//"):
+        return (kept, 0, nil)
+    case (nil, false) where rest.starts(with: "/*"):
+        return strippedCode(chars, from: index + 2, depth: 1, closing: nil, kept: kept + " ")
+    case (nil, false):
+        guard let delimiter = stringDelimiter(in: chars, at: index) else {
+            return strippedCode(chars, from: index + 1, depth: 0, closing: nil, kept: kept + String(chars[index]))
+        }
+        return strippedCode(chars, from: index + delimiter.length, depth: 0, closing: delimiter.closing, kept: kept + "\"\"")
     }
 }
 
@@ -103,12 +103,12 @@ func leadingAttributes(of chars: [Character], from index: Int = 0, found: [Strin
 /// Lines with comments and string-literal text removed but their indentation kept, so neither
 /// commented-out code nor text in a `"""` literal declares anything. A line left with no code is empty.
 func uncommentedLines(_ lines: [String]) -> [String] {
-    lines.reduce(into: (depth: 0, inText: false, result: [String]())) { state, line in
-        let scanned = strippedCode(Array(line), depth: state.depth, inText: state.inText)
+    lines.reduce(into: (depth: 0, closing: String?.none, result: [String]())) { state, line in
+        let scanned = strippedCode(Array(line), depth: state.depth, closing: state.closing)
         let code = scanned.code.drop(while: \.isWhitespace)
         state.result.append(code.isEmpty ? "" : String(line.prefix(while: \.isWhitespace)) + code)
         state.depth = scanned.depth
-        state.inText = scanned.inText
+        state.closing = scanned.closing
     }.result
 }
 
