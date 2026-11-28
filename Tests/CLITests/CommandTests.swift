@@ -106,6 +106,7 @@ private final class SpyStandardOutput: StandardOutput, @unchecked Sendable {
     private(set) var writtenBenchmarkUpdates: [BenchmarkUpdate] = []
     private(set) var writtenInstallReadiness: [ServiceInstallReadinessResult] = []
     private(set) var writtenInstallResults: [ServiceInstallResult] = []
+    private(set) var writtenUninstallResults: [ServiceUninstallResult] = []
 
     func write(_ message: String) { writtenMessages.append(message) }
     func writeError(_ message: String) {}
@@ -114,7 +115,7 @@ private final class SpyStandardOutput: StandardOutput, @unchecked Sendable {
     func write(_ result: StopResult) {}
     func write(_ result: ServiceInstallResult) { writtenInstallResults.append(result) }
     func write(_ result: ServiceInstallReadinessResult) { writtenInstallReadiness.append(result) }
-    func write(_ result: ServiceUninstallResult) {}
+    func write(_ result: ServiceUninstallResult) { writtenUninstallResults.append(result) }
     func write(_ result: ConfigWriteResult) {}
     func write(_ result: ConfigPathResult) {}
     func write(_ result: ConfigLaunchResult) {}
@@ -414,16 +415,38 @@ struct ServiceInstallCommandTests {
 struct ServiceUninstallCommandTests {
     @Test("uninstall succeeds and stop succeeds does not throw")
     func bothSucceed() async throws {
+        let processHandler = SpyProcessHandler()
+        let output = SpyStandardOutput()
         try await withDependencies {
             $0.serviceHandler = StubServiceHandler(
                 uninstallResult: .success(.uninstalled)
             )
-            $0.processHandler = StubProcessHandler(stopResult: .success(.stopped))
-            $0.standardOutput = SpyStandardOutput()
+            $0.processHandler = processHandler
+            $0.standardOutput = output
         } operation: {
             let cmd = ServiceUninstallCommand()
             try await cmd.run()
         }
+        #expect(processHandler.stopCount == 1)
+        #expect(output.writtenUninstallResults == [.success(.uninstalled)])
+    }
+
+    @Test("uninstall that leaves a brew services registration stops nothing and succeeds (#382)")
+    func keepingHomebrewStopsNothing() async throws {
+        let processHandler = SpyProcessHandler()
+        let output = SpyStandardOutput()
+        try await withDependencies {
+            $0.serviceHandler = StubServiceHandler(
+                uninstallResult: .success(.uninstalledKeepingHomebrew)
+            )
+            $0.processHandler = processHandler
+            $0.standardOutput = output
+        } operation: {
+            let cmd = ServiceUninstallCommand()
+            try await cmd.run()
+        }
+        #expect(processHandler.stopCount == 0)
+        #expect(output.writtenUninstallResults == [.success(.uninstalledKeepingHomebrew)])
     }
 
     @Test("uninstall fails throws ExitCode.failure")

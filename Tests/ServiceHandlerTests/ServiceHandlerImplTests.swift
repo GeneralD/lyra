@@ -263,6 +263,47 @@ struct ServiceHandlerImplTests {
             }
         }
 
+        @Test(
+            "removes only lyra's own plist and reports the brew services registration it keeps (#382)",
+            arguments: homebrewPlistNames)
+        func keepsHomebrewRegistration(plistName: String) throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer { cleanup(path) }
+            try createFile(at: path, named: "com.generald.lyra.plist")
+            try createFile(at: path, named: plistName)
+
+            let result = withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                ServiceHandlerImpl(launchAgentsPath: path).uninstall()
+            }
+            #expect(result == .success(.uninstalledKeepingHomebrew))
+            #expect(!FileManager.default.fileExists(atPath: "\(path)/com.generald.lyra.plist"))
+            #expect(FileManager.default.fileExists(atPath: "\(path)/\(plistName)"))
+        }
+
+        @Test("a failed delete is reported as failed even when a brew services plist exists (#382)")
+        func deleteFailureWithHomebrew() throws {
+            let path = tempDir.path
+            try createDir(path)
+            defer {
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o755], ofItemAtPath: path)
+                cleanup(path)
+            }
+            try createFile(at: path, named: "com.generald.lyra.plist")
+            try createFile(at: path, named: "sh.brew.lyra.plist")
+            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: path)
+
+            let result = withDependencies {
+                $0.processGateway = StubGateway()
+            } operation: {
+                ServiceHandlerImpl(launchAgentsPath: path).uninstall()
+            }
+            #expect(result == .failure(.failed(detail: "Failed to delete plist file")))
+        }
+
         @Test("returns failed when the plist cannot be deleted")
         func deleteFailure() throws {
             let path = tempDir.path

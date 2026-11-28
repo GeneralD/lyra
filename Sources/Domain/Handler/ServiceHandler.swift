@@ -6,6 +6,9 @@ public protocol ServiceHandler: Sendable {
     /// they stop, so the install must be refused first (#380).
     var installReadiness: ServiceInstallReadinessResult { get }
     func install() -> ServiceInstallResult
+    /// Removes only lyra's own registration. Returns `.uninstalledKeepingHomebrew` when
+    /// `brew services` also registers lyra; callers must not stop the daemon then, because the
+    /// brew job's KeepAlive relaunches whatever they stop (#382).
     func uninstall() -> ServiceUninstallResult
 }
 

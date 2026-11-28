@@ -72,7 +72,8 @@ extension ServiceHandlerImpl: ServiceHandler {
         guard (try? file.delete()) != nil else {
             return .failure(.failed(detail: "Failed to delete plist file"))
         }
-        return .success(.uninstalled)
+        // Only lyra's own job was booted out; a brew services job is left to brew (#382).
+        return isManagedByHomebrew ? .success(.uninstalledKeepingHomebrew) : .success(.uninstalled)
     }
 }
 

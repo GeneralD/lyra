@@ -103,6 +103,10 @@ public struct PrintStandardOutput: StandardOutput {
     public func write(_ result: ServiceUninstallResult) {
         switch result {
         case .success(.uninstalled): write("Uninstalled")
+        case .success(.uninstalledKeepingHomebrew):
+            write(
+                "Uninstalled. brew services still has lyra registered, so other lyra processes were left alone. "
+                    + "Run 'brew services stop lyra' to remove that registration too.")
         case .failure(.managedByHomebrew):
             writeError("Managed by brew services. Run 'brew services stop lyra' instead.")
         case .failure(.notInstalled): writeError("Not installed")

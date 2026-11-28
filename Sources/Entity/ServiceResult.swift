@@ -18,6 +18,8 @@ public enum ServiceInstallFailure: Error, Sendable, Equatable {
 
 public enum ServiceUninstallSuccess: Sendable, Equatable {
     case uninstalled
+    /// lyra's own registration was removed, but `brew services` still registers lyra (#382).
+    case uninstalledKeepingHomebrew
 }
 
 public enum ServiceUninstallFailure: Error, Sendable, Equatable {
