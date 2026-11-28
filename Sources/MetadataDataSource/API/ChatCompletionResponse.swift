@@ -9,8 +9,3 @@ public struct ChatCompletionResponse: Decodable, Sendable {
         public let content: String
     }
 }
-
-public struct ExtractedMetadata: Decodable, Sendable {
-    public let title: String
-    public let artist: String
-}

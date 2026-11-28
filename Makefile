@@ -30,6 +30,7 @@ test:
 
 lint:
 	swift format lint --strict --recursive Sources/ Tests/
+	swift scripts/lint-file-names.swift
 
 format:
 	swift format --in-place --recursive Sources/ Tests/

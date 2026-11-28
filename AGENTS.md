@@ -15,7 +15,7 @@ corresponding kinds of changes.
   `.claude/rules/architecture-boundaries.md`
 - Module addition and documentation sync checklist:
   `.claude/rules/module-checklist.md`
-- Swift implementation style and immutability rules:
+- Swift implementation style, immutability, and file naming rules:
   `.claude/rules/swift-idioms.md`
 - Running the debug build for visual verification while the brew service is
   installed (stop -> run -> restore): `.claude/rules/dev-verification.md`
@@ -31,7 +31,7 @@ swift test
 swift test --filter ConfigTests
 make build
 make install
-make lint
+make lint    # swift-format + file names (scripts/lint-file-names.swift)
 make format
 make benchmark
 lyra benchmark
@@ -107,6 +107,13 @@ Shared conventions:
   but do not add feature logic to SwiftUI views.
 - Prefer `let` and functional transforms. Every `var` should have a real reason
   to exist.
+- Name every file under `Sources/` after its main type (#372). A family file
+  with no main type is split one type per file, each top-level `typealias`
+  included. Exceptions: `Type+Feature.swift` extension files,
+  `*Registration.swift` DI wiring, Papyrus `XxxAPI.swift` (declares
+  `@API protocol Xxx`; the macro generates the `XxxAPI` callers use), and files
+  with no top-level type. `make lint` enforces it through
+  `scripts/lint-file-names.swift`; see `.claude/rules/swift-idioms.md`.
 - Repositories own cache strategy. DataSources stay focused on API, file, and
   OS integration work.
 - Metadata and lyrics resolution never short-circuit on first success: all
