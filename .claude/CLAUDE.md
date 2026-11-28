@@ -18,7 +18,7 @@ swift test                           # run all tests
 swift test --filter ConfigTests      # run single test suite
 make build                           # release build via Makefile
 make install                         # install to /usr/local/bin
-make lint                            # check formatting (swift-format)
+make lint                            # check formatting (swift-format) and file names
 make format                          # auto-fix formatting
 make benchmark                       # run CPU/memory benchmarks (release build)
 lyra benchmark                       # measure baselines (idle, cpu_spike, memory_alloc)

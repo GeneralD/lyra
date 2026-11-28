@@ -38,7 +38,9 @@ When adding a new module (Handler, UseCase, Repository, DataSource, etc.):
 
 For Handler modules specifically:
 
-- Entity result type (e.g., `BenchmarkReport.swift`)
+- Entity result types, one file per type (e.g., `BenchmarkEntry.swift`,
+  `BenchmarkScenario.swift`); a `Result` typealias gets its own file too
+  (e.g., `ServiceInstallResult.swift`) — see "File Naming" in `swift-idioms.md`
 - Domain protocol (e.g., `BenchmarkHandler.swift`)
 - Implementation module (e.g., `BenchmarkHandler/BenchmarkHandlerImpl.swift`)
 - CLI command (e.g., `CLI/Commands/BenchmarkCommand.swift`)

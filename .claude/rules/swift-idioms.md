@@ -47,6 +47,37 @@ enum Scenario: String, CaseIterable, Sendable { case idle, cpuSpike = "cpu_spike
 
 This eliminates `available` properties, manual filtering, and `default` branches in switch statements.
 
+## File Naming — A File Is Named After Its Main Type
+
+**Every Swift file under `Sources/` is named after the main type it declares**
+(#372). A file that holds a main type plus small supporting types keeps the main
+type's name. A file with no main type — a family of result/record/model types
+grouped under an umbrella name, as the former `ServiceResult.swift` and
+`Records.swift` were — is split **one type per file**, and each top-level
+`typealias` gets its own file too (`ServiceInstallResult.swift` holds only
+`typealias ServiceInstallResult = Result<…>`). A type is then found by its name
+alone, with no umbrella file to remember.
+
+Allowed exceptions, each because the file's name describes something other than
+a single type:
+
+- **`Type+Feature.swift`** (the name contains `+`) — an extension file; the
+  extended type lives elsewhere.
+- **`*Registration.swift`** — DI wiring; it registers live values and may hold
+  private helper types (no-op stubs such as `NoopLyricsDataStore`) that exist
+  only for that registration.
+- **Papyrus `XxxAPI.swift`** — declares `@API protocol Xxx`, and the `@API`
+  macro generates the `XxxAPI` type that callers actually use, so the file is
+  named after that type. Other types (request/response models) still go in their
+  own files.
+- **No top-level type at all** — free functions, `@_exported` re-exports, or
+  extensions only; there is no type name to match.
+
+Enforced by `scripts/lint-file-names.swift`, which `make lint` and the CI
+`lint` job run after swift-format. Files under a `Resources/` directory are
+skipped: they are bundled scripts run by the interpreter at runtime (the
+MediaRemote helper), not module sources.
+
 ## View File Organization — `XxxxView.swift` Holds Only the Struct
 
 **A `XxxxView.swift` file must contain only the pure SwiftUI `View` struct.**

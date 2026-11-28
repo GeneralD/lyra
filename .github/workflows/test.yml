@@ -18,6 +18,9 @@ jobs:
       - name: Lint (swift-format)
         run: swift format lint --strict --recursive Sources/ Tests/
 
+      - name: Lint (file names)
+        run: swift scripts/lint-file-names.swift
+
   release-build:
     # Builds the shipped binary exactly as auto-tag.yml does, on the same runner.
     # That job runs on an older toolchain than `test`, so without this a
