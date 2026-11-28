@@ -10,7 +10,8 @@
 //   4. its basename is `X` + "API" and it declares `protocol X` under an `@API` attribute
 //      (Papyrus generates the `XAPI` type that callers use);
 //   5. it declares no top-level type at all (free functions, re-exports, extensions only).
-// A type inside a top-level `#if` block counts as top-level. Paths with a `Resources` component
+// A type inside a top-level `#if` block counts as top-level, a backtick-escaped name is compared
+// without its backticks, and code inside `/* … */` declares nothing. Paths with a `Resources` component
 // and hidden files (which SwiftPM does not compile) are skipped.
 import Foundation
 
@@ -24,7 +25,10 @@ struct Declaration {
 
 /// Modifiers, then the declaration keyword and name, once any leading attributes are removed.
 let declarationPattern =
-    #/(?:(?:public|internal|private|fileprivate|package|open|final|indirect|nonisolated)\s+)*(?<kind>class|struct|enum|protocol|actor|typealias)\s+(?<name>\w+)/#
+    #/(?:(?:public|internal|private|fileprivate|package|open|final|indirect|nonisolated)\s+)*(?<kind>class|struct|enum|protocol|actor|typealias)\s+`?(?<name>\w+)/#
+
+/// A string literal or a `//` comment, whose `/*` and `*/` do not open or close a block comment.
+let stringOrLineComment = #/"(?:\\.|[^"\\])*"|\/\/.*/#
 
 /// Index just past the `)` that closes the `(` at `index`, ignoring parentheses inside string literals;
 /// nil when the arguments continue on a later line.
@@ -56,6 +60,16 @@ func leadingAttributes(of chars: [Character], from index: Int = 0, found: [Strin
     return leadingAttributes(of: chars, from: next, found: attributes)
 }
 
+/// Lines inside `/* … */` block comments (which Swift nests) blanked out, so commented-out code declares nothing.
+func uncommentedLines(_ lines: [String]) -> [String] {
+    lines.reduce(into: (depth: 0, result: [String]())) { state, line in
+        let code = state.depth > 0 ? line : line.replacing(stringOrLineComment, with: "")
+        let startsComment = line.drop(while: \.isWhitespace).hasPrefix("/*")
+        state.result.append(state.depth > 0 || startsComment ? "" : line)
+        state.depth = max(state.depth + code.ranges(of: "/*").count - code.ranges(of: "*/").count, 0)
+    }.result
+}
+
 /// Lines with the indentation of their enclosing top-level `#if` blocks removed, so a type inside
 /// `#if os(macOS)` reads as top-level (swift-format indents each conditional block by 4 spaces).
 func topLevelLines(_ lines: [String]) -> [String] {
@@ -79,7 +93,8 @@ func isAttributeLine(_ line: String) -> Bool {
 }
 
 func declarations(in source: String) -> [Declaration] {
-    let lines = topLevelLines(source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init))
+    let lines = topLevelLines(
+        uncommentedLines(source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)))
     return lines.indices.compactMap { index in
         guard let first = lines[index].first, !first.isWhitespace else { return nil }
         let (inline, rest) = leadingAttributes(of: Array(lines[index]))
