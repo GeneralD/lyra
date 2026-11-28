@@ -144,8 +144,8 @@ struct PrintStandardOutputTests {
         #expect(uninstalled == "Uninstalled\n")
         #expect(
             keepingHomebrew
-                == "Uninstalled. Did not stop lyra because brew services still has it registered. "
-                + "Run 'brew services stop lyra' to stop it and remove that registration.\n")
+                == "Uninstalled. brew services still has lyra registered, so other lyra processes were left alone. "
+                + "Run 'brew services stop lyra' to remove that registration too.\n")
         #expect(keepingHomebrewStderr.isEmpty)
         #expect(homebrew == "Managed by brew services. Run 'brew services stop lyra' instead.\n")
         #expect(notInstalled == "Not installed\n")

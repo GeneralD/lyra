@@ -83,7 +83,7 @@ lyra service install    # register LaunchAgent directly
 lyra service uninstall
 ```
 
-> **Note:** Both methods use LaunchAgent but with different labels (`sh.brew.lyra`, or `homebrew.mxcl.lyra` on older Homebrew, vs `com.generald.lyra`). Use one approach — do not mix them, or the daemon will run twice. If both end up registered, `lyra service uninstall` removes only `com.generald.lyra` and does not stop lyra; run `brew services stop lyra` to remove the Homebrew one.
+> **Note:** Both methods use LaunchAgent but with different labels (`sh.brew.lyra`, or `homebrew.mxcl.lyra` on older Homebrew, vs `com.generald.lyra`). Use one approach — do not mix them, or the daemon will run twice. If both end up registered, `lyra service uninstall` removes only `com.generald.lyra` and leaves other lyra processes alone; run `brew services stop lyra` to remove the Homebrew one.
 
 The LaunchAgent plist is written once, when the service is registered, so an upgrade that changes its settings takes effect only after you regenerate it: `brew services restart lyra` for Homebrew, or run `lyra service install` again for the manual method.
 
