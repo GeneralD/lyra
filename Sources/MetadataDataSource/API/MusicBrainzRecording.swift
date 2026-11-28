@@ -1,11 +1,5 @@
 import Foundation
 
-public struct MusicBrainzResponse: Sendable {
-    public let recordings: [MusicBrainzRecording]
-}
-
-extension MusicBrainzResponse: Decodable {}
-
 public struct MusicBrainzRecording: Sendable {
     public let id: String
     public let title: String
@@ -27,9 +21,3 @@ public struct MusicBrainzRecording: Sendable {
 }
 
 extension MusicBrainzRecording: Decodable {}
-
-public struct ArtistCredit: Sendable {
-    public let name: String
-}
-
-extension ArtistCredit: Decodable {}
