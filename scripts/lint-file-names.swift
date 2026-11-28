@@ -11,7 +11,7 @@
 //      (Papyrus generates the `XAPI` type that callers use);
 //   5. it declares no top-level type at all (free functions, re-exports, extensions only).
 // A type inside a top-level `#if` block counts as top-level, a backtick-escaped name is compared
-// without its backticks, and code inside `/* … */` declares nothing. Paths with a `Resources` component
+// without its backticks, and comments and string-literal text declare nothing. Paths with a `Resources` component
 // and hidden files (which SwiftPM does not compile) are skipped.
 import Foundation
 
@@ -27,8 +27,48 @@ struct Declaration {
 let declarationPattern =
     #/(?:(?:public|internal|private|fileprivate|package|open|final|indirect|nonisolated)\s+)*(?<kind>class|struct|enum|protocol|actor|typealias)\s+`?(?<name>\w+)/#
 
-/// A string literal or a `//` comment, whose `/*` and `*/` do not open or close a block comment.
-let stringOrLineComment = #/"(?:\\.|[^"\\])*"|\/\/.*/#
+let tripleQuote = "\"\"\""
+
+/// Index just past the `"` that closes a one-line string literal whose text starts at `index`;
+/// the line's end when the literal does not close on it.
+func indexAfterString(in chars: [Character], from index: Int) -> Int {
+    guard index < chars.count else { return chars.count }
+    switch chars[index] {
+    case "\\": return indexAfterString(in: chars, from: index + 2)
+    case "\"": return index + 1
+    default: return indexAfterString(in: chars, from: index + 1)
+    }
+}
+
+/// The code on a line with comments and string-literal text removed, read left to right, plus the
+/// block-comment depth (Swift nests them) and `"""` state the next line starts in. `/*`, `*/` and
+/// `//` inside a string literal are text, and a string inside a block comment is comment.
+func strippedCode(
+    _ chars: [Character], from index: Int = 0, depth: Int, inText: Bool, kept: String = ""
+) -> (code: String, depth: Int, inText: Bool) {
+    guard index < chars.count else { return (kept, depth, inText) }
+    let rest = chars[index...]
+    switch (inText, depth > 0) {
+    case (true, _):
+        return rest.starts(with: tripleQuote)
+            ? strippedCode(chars, from: index + 3, depth: depth, inText: false, kept: kept)
+            : strippedCode(chars, from: index + 1, depth: depth, inText: true, kept: kept)
+    case (false, true):
+        let delta = rest.starts(with: "/*") ? 1 : rest.starts(with: "*/") ? -1 : 0
+        return strippedCode(chars, from: index + (delta == 0 ? 1 : 2), depth: depth + delta, inText: false, kept: kept)
+    case (false, false) where rest.starts(with: "//"):
+        return (kept, 0, false)
+    case (false, false) where rest.starts(with: "/*"):
+        return strippedCode(chars, from: index + 2, depth: 1, inText: false, kept: kept)
+    case (false, false) where rest.starts(with: tripleQuote):
+        return strippedCode(chars, from: index + 3, depth: 0, inText: true, kept: kept + "\"\"")
+    case (false, false) where chars[index] == "\"":
+        let next = indexAfterString(in: chars, from: index + 1)
+        return strippedCode(chars, from: next, depth: 0, inText: false, kept: kept + "\"\"")
+    case (false, false):
+        return strippedCode(chars, from: index + 1, depth: 0, inText: false, kept: kept + String(chars[index]))
+    }
+}
 
 /// Index just past the `)` that closes the `(` at `index`, ignoring parentheses inside string literals;
 /// nil when the arguments continue on a later line.
@@ -60,13 +100,15 @@ func leadingAttributes(of chars: [Character], from index: Int = 0, found: [Strin
     return leadingAttributes(of: chars, from: next, found: attributes)
 }
 
-/// Lines inside `/* … */` block comments (which Swift nests) blanked out, so commented-out code declares nothing.
+/// Lines with comments and string-literal text removed but their indentation kept, so neither
+/// commented-out code nor text in a `"""` literal declares anything. A line left with no code is empty.
 func uncommentedLines(_ lines: [String]) -> [String] {
-    lines.reduce(into: (depth: 0, result: [String]())) { state, line in
-        let code = state.depth > 0 ? line : line.replacing(stringOrLineComment, with: "")
-        let startsComment = line.drop(while: \.isWhitespace).hasPrefix("/*")
-        state.result.append(state.depth > 0 || startsComment ? "" : line)
-        state.depth = max(state.depth + code.ranges(of: "/*").count - code.ranges(of: "*/").count, 0)
+    lines.reduce(into: (depth: 0, inText: false, result: [String]())) { state, line in
+        let scanned = strippedCode(Array(line), depth: state.depth, inText: state.inText)
+        let code = scanned.code.drop(while: \.isWhitespace)
+        state.result.append(code.isEmpty ? "" : String(line.prefix(while: \.isWhitespace)) + code)
+        state.depth = scanned.depth
+        state.inText = scanned.inText
     }.result
 }
 
